@@ -17,15 +17,15 @@
   <div class="app-shell">
     <header class="topbar">
       <a class="brand" href="./" aria-label="Кузница чудес — главная"><img src="./assets/icon.svg" alt=""><span>Кузница <strong>чудес</strong></span></a>
-      <div class="header-actions"><button id="tech-button" class="tree-shortcut" aria-label="Открыть древо технологий"><span>✦</span><small>Древо</small></button><button id="menu-button" class="icon-button menu-button" aria-label="Настройки и сохранение"><span></span><span></span><span></span></button></div>
+      <div class="header-actions"><button id="tech-button" class="tree-shortcut" aria-label="Открыть древо технологий"><span>✦</span></button><button id="end-day" class="day-button" aria-label="Завершить день и восстановить силы" title="Новый день">☀</button><button id="menu-button" class="icon-button menu-button" aria-label="Настройки и сохранение"><span></span><span></span><span></span></button></div>
     </header>
     <div id="hud" class="hud" aria-label="Ресурсы игрока"></div>
     <main>
       <section class="scene-card" aria-label="Пиксельная мастерская">
-        <canvas id="scene" width="480" height="320" aria-label="Кузница с горном, наковальней, инструментами и кузнецом" role="img"></canvas>
+        <div class="scene-viewport"><canvas id="scene" width="480" height="320" aria-label="Кузница с горном, наковальней, инструментами и кузнецом" role="img"></canvas>
         <div class="scene-top"><span id="scene-label">Твоя мастерская</span><span id="level-label">Начинающий мастер</span></div>
         <div id="scene-actions" class="scene-actions"></div>
-        <div class="scene-footer"><span id="actor-status" role="status">Нажми на рабочую станцию</span><button id="end-day" class="day-button" aria-label="Завершить день и восстановить силы">Новый день <span>→</span></button></div>
+        </div><div class="scene-footer"><span id="actor-status" role="status">Нажми на рабочую станцию</span></div>
       </section>
       <div id="guide" class="guide"></div>
       <div id="storage-warning" class="storage-warning" hidden></div>
