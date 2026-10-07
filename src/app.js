@@ -1,347 +1,187 @@
 import * as G from './game.js';
-import { drawScene, iconURL, portraitURL } from './art.js';
+import {drawScene,iconURL,portraitURL,STATIONS,MAP_POINTS} from './art.js';
+import {createActor,moveActor,updateActor} from './motion.js';
 
-const $ = selector => document.querySelector(selector);
-const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const icon = (id, color, className = '') => `<img class="${className}" src="${iconURL(id, color)}" alt="" draggable="false">`;
-const button = (action, label, cls = 'secondary', attrs = '') => `<button class="${cls}" data-action="${action}" ${attrs}>${label}</button>`;
-const STORAGE_KEY = 'pix-forge-save-v1';
-let state = G.newGame(Date.now() >>> 0);
-let storageOK = true;
-let loadError = false;
-try {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (raw) state = G.deserialize(raw);
-} catch (error) {
-  loadError = error instanceof G.GameError || error instanceof SyntaxError;
-  storageOK = false;
-}
-G.ensureOrders(state);
-let view = 'forge', selected = 'lantern', metal = 'iron', rune = 'none';
-let allRecipes = false, shopTab = 'stock', policy = 'fair';
-let toastTimer, audioContext, forging = null, lastFrame = 0;
-const dialog = $('#dialog');
-const canvas = $('#scene');
+const $=s=>document.querySelector(s);
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const icon=(id,color,cls='')=>`<img class="${cls}" src="${iconURL(id,color)}" alt="" draggable="false">`;
+const btn=(action,label,cls='secondary',attrs='')=>`<button class="${cls}" data-action="${action}" ${attrs}>${label}</button>`;
+const SAVE='pix-forge-save-v1'; // Same key: v1 saves migrate through deserialize().
+let state=G.newGame(Date.now()>>>0),storageOK=true,loadError=false;
+try{const raw=localStorage.getItem(SAVE);if(raw)state=G.deserialize(raw);}catch(e){loadError=e instanceof G.GameError||e instanceof SyntaxError;storageOK=false;}
+G.ensureOrders(state);G.ensureCustomers(state);
+let view=state.trip?'explore':'forge',forgeTab='work',shopTab='stock',selected=state.work?.recipe||'lantern',metal='iron',rune='none';
+let itemIndex=0,buyerId=state.customers.find(c=>!c.served)?.id,region='forest',allRecipes=false,policy='fair';
+let busy=false,uiTask=null,toastTimer,audioContext,lastTick=0,lastDraw=0,workTimer=null;
+const actor=createActor(222,279),npcActors=new Map(),dialog=$('#dialog'),canvas=$('#scene');
+const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
 
-function save() {
-  if (loadError) return;
-  try {
-    localStorage.setItem(STORAGE_KEY, G.serialize(state));
-    storageOK = true;
-    $('#save-status').textContent = 'Прогресс сохранён на устройстве';
-  } catch {
-    storageOK = false;
-    $('#save-status').textContent = 'Сохранение недоступно';
-  }
-  storageNotice();
+function storageNotice(){const w=$('#storage-warning');w.hidden=storageOK;w.textContent=loadError?'Сохранение не удалось прочитать. Исходный файл можно скачать в меню.':'Браузер не разрешил автосохранение. Скачай прогресс через меню перед выходом.';}
+function save(){if(loadError)return;try{localStorage.setItem(SAVE,G.serialize(state));storageOK=true;$('#save-status').textContent='Прогресс сохранён на устройстве';}catch{storageOK=false;$('#save-status').textContent='Сохранение недоступно';}storageNotice();}
+function toast(message,error=false){const el=$('#toast');el.textContent=message;el.className=`toast show${error?' error':''}`;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3800);}
+function sound(kind='good'){if(!state.sound)return;try{audioContext||=new(window.AudioContext||window.webkitAudioContext)();audioContext.resume().catch(()=>{});const o=audioContext.createOscillator(),g=audioContext.createGain();o.type='triangle';o.frequency.value=kind==='hit'?210:kind==='coin'?820:510;g.gain.setValueAtTime(.05,audioContext.currentTime);g.gain.exponentialRampToValueAtTime(.001,audioContext.currentTime+.16);o.connect(g);g.connect(audioContext.destination);o.start();o.stop(audioContext.currentTime+.17);}catch{}}
+function act(fn,message){try{const result=fn();save();render();if(message)toast(typeof message==='function'?message(result):message);sound('coin');return result;}catch(e){toast(e instanceof G.GameError?e.message:'Не удалось выполнить действие.',true);if(!(e instanceof G.GameError))console.error(e);return undefined;}}
+function modal(html,closable=true){$('#dialog-body').innerHTML=`<div class="modal-inner">${closable?btn('close','×','modal-close','aria-label="Закрыть"'):''}${html}</div>`;if(!dialog.open)dialog.showModal();document.body.style.overflow='hidden';}
+function close(){dialog.close();document.body.style.overflow='';}
+dialog.addEventListener('close',()=>document.body.style.overflow='');
+dialog.addEventListener('click',e=>{if(e.target===dialog)close();});
+function costsHTML(costs){return `<div class="costs">${Object.entries(costs).map(([id,n])=>`<span class="cost${state.resources[id]<n?' missing':''}">${icon(id)}${G.MATERIALS[id].name} ${n}</span>`).join('')}</div>`;}
+function resources(){return `<div class="resource-strip" aria-label="Материалы">${Object.entries(state.resources).filter(([id,n])=>id!=='moon'||n||state.technologies.includes('lunar')).map(([id,n])=>`<span class="resource-chip">${icon(id)}<b>${n}</b>${G.MATERIALS[id].short||G.MATERIALS[id].name}</span>`).join('')}</div>`;}
+function head(title,text,meta=''){return `<div class="section-head"><div><h1>${title}</h1><p>${text}</p></div>${meta?`<span class="section-meta">${meta}</span>`:''}</div>`;}
+function currentBuyer(){return state.customers.find(c=>c.id===buyerId&&!c.served)||state.customers.find(c=>!c.served);}
+function setView(next){if(busy){toast('Мастер заканчивает действие.');return;}if(!['forge','shop','orders','explore','develop'].includes(next))return;view=next;actor.path=[];actor.pose='idle';actor.x=next==='shop'||next==='orders'?307:222;actor.y=next==='shop'||next==='orders'?176:279;if(next==='explore'&&state.trip){actor.x=237;actor.y=282;}render();window.scrollTo({top:0,behavior:'instant'});if(next==='forge'&&state.work)approachStage();}
+function pulse(pose,duration=430){actor.pose=pose;actor.workUntil=performance.now()+duration;actor.facing=pose==='heat'?'left':'right';}
+function performAt(station,pose,fn){if(busy)return;busy=true;render();const dest=STATIONS[station];moveActor(actor,dest.x,dest.y,'forge');actor.after=()=>{pulse(pose,reduced.matches?100:550);workTimer=setTimeout(()=>{busy=false;fn();render();},reduced.matches?100:550);};}
+function approachStage(){const step=G.workStage(state);if(!step||view!=='forge'||busy)return;performAt(step.station,'idle',()=>{});}
+function syncNPCs(){const waiting=state.customers.filter(c=>!c.served),chosen=currentBuyer();waiting.slice(0,4).forEach((customer,i)=>{let a=npcActors.get(customer.id);if(!a){a=createActor(56,280);a.person={...G.CLIENTS.find(p=>p.id===customer.client)};npcActors.set(customer.id,a);}const selected=chosen?.id===customer.id;const x=selected?244:92+i*84,y=selected?222:280+i%2*14;if(a.targetX!==x||a.targetY!==y){moveActor(a,x,y,'shop');a.targetX=x;a.targetY=y;}});for(const [id,a]of npcActors){const customer=state.customers.find(c=>c.id===id);if(!customer){npcActors.delete(id);continue;}if(customer.served&&!a.leaving){a.leaving=true;a.person.carry=true;moveActor(a,42,282,'shop');a.after=()=>npcActors.delete(id);}}}
+function runtime(){return{actor,npcs:[...npcActors.values()],selectedItem:itemIndex};}
+function render(){
+  const m=G.mastery(state);itemIndex=Math.max(0,Math.min(itemIndex,state.stock.length-1));const buyer=currentBuyer();if(buyer)buyerId=buyer.id;
+  $('#hud').innerHTML=`<div class="hud-stat" aria-label="${state.gold} монет">${icon('coin')}<span>${state.gold}</span></div><div class="hud-stat" aria-label="Силы ${state.energy} из ${G.maxEnergy(state)}">${icon('energy')}<span>${state.energy}<small> / ${G.maxEnergy(state)}</small></span></div><div class="hud-stat" aria-label="Мастерство уровень ${m.level}">${icon('star')}<span>Ур. ${m.level}</span></div><div class="hud-stat day-stat">День <b>${state.day}</b></div>`;
+  $('.scene-card').hidden=view==='develop';$('#guide').hidden=view==='develop';
+  const sceneView=view==='orders'?'shop':view;
+  $('#scene-label').textContent=sceneView==='shop'?'Лавка · зал покупателей':sceneView==='explore'?(state.trip?G.REGIONS.find(r=>r.id===state.trip.region).name:'Карта долины'):'Кузница · рабочий зал';
+  $('#level-label').textContent=state.work&&view==='forge'?`Этап ${state.work.step+1} / 5`:`Мастерство ${m.level}`;
+  canvas.setAttribute('aria-label',sceneView==='explore'?'Пиксельная карта леса, шахты, руин, перевала и кузницы':sceneView==='shop'?'Отдельная лавка, витрины и покупатели':'Кузница: горн, меха, инструменты, наковальня, ванна и верстак. Нажми на станцию, чтобы подойти.');
+  $('#scene-actions').innerHTML=view==='forge'?Object.entries(STATIONS).map(([id,s])=>btn('station',s.label,`scene-hotspot${G.workStage(state)?.station===id?' active':''}`,`data-station="${id}" style="left:${s.hotX}%;top:${s.hotY}%"`)).join(''):view==='explore'&&!state.trip?Object.entries(MAP_POINTS).map(([id,p])=>{const open=['home','beacon'].includes(id)?id==='home'||state.ended:G.regionAvailable(state,id);const name=id==='home'?'Кузница':id==='beacon'?'Маяк':G.REGIONS.find(r=>r.id===id).name.split(' ').at(-1);return btn('map-place',`${open?'':'◆ '}${name}`,`map-pin${open?'':' locked'}${id===region?' active':''}`,`data-region="${id}" style="left:${p.x/480*100}%;top:${p.y/320*100}%" aria-label="${name}${open?'':' — пока закрыто'}"`);}).join(''):'';
+  $('#end-day').hidden=Boolean(state.work||state.trip);$('#actor-status').textContent=busy?'Мастер идёт к станции и выполняет работу…':view==='forge'?'Нажми на оборудование или свободный пол':view==='shop'?'Покупатели осматривают витрины':view==='explore'?'Выбери место на карте':'';
+  $('#navigation').innerHTML=[['forge','Кузница'],['shop','Лавка'],['orders','Заказы'],['explore','Карта'],['develop','Древо']].map(([id,label])=>btn('navigate',`${icon(id==='explore'?'map':id)}<span>${label}</span>` ,`nav-item${view===id?' active':''}`,`data-view="${id}" ${view===id?'aria-current="page"':''}`)).join('');
+  renderGuide();$('#panel').innerHTML=({forge:forgeHTML,shop:shopHTML,orders:ordersHTML,explore:exploreHTML,develop:treeHTML}[view])();
+  syncNPCs();drawScene(canvas,state,sceneView,performance.now(),runtime());storageNotice();
+  if(view==='forge'&&state.work)syncTask();if(view==='develop')requestAnimationFrame(drawTreeLines);
 }
-function storageNotice() {
-  const warning = $('#storage-warning');
-  warning.hidden = storageOK;
-  warning.textContent = loadError
-    ? 'Сохранение не удалось прочитать. Исходный файл сохранён: открой меню, чтобы скачать его или начать заново.'
-    : 'Браузер не разрешил сохранить прогресс. Скачивай сохранение через меню, прежде чем закрыть игру.';
-}
-function toast(message, error = false) {
-  const el = $('#toast');
-  el.textContent = message; el.className = `toast show${error ? ' error' : ''}`;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 4200);
-}
-function sound(kind = 'good') {
-  if (!state.sound) return;
-  try {
-    audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
-    audioContext.resume().catch(() => {});
-    const oscillator = audioContext.createOscillator(), gain = audioContext.createGain();
-    oscillator.type = 'triangle'; oscillator.frequency.value = kind === 'hit' ? 240 : kind === 'coin' ? 880 : 540;
-    gain.gain.setValueAtTime(.065, audioContext.currentTime);
-    gain.gain.exponentialRampToValueAtTime(.001, audioContext.currentTime + .16);
-    oscillator.connect(gain); gain.connect(audioContext.destination);
-    oscillator.start(); oscillator.stop(audioContext.currentTime + .17);
-  } catch { /* Audio is optional. */ }
-}
-function act(callback, message) {
-  try {
-    const result = callback(); save(); render(); sound('coin');
-    if (message) toast(typeof message === 'function' ? message(result) : message);
-    return result;
-  } catch (error) {
-    toast(error instanceof G.GameError ? error.message : 'Не удалось выполнить действие. Попробуй ещё раз.', true);
-    if (!(error instanceof G.GameError)) console.error(error);
-    return null;
-  }
-}
-function showModal(html, closeable = true) {
-  forging = null;
-  $('#dialog-body').innerHTML = `<div class="modal-inner">${closeable ? button('close', '×', 'modal-close', 'aria-label="Закрыть"') : ''}${html}</div>`;
-  if (!dialog.open) dialog.showModal();
-  document.body.style.overflow = 'hidden';
-}
-function closeModal() { forging = null; dialog.close(); document.body.style.overflow = ''; }
-dialog.addEventListener('close', () => { forging = null; document.body.style.overflow = ''; });
-dialog.addEventListener('cancel', () => { forging = null; });
-dialog.addEventListener('click', e => { if (e.target === dialog && !forging) closeModal(); });
-function costsHTML(costs) {
-  return `<div class="costs">${Object.entries(costs).map(([id,n]) => `<span class="cost${state.resources[id] < n ? ' missing' : ''}" title="${G.MATERIALS[id].name}">${icon(id)}${G.MATERIALS[id].name} ${n}</span>`).join('')}</div>`;
-}
-function resourcesHTML() {
-  return `<div class="resource-strip" aria-label="Материалы">${Object.entries(state.resources).filter(([id,n]) => id !== 'moon' || n || state.technologies.includes('lunar')).map(([id,n]) => `<span class="resource-chip" title="${G.MATERIALS[id].name}">${icon(id)}<b>${n}</b><span>${G.MATERIALS[id].short || G.MATERIALS[id].name}</span></span>`).join('')}</div>`;
-}
-function head(title, text, meta = '') {
-  return `<div class="section-head"><div><h1>${title}</h1><p>${text}</p></div>${meta ? `<span class="section-meta">${meta}</span>` : ''}</div>`;
-}
-function setView(next) {
-  if (!['forge','shop','orders','explore','develop'].includes(next)) return;
-  view = next; render(); window.scrollTo({ top: 0, behavior: 'instant' });
-}
-function rank() { return state.fame >= 50 ? 'Мастер города' : state.fame >= 20 ? 'Умелый ремесленник' : state.fame >= 6 ? 'Знакомый кузнец' : 'Начинающий мастер'; }
-function render() {
-  $('#hud').innerHTML = `<div class="hud-stat" aria-label="${state.gold} монет">${icon('coin')}<span>${state.gold}</span></div><div class="hud-stat" aria-label="Силы ${state.energy} из ${G.maxEnergy(state)}">${icon('energy')}<span>${state.energy}<small> / ${G.maxEnergy(state)}</small></span></div><div class="hud-stat" aria-label="Репутация ${state.fame}">${icon('star')}<span>${state.fame}</span></div><div class="hud-stat day-stat">День <b>${state.day}</b></div>`;
-  $('#scene-label').textContent = view === 'explore' ? 'Тропы за городом' : 'Твоя мастерская';
-  $('#level-label').textContent = rank();
-  canvas.setAttribute('aria-label', view === 'explore' ? 'Пиксельный лес, река и тропа к шахте' : 'Кузнец у наковальни, горящий горн и лавка с покупателями');
-  $('#scene-actions').innerHTML = (view === 'explore' ? [['explore','Тихий лес'],['orders','Горожане']] : [['forge','Кузница'],['develop','Верстак'],['shop','Лавка']]).map(([id,title]) => button('navigate', title, `scene-hotspot${view === id ? ' active' : ''}`, `data-view="${id}"`)).join('');
-  $('#end-day').innerHTML = `Завершить день <span>→</span>`;
-  const nav = [['forge','Кузница'],['shop','Лавка'],['orders','Заказы'],['explore','Поиски'],['develop','Развитие']];
-  const story = G.currentStory(state);
-  $('#navigation').innerHTML = nav.map(([id,title]) => button('navigate', `${icon(id)}<span>${title}</span>${id === 'orders' && story && state.stock.some(i => G.orderMatches(i,story)) ? '<i class="nav-dot"></i>' : ''}`, `nav-item${view === id ? ' active' : ''}`, `data-view="${id}" aria-label="${title}" ${view === id ? 'aria-current="page"' : ''}`)).join('');
-  renderGuide();
-  $('#panel').innerHTML = ({ forge: forgeHTML, shop: shopHTML, orders: ordersHTML, explore: exploreHTML, develop: developHTML }[view])();
-  drawScene(canvas, state, view, performance.now());
-  storageNotice();
-}
-function renderGuide() {
-  const story = G.currentStory(state);
-  let title, text, action = 'navigate', attrs = 'data-view="orders"';
-  if (!state.energy) { title = 'Пора отдохнуть'; text = 'Заверши день: силы восстановятся, а путешественники вернутся с находками.'; action = 'end-day'; attrs = ''; }
-  else if (state.expeditions.length) { title = 'Твои вещи меняют город'; text = 'Заказчик в пути. На следующий день он вернётся с новостями и материалами.'; action = 'end-day'; attrs = ''; }
-  else if (story && state.stock.some(i => G.orderMatches(i,story))) { title = `${G.CLIENTS.find(c => c.id === story.client).name} ждёт заказ`; text = 'Нужная вещь уже на витрине. Передай её заказчику и получи награду.'; }
-  else if (story) { title = state.storyIndex ? story.title : 'Первая искра'; text = state.storyIndex ? `Следующая цель: ${G.recipeById(story.recipe).name.toLowerCase()}. Подсказки — в заказах.` : 'Сделай фонарь для Миры. Она принесёт руду и откроет путь в шахту.'; action = 'prepare'; attrs = `data-order="${story.id}"`; }
-  else { title = state.ended ? 'Маяк снова горит' : 'Маяк ждёт искру'; text = state.ended ? 'Город ожил благодаря твоей кузнице. Продолжай торговлю и собери все 12 чертежей.' : 'Элин вернётся завтра. Заверши день, чтобы узнать, как прошла экспедиция.'; }
-  $('#guide').innerHTML = `${icon(state.ended ? 'star' : 'lantern')}<div><strong>${escape(title)}</strong>${escape(text)}</div>${button(action, '→', 'guide-arrow', `${attrs} aria-label="${escape(title)}"`)}`;
-}
-function forgeHTML() {
-  if (!G.knownMaterial(state,metal)) metal = 'iron';
-  if (rune !== 'none' && !state.technologies.includes('runes')) rune = 'none';
-  const r = G.recipeById(selected), unlocked = G.knownRecipe(state,selected), costs = G.craftCosts(state,selected,metal,rune);
-  const recipes = allRecipes ? G.RECIPES : G.RECIPES.filter(x => x.starter || x.id === selected || G.knownRecipe(state,x.id)).slice(0,6);
-  const preview = { recipe: selected, material: metal, rune, quality: 74 + state.upgrades.furnace * 4 };
-  return head('У огня и наковальни', 'Создавай вещи, которые пригодятся городу.', `${state.crafted} изготовлено`) + resourcesHTML() +
-    `<div class="subheading">Выбери чертёж <small>${G.RECIPES.filter(x => G.knownRecipe(state,x.id)).length} / 12 изучено</small></div><div class="recipe-grid">${recipes.map(x => button('select-recipe', `${icon(x.id,G.MATERIALS[metal].color)}<strong>${x.short}</strong>${G.knownRecipe(state,x.id) ? '' : '<span class="recipe-lock">Чертёж</span>'}`, `recipe${x.id === selected ? ' selected' : ''}${G.knownRecipe(state,x.id) ? '' : ' locked'}`, `data-recipe="${x.id}" aria-pressed="${x.id === selected}"`)).join('')}${button('all-recipes', allRecipes ? 'Свернуть чертежи ↑' : 'Все 12 чертежей →', 'recipe-more')}</div>` +
-    `<div class="craft-card"><div class="item-heading"><div class="item-icon">${icon(r.id,G.MATERIALS[metal].color)}</div><div><h2>${r.name}</h2><p>${r.desc}</p></div></div>${unlocked ? `<div class="craft-options"><label><span class="field-label">Материал</span><select id="metal-select" aria-label="Материал изделия">${['iron','copper','bronze','moon'].map(id => `<option value="${id}" ${id === metal ? 'selected' : ''} ${G.knownMaterial(state,id) ? '' : 'disabled'}>${G.MATERIALS[id].name}${G.knownMaterial(state,id) ? '' : ' · изучить'}</option>`).join('')}</select></label><label><span class="field-label">Зачарование</span><select id="rune-select" aria-label="Руна изделия">${Object.entries(G.RUNES).map(([id,u]) => `<option value="${id}" ${id === rune ? 'selected' : ''} ${id === 'none' || state.technologies.includes('runes') ? '' : 'disabled'}>${u.name}${id !== 'none' && !state.technologies.includes('runes') ? ' · изучить' : ''}</option>`).join('')}</select></label></div><div class="traits">${G.itemTraits(preview).map(t => `<span class="trait">${t}</span>`).join('')}</div>${costsHTML(costs)}<div class="craft-summary"><span>Ковка: 2 силы · около 10 секунд</span><strong>≈ ${G.itemValue(preview)} монет</strong></div>${button('start-forge', `${icon('forge')}Нагреть горн и ковать`, 'primary', !G.canAfford(state,costs) || state.energy < 2 || state.stock.length >= 60 ? 'disabled' : '')}${state.upgrades.apprentice ? `<div class="button-row">${button('batch', 'Ученику ×1', 'secondary', 'data-count="1"')}${button('batch', 'Ученику ×3', 'secondary', 'data-count="3"')}</div><p class="help-text">Ученик: 1 сила и 6 монет за вещь. Качество ${72 + state.upgrades.furnace * 4}. Материалы расходуются за каждую вещь.</p>` : '<p class="help-text">Нагрей металл, затем нанеси три точных удара. Хорошая работа повышает цену и помогает выполнить сложные заказы.</p>'}${!G.canAfford(state,costs) ? button('supplier', 'Купить недостающие материалы →', 'secondary', 'style="width:100%;margin-top:10px"') : ''}` : `<p class="help-text">Этот чертёж пока закрыт. Купи его у мастера или найди в древних руинах.</p>${button('learn-recipe', `Изучить за ${r.learn} монет · 1 сила`, 'primary', `data-recipe="${r.id}"`)}`}</div>`;
-}
-function shopHTML() {
-  const event = G.demandEvent(state);
-  let html = head('Лавка чудес', 'Каждой хорошей вещи найдётся хозяин.', `${state.stock.length} / 60 вещей`) + `<div class="event-card">${icon('star')}<div><strong>${event.name}</strong><p>${event.text}</p></div></div><div class="segmented">${[['stock','Витрина'],['materials','Материалы'],['trade','Караван']].map(([id,label]) => button('shop-tab',label,shopTab === id ? 'active' : '',`data-tab="${id}"`)).join('')}</div>`;
-  if (shopTab === 'stock') {
-    html += `<div class="subheading">Твоя цена <small>Спрос и витрины влияют на торг</small></div><div class="segmented">${[['quick','Быстро −15%'],['fair','Обычная'],['premium','Дороже +25%']].map(([id,label]) => button('policy',label,policy === id ? 'active' : '',`data-policy="${id}"`)).join('')}</div>`;
-    const orders = [G.currentStory(state), ...state.orders].filter(Boolean);
-    html += state.stock.length ? `<div class="stock-list">${state.stock.map(item => {
-      const quote = G.saleQuote(state,item,policy), order = orders.find(o => G.orderMatches(item,o));
-      return `<article class="stock-card"><div class="stock-top"><div class="item-icon">${icon(item.recipe,G.MATERIALS[item.material].color)}</div><div class="stock-info"><h2>${G.itemName(item)}</h2><p>${G.MATERIALS[item.material].name} · ${escape(item.source)}${item.rune === 'none' ? '' : ` · ${G.RUNES[item.rune].name}`}</p></div><div class="quality" title="Качество"><div class="quality-bar"><span style="width:${item.quality}%"></span></div>${item.quality}</div></div><div class="price-row"><p>${quote.accepted ? quote.demanded ? '<b>Сегодня в спросе</b>' : 'Покупатель согласен' : `Покупатель даст до <b>${quote.budget}</b>`}${order ? '<br>Подходит для заказа' : ''}</p>${button('sell', `${quote.price} монет →`, 'secondary', `data-item="${item.id}" ${quote.accepted ? '' : 'disabled'}`)}</div>${order ? `<div class="button-row">${button('navigate','Передать заказчику →','secondary','data-view="orders"')}</div>` : ''}</article>`;
-    }).join('')}</div>` : `<div class="empty-state">${icon('shop')}<h2>Пока пусто</h2><p>Выкуй первую вещь или купи товар у каравана, чтобы начать торговлю.</p>${button('navigate','К наковальне →','secondary','data-view="forge"')}</div>`;
-    html += '<p class="help-text">После нескольких продаж одинаковых вещей спрос снижается. Снижай цену, меняй ассортимент или дождись следующего дня.</p>';
-  } else if (shopTab === 'materials') {
-    html += resourcesHTML() + `<div class="subheading">Поставщик <small>${state.flags.includes('supplier') ? 'Твоя скидка: 15%' : 'Материалы продаются пачками по 3'}</small></div><div class="market-grid">${Object.entries(G.MATERIALS).filter(([id,m]) => m.price && (id !== 'moon' || state.technologies.includes('lunar') || state.flags.includes('ruins'))).map(([id,m]) => { const cost = G.purchasePrice(state,id,3); return `<article class="material-card">${icon(id)}<div><h3>${m.name} ×3</h3><p>В запасе: ${state.resources[id]}</p></div>${button('buy-material',`${cost} ◈`,'',`data-material="${id}" aria-label="Купить ${m.name} 3 штуки за ${cost} монет" ${state.gold < cost ? 'disabled' : ''}`)}</article>`; }).join('')}</div><p class="help-text">Бронза выплавляется во время ковки из железа и меди. Материалы также можно бесплатно добывать в разделе «Поиски».</p>`;
-  } else {
-    const offer = G.tradeOffer(state), quote = G.saleQuote(state,offer,policy);
-    html += `<div class="craft-card"><div class="item-heading"><div class="item-icon">${icon(offer.recipe,G.MATERIALS.copper.color)}</div><div><h2>Товар каравана</h2><p>${G.itemName(offer)} · медь · качество 64</p></div></div><p class="help-text">Купи готовую вещь и перепродай в своей лавке. Твоя текущая цена: ${quote.price} монет.</p><div class="craft-summary"><span>Сегодня осталось: ${3 - state.marketToday}</span><strong>Закупка: ${offer.cost} монет</strong></div>${button('trade-buy','Купить для перепродажи','primary',state.gold < offer.cost || state.marketToday >= 3 ? 'disabled' : '')}</div><div class="craft-card"><div class="item-heading"><div class="item-icon">${icon('relic')}</div><div><h2>Древняя находка</h2><p>Артефакт с неизвестной историей</p></div></div><p class="help-text">Можно восстановить и продать, изучить ради чертежа или разобрать на материалы. Находки появятся в «Поисках».</p><div class="craft-summary"><span>Восстановление: 8 монет, дерево ×2, уголь ×1</span><strong>28 монет</strong></div>${button('buy-relic','Купить находку','primary',state.gold < 28 || state.relics.length >= 20 ? 'disabled' : '')}</div>`;
-  }
+function renderGuide(){const story=G.currentStory(state);let title='Твои вещи меняют город',text='Работай, торгуй и открывай новые возможности.',action='navigate',attrs='data-view="orders"';if(state.work){title=G.workStage(state).name;text='Заготовка сохранена. Вернись в кузницу и выполни следующий этап.';attrs='data-view="forge"';}else if(state.trip){title='Тропа зовёт дальше';text='Выбери два действия и вернись с находками.';attrs='data-view="explore"';}else if(!state.energy){title='Пора отдохнуть';text='Заверши день, чтобы восстановить силы и встретить новых гостей.';action='end-day';attrs='';}else if(state.expeditions.length){title='Заказчик в пути';text='Завтра он вернётся с материалами и новостями.';action='end-day';attrs='';}else if(story){title=story.title;text=state.stock.some(i=>G.orderMatches(i,story))?'Нужная вещь готова. Передай её заказчику.':`Следующая цель: ${G.recipeById(story.recipe).name.toLowerCase()}.`;if(!state.stock.some(i=>G.orderMatches(i,story))){action='prepare';attrs=`data-order="${story.id}"`;}}else{title=state.ended?'Маяк снова горит':'Последний путь Элин';text=state.ended?'Продолжай развивать мастерскую и свою лавку.':'Заверши день, чтобы узнать о восстановлении маяка.';}$('#guide').innerHTML=`${icon('lantern')}<div><strong>${esc(title)}</strong>${esc(text)}</div>${btn(action,'→','guide-arrow',`${attrs} aria-label="${esc(title)}"`)}`;}
+function forgeHTML(){
+  let html=head('Кузница','Каждая вещь проходит через твои руки.',`${state.crafted} создано`)+`<div class="segmented">${btn('forge-tab','Работа',forgeTab==='work'?'active':'','data-tab="work"')}${btn('forge-tab','Оборудование',forgeTab==='equipment'?'active':'','data-tab="equipment"')}</div>`;
+  if(forgeTab==='equipment')return html+equipmentHTML();
+  if(state.work)return html+workHTML();
+  if(!G.knownMaterial(state,metal))metal='iron';if(rune!=='none'&&!state.technologies.includes('runes'))rune='none';
+  const recipe=G.recipeById(selected),costs=G.craftCosts(state,selected,metal,rune),known=G.knownRecipe(state,selected);
+  const recipes=allRecipes?G.RECIPES:G.RECIPES.filter(r=>r.starter||G.knownRecipe(state,r.id)||r.id===selected);
+  html+=resources()+`<div class="subheading">Чертёж изделия <small>12 возможностей</small></div><div class="recipe-grid">${recipes.map(r=>btn('select-recipe',`${icon(r.id,G.MATERIALS[metal].color)}<strong>${r.short}</strong>${G.knownRecipe(state,r.id)?'':'<span class="recipe-lock">Изучить</span>'}`,`recipe${selected===r.id?' selected':''}${G.knownRecipe(state,r.id)?'':' locked'}`,`data-recipe="${r.id}" aria-pressed="${selected===r.id}"`)).join('')}${btn('all-recipes',allRecipes?'Свернуть ↑':'Все чертежи →','recipe-more')}</div>`;
+  html+=`<div class="craft-card"><div class="item-heading"><div class="item-icon">${icon(recipe.id,G.MATERIALS[metal].color)}</div><div><h2>${recipe.name}</h2><p>${recipe.desc}</p></div></div>${known?`<div class="craft-options"><label><span class="field-label">Металл</span><select id="metal-select">${['iron','copper','bronze','moon'].map(id=>`<option value="${id}" ${metal===id?'selected':''} ${G.knownMaterial(state,id)?'':'disabled'}>${G.MATERIALS[id].name}${G.knownMaterial(state,id)?'':' · закрыто'}</option>`).join('')}</select></label><label><span class="field-label">Руна</span><select id="rune-select">${Object.entries(G.RUNES).map(([id,r])=>`<option value="${id}" ${rune===id?'selected':''} ${id==='none'||state.technologies.includes('runes')?'':'disabled'}>${r.name}</option>`).join('')}</select></label></div>${costsHTML(costs)}<div class="craft-summary"><span>5 этапов · 2 силы · +12 опыта</span><strong>Ручная работа</strong></div>${btn('begin-work',`${icon('forge')}Взять материалы и начать`,'primary',!G.canAfford(state,costs)||state.energy<2||busy||state.trip?'disabled':'')}${state.upgrades.apprentice?`<div class="button-row">${btn('batch','Ученику ×1','secondary','data-count="1"')}${btn('batch','Ученику ×3','secondary','data-count="3"')}</div><p class="help-text">Ученик: 1 сила и 6 монет за вещь. Качество ${72+state.upgrades.furnace*4}.</p>`:''}<p class="help-text">Разметка → нагрев → пять ударов → закалка → отделка. Улучшенные инструменты помогают сделать работу точнее.</p>`:`<p class="help-text">Изучи чертёж в древе развития или найди его во время экспедиции.</p>${btn('learn-recipe',`Изучить за ${recipe.learn} монет · 1 сила`,'primary',`data-recipe="${recipe.id}"`)}`}</div>`;
   return html;
 }
-function orderHint(order) {
-  if (!G.knownRecipe(state,order.recipe)) return `Сначала изучи чертёж «${G.recipeById(order.recipe).name}» в «Развитии».`;
-  if (order.rune && !state.technologies.includes('runes')) return 'Улучши верстак до уровня 1 и изучи рунную гравировку в «Развитии».';
-  if (order.material && !G.knownMaterial(state,order.material)) return order.material === 'moon' ? 'Нужны горн уровня 2 и лунная металлургия. Затем добывай металл на перевале.' : 'Улучши горн до уровня 1 и изучи искусство сплавов.';
-  return `Выбери ${order.material ? G.MATERIALS[order.material].name.toLowerCase() : 'любой металл'}${order.rune ? ` и руну «${G.RUNES[order.rune].name}»` : ''}. Качество — не ниже ${order.quality}.`;
+function workHTML(){const w=state.work,step=G.workStage(state);let body='';
+  if(step.id==='prepare')body=`<p>Две метки задают размеры будущего изделия. Нажми, когда резец попадёт в отмеченную область.</p>${meterHTML('Разметка заготовки')}<div class="hit-dots" id="hit-dots"><span></span><span></span></div>${btn('work-mark','Нанести метку','primary','id="work-control"')}`;
+  if(step.id==='heat')body=`<p>Удерживай меха, чтобы разогреть металл. Отпусти кнопку в зелёной зоне. Меха уровня ${state.equipment.bellows} расширяют её.</p>${meterHTML('Температура металла')}${btn('heat-press','Удерживать меха','primary hammer-button','id="work-control"')}`;
+  if(step.id==='hammer')body=`<p>Нанеси пять ударов в зелёной зоне. Каждый удар меняет форму заготовки и виден на наковальне.</p>${meterHTML('Точность удара')}<div class="hit-dots" id="hit-dots">${'<span></span>'.repeat(5)}</div>${btn('work-hit','Ударить молотом','primary','id="work-control"')}`;
+  if(step.id==='quench')body=`<p>Выбери способ охлаждения. Он изменит свойства изделия.</p><div class="choice-list">${btn('quench','Вода <small>Стабильная закалка, высокое качество</small>','choice-button','data-method="water"')}${btn('quench','Воздух <small>Свойство «Лёгкий», качество немного ниже</small>','choice-button','data-method="air"')}${btn('quench','Масло <small>Свойство «Острый» · 3 монеты · нужны ванна и термообработка</small>','choice-button',`data-method="oil" ${state.equipment.barrel&&state.skills.includes('hardening')&&state.gold>=3?'':'disabled'}`)}</div>`;
+  if(step.id==='finish')body=`<p>${w.rune==='none'?'Собери детали, обработай поверхность и проверь свою работу.':`Нанеси руну «${G.RUNES[w.rune].name}», затем закончи отделку.`}</p><div class="choice-list">${G.finishOptions(state).map(o=>btn('finish-work',`${o.name}${w.rune==='none'?'':' и гравировка'}<small>${o.desc}</small>`,'choice-button',`data-method="${o.id}"`)).join('')}</div>${!state.equipment.grindstone?'<p class="help-text">Купи точильный круг для полировки и заточки.</p>':''}`;
+  return `<div class="work-path">${G.WORK_STAGES.map((s,i)=>`<div class="work-step${i<w.step?' done':''}${i===w.step?' current':''}">${icon(s.icon)}<span>${s.name}</span></div>`).join('')}</div><div class="craft-card work-card"><div class="item-heading"><div class="item-icon">${icon(w.recipe,G.MATERIALS[w.material].color)}</div><div><h2>${step.name}: ${G.recipeById(w.recipe).short}</h2><p>${G.MATERIALS[w.material].name} · ${w.rune==='none'?'без руны':G.RUNES[w.rune].name} · этап ${w.step+1}/5</p></div></div><div class="work-body">${body}</div>${w.step<3?btn('stage-assist','Помощь мастера: выполнить этот этап','stage-assist',busy?'disabled':''):''}<div class="work-busy" ${busy?'':'hidden'}>Мастер подходит к рабочему месту…</div></div><p class="help-text">Заготовка и выполненные этапы сохраняются. Перед уходом на следующий день закончи изделие или убери заготовку.</p>${btn('cancel-work-ask','Убрать заготовку','secondary danger')}`;
 }
-function orderHTML(order, story = false) {
-  const client = G.CLIENTS.find(c => c.id === order.client);
-  const match = state.stock.filter(i => G.orderMatches(i,order)).sort((a,b) => a.quality - b.quality)[0];
-  return `<article class="order-card${story ? ' story' : ''}"><div class="client-head"><img class="portrait" src="${portraitURL(client)}" alt="${client.name}"><div><h2>${escape(order.title)}</h2><p>${client.name} · ${client.role}</p></div>${story ? '<span class="story-label">История города</span>' : ''}</div><p class="order-text">${escape(order.text)}</p><div class="order-requirement">${icon(order.recipe,order.material ? G.MATERIALS[order.material].color : undefined)}<div><strong>${G.recipeById(order.recipe).name}</strong><small>Качество ${order.quality}+${order.material ? ` · ${G.MATERIALS[order.material].name}` : ' · любой металл'}${order.rune ? ` · руна ${G.RUNES[order.rune].name}` : ''}</small></div></div><div class="reward-row"><span><b>${order.reward} монет</b> · +${order.fame} репутации</span>${match ? button('fulfill','Передать →','',`data-order="${escape(order.id)}" data-item="${match.id}"`) : button('prepare','Подготовить →','',`data-order="${escape(order.id)}"`)}</div>${!match ? `<p class="order-hint">${escape(orderHint(order))}</p>` : ''}</article>`;
+function meterHTML(label){return `<div class="work-meter"><div class="meter" role="meter" aria-label="${label}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="meter-target" id="meter-target"></div><div class="meter-fill" id="meter-fill"></div><div class="meter-cursor" id="meter-cursor"></div></div><div class="meter-labels"><span>Начало</span><span>Точная зона</span><span>Конец</span></div></div>`;}
+function syncTask(){const w=state.work;if(!uiTask||uiTask.step!==w.step||uiTask.day!==w.day){uiTask={step:w.step,day:w.day,started:performance.now(),holding:false,position:0,hits:[],lastHit:0};}const dots=$('#hit-dots');if(dots)[...dots.children].forEach((d,i)=>d.classList.toggle('done',i<uiTask.hits.length));const target=$('#meter-target');if(target){const width=w.step===1?.24+state.equipment.bellows*.06:.18,center=w.step===0?(uiTask.hits.length?.72:.28):.68;target.style.left=`${(center-width/2)*100}%`;target.style.width=`${width*100}%`;}}
+function precision(position,target=.68){return Math.max(0,1-Math.abs(position-target)/.4);}
+function completeStage(action,value){if(busy)return;const s=G.workStage(state);if(!s||s.id!==action)return;performAt(s.station,action==='quench'?'quench':action==='finish'?'polish':action==='hammer'?'hammer':action==='prepare'?'cut':'heat',()=>{const item=act(()=>G.advanceWork(state,action,value));uiTask=null;if(item)showResult(item);else if(state.work)approachStage();});}
+function markOrHit(){if(busy||!state.work||!uiTask)return;const step=G.workStage(state).id;if(!['prepare','hammer'].includes(step))return;const now=performance.now();if(now-uiTask.lastHit<190)return;uiTask.lastHit=now;uiTask.hits.push(precision(uiTask.position,step==='prepare'?(uiTask.hits.length?.72:.28):.68));pulse(step==='prepare'?'cut':'hammer');sound('hit');syncTask();if(uiTask.hits.length===(step==='prepare'?2:5))completeStage(step,uiTask.hits.reduce((a,b)=>a+b,0)/uiTask.hits.length);}
+function releaseHeat(){if(uiTask?.holding&&state.work?.step===1){uiTask.holding=false;completeStage('heat',precision(uiTask.position));}}
+function showResult(item){const order=[G.currentStory(state),...state.orders].find(o=>o&&G.orderMatches(item,o));modal(`<p class="modal-eyebrow">Все пять этапов пройдены</p><h2 id="dialog-title">${G.itemName(item)}</h2>${icon(item.recipe,G.MATERIALS[item.material].color,'result-icon')}<div class="result-quality">Качество ${item.quality} / 100</div><div class="result-grid">${G.itemTraits(item).map(t=>`<span class="trait">${t}</span>`).join('')}<span class="trait">+12 опыта</span></div><p>${order?'Вещь подходит для заказа. Путешественник ждёт твою работу.':'Изделие готово. Покажи его покупателям в лавке.'}</p>${btn('result-go',order?'К заказчику →':'В лавку →','primary',`data-view="${order?'orders':'shop'}"`)}${btn('close','Продолжить работу','secondary','style="width:100%;margin-top:10px"')}`);}
+function equipmentHTML(){return resources()+`<div class="subheading">Здание и помощник</div>${G.UPGRADES.filter(u=>u.id!=='shelves').map(u=>upgradeHTML(u)).join('')}<div class="subheading">Инструменты и станции <small>Влияют на работу и графику</small></div>${G.EQUIPMENT.map(e=>{const level=state.equipment[e.id],max=level>=e.max;return `<article class="upgrade-card"><div class="item-icon">${icon(e.icon)}</div><div><h2>${e.name} <span class="muted">${level}/${e.max}</span></h2><p>${e.desc}</p>${max?'<span class="trait">Максимум</span>':costsHTML(e.costs[level])+btn('equipment',`${level?'Улучшить':'Купить'} · ${e.prices[level]} монет`,'secondary',`data-equipment="${e.id}" ${state.gold<e.prices[level]||!G.canAfford(state,e.costs[level])||(e.need&&!state.technologies.includes(e.need))?'disabled':''}`)}${e.need&&!state.technologies.includes(e.need)?'<p class="help-text">Нужна рунная гравировка.</p>':''}</div></article>`;}).join('')}`;}
+function upgradeHTML(u){const level=state.upgrades[u.id],max=level>=u.max;return `<article class="upgrade-card"><div class="item-icon">${icon(u.id==='furnace'?'forge':u.id==='bench'?'grindstone':u.id==='shelves'?'shop':'energy')}</div><div><h2>${u.name} <span class="muted">${level}/${u.max}</span></h2><p>${max?'Все улучшения установлены.':u.desc[level]}</p>${max?'<span class="trait">Готово</span>':costsHTML(u.costs[level])+btn('upgrade',`Улучшить · ${u.prices[level]} монет`,'secondary',`data-upgrade="${u.id}" ${state.gold<u.prices[level]||!G.canAfford(state,u.costs[level])||(u.need&&!state.upgrades[u.need])?'disabled':''}`)}</div></article>`;}
+function shopHTML(){const event=G.demandEvent(state);let html=head('Лавка чудес','Живые покупатели, разные вкусы и твоя цена.',`${state.stock.length} вещей`)+`<div class="segmented">${[['stock','Витрина'],['materials','Закупка'],['trade','Караван'],['interior','Интерьер']].map(([id,name])=>btn('shop-tab',name,shopTab===id?'active':'',`data-tab="${id}"`)).join('')}</div>`;
+  if(shopTab==='materials')return html+resources()+`<div class="subheading">Поставщик <small>${state.flags.includes('supplier')?'Скидка 15%':'Пачки по 3'}</small></div><div class="market-grid">${Object.entries(G.MATERIALS).filter(([id,m])=>m.price&&(id!=='moon'||state.flags.includes('ruins')||state.technologies.includes('lunar'))).map(([id,m])=>`<article class="material-card">${icon(id,m.color)}<div><h3>${m.name} ×3</h3><p>В запасе ${state.resources[id]}</p></div>${btn('buy-material',`${G.purchasePrice(state,id,3)} ◈`,'',`data-material="${id}" aria-label="Купить ${m.name}"`)}</article>`).join('')}</div>`;
+  if(shopTab==='interior')return html+`<p class="help-text">Улучшения витрин меняют интерьер и повышают бюджет покупателей. Дополнительных посетителей открывает ветвь торговли в древе.</p>`+upgradeHTML(G.UPGRADES.find(u=>u.id==='shelves'))+btn('navigate','Открыть торговые навыки →','primary','data-view="develop"');
+  if(shopTab==='trade'){const offer=G.tradeOffer(state);return html+`<div class="craft-card"><div class="item-heading"><div class="item-icon">${icon(offer.recipe,G.MATERIALS.copper.color)}</div><div><h2>${G.itemName(offer)}</h2><p>Готовый товар каравана · качество 64</p></div></div><p class="help-text">Купи, покажи подходящему гостю и перепродай с прибылью.</p><div class="craft-summary"><span>На сегодня осталось ${3-state.marketToday}</span><strong>${offer.cost} монет</strong></div>${btn('trade-buy','Купить для витрины','primary',state.gold<offer.cost||state.marketToday>=3?'disabled':'')}</div><div class="craft-card"><div class="item-heading"><div class="item-icon">${icon('relic')}</div><div><h2>Древняя находка</h2><p>Восстанови её в кузнице или открой чертёж.</p></div></div>${btn('buy-relic','Купить артефакт · 28 монет','primary',state.gold<28?'disabled':'')}</div>`;}
+  html+=`<div class="event-card">${icon('star')}<div><strong>${event.name}</strong><p>${event.text}</p></div></div><div class="subheading">Гости лавки <small>Вкусы и отношения влияют на цену</small></div><div class="buyer-strip">${state.customers.filter(c=>!c.served).map(c=>{const p=G.CLIENTS.find(p=>p.id===c.client);return btn('select-buyer',`<img src="${portraitURL(p)}" alt=""><strong>${p.name}</strong><small>${c.greeted?'Знакомы':'Поговорить'}</small>` ,`buyer-chip${c.id===buyerId?' selected':''}`,`data-buyer="${c.id}"`);}).join('')}</div>`;
+  const buyer=currentBuyer();if(buyer){const p=G.CLIENTS.find(p=>p.id===buyer.client);html+=`<article class="buyer-dialog"><div class="client-head"><img class="portrait" src="${portraitURL(p)}" alt="${p.name}"><div><h2>${p.name} · ${p.role}</h2><p>Отношения ${state.rapport[p.id]||0} · качество ${buyer.quality}+</p></div></div><p>${buyer.greeted?G.customerLine(buyer):'Посетитель осматривает лавку. Узнай, что ему нужно, или расскажи о своих работах.'}</p>${buyer.greeted?`<div class="traits"><span class="trait">Любит: ${buyer.trait}</span>${state.skills.includes('appraisal')?`<span class="trait">Кошелёк: ${buyer.wallet} монет</span>`:''}</div>`:`<div class="button-row">${btn('greet','Спросить о нуждах','secondary','data-approach="needs"')}${btn('greet','Показать своё ремесло','secondary','data-approach="craft"')}</div>`}</article>`;}else html+=`<div class="empty-state"><h2>Гости ушли с покупками</h2><p>Новые придут утром. Можно пригласить ещё одного за 1 силу.</p></div>`;
+  if(state.stock.length){const item=state.stock[itemIndex],quote=buyer?G.customerQuote(state,item,buyer.id,policy):null;html+=`<div class="showcase" id="showcase" aria-label="Пролистываемая витрина"><div class="showcase-counter">Изделие ${itemIndex+1} / ${state.stock.length}</div><div class="carousel-stage">${btn('item-prev','‹','carousel-arrow','aria-label="Предыдущий товар"')}<div class="showcase-item">${icon(item.recipe,G.MATERIALS[item.material].color)}<span class="display-shadow"></span></div>${btn('item-next','›','carousel-arrow','aria-label="Следующий товар"')}</div><h2>${G.itemName(item)}</h2><p>${G.MATERIALS[item.material].name} · качество ${item.quality} · ${esc(item.source)}</p><div class="traits">${G.itemTraits(item).map(t=>`<span class="trait">${t}</span>`).join('')}</div><div class="segmented">${[['quick','Быстро −15%'],['fair','Обычная'],['premium','Дороже +25%']].map(([id,name])=>btn('policy',name,policy===id?'active':'',`data-policy="${id}"`)).join('')}</div>${quote?`<div class="craft-summary"><span>${quote.liked?'Любимый вид товара':quote.reason?'Покупатель сомневается':'Покупатель заинтересован'}${state.skills.includes('appraisal')?` · до ${quote.budget} монет`:''}</span><strong>${quote.price} монет</strong></div>${btn('serve',`Предложить ${G.CLIENTS.find(p=>p.id===buyer.client).name} за ${quote.price}`,'primary',quote.accepted?'':'disabled')}${quote.reason?`<p class="help-text">${quote.reason}</p>`:''}${state.skills.includes('negotiation')&&buyer.greeted?btn('haggle','Предложить свою цену →','secondary','style="width:100%;margin-top:10px"'):''}`:'<p class="help-text">Пригласи покупателя или дождись следующего дня.</p>'}</div>`;}else html+=`<div class="empty-state">${icon('shop')}<h2>Витрина ждёт первую вещь</h2><p>Выкуй изделие или купи товар каравана.</p>${btn('navigate','К наковальне →','secondary','data-view="forge"')}</div>`;
+  html+=`<div class="button-row">${btn('invite','Пригласить гостя · 1 сила','secondary',state.invitedToday>=3||state.energy<1?'disabled':'')}</div><p class="help-text">Листай товар кнопками или свайпом. Каждый покупатель уходит после покупки. На следующий день приходят новые.</p>`;return html;
 }
-function ordersHTML() {
-  const story = G.currentStory(state);
-  let html = head('Люди и их истории','Хорошая вещь начинает новую историю.', `${state.storyIndex} / 5 глав`);
-  if (state.expeditions.length) html += state.expeditions.map(e => { const s = G.STORIES.find(x => x.id === e.story), c = G.CLIENTS.find(x => x.id === s.client); return `<div class="pending-card">${icon('explore')}<div><b>${c.name} в пути</b><br>Вернётся в день ${e.due}. Заверши день, чтобы получить новости и материалы.</div></div>`; }).join('');
-  if (story) html += orderHTML(story,true);
-  else html += `<div class="event-card">${icon('star')}<div><strong>${state.ended ? 'История маяка завершена' : 'Последняя экспедиция в пути'}</strong><p>${state.ended ? 'В город вернулся свет. Кузница продолжает работать: новые заказы, чертежи и товары ждут тебя.' : 'Заверши день, чтобы встретить Элин у восстановленного маяка.'}</p></div></div>`;
-  html += '<div class="subheading">Заказы горожан <small>Новые заказы появляются утром</small></div>' + state.orders.map(o => orderHTML(o)).join('');
-  return html;
+function orderHint(o){if(!G.knownRecipe(state,o.recipe))return `Изучи чертёж «${G.recipeById(o.recipe).name}».`;if(o.rune&&!state.technologies.includes('runes'))return 'Нужны точная работа, верстак уровня 1 и рунная гравировка в древе.';if(o.material&&!G.knownMaterial(state,o.material))return o.material==='moon'?'Нужны сплавы, руны, горн уровня 2 и лунный металл.':'Нужны горн уровня 1 и искусство сплавов.';return `Материал: ${o.material?G.MATERIALS[o.material].name:'любой'}. Качество не ниже ${o.quality}${o.rune?` · руна ${G.RUNES[o.rune].name}`:''}.`;}
+function orderHTML(o,story=false){const p=G.CLIENTS.find(p=>p.id===o.client),item=state.stock.filter(i=>G.orderMatches(i,o)).sort((a,b)=>a.quality-b.quality)[0];return `<article class="order-card${story?' story':''}"><div class="client-head"><img class="portrait" src="${portraitURL(p)}" alt="${p.name}"><div><h2>${esc(o.title)}</h2><p>${p.name} · ${p.role}</p></div>${story?'<span class="story-label">История</span>':''}</div><p class="order-text">${esc(o.text)}</p><div class="order-requirement">${icon(o.recipe)}<div><strong>${G.recipeById(o.recipe).name}</strong><small>Качество ${o.quality}+${o.material?` · ${G.MATERIALS[o.material].name}`:''}${o.rune?` · ${G.RUNES[o.rune].name}`:''}</small></div></div><div class="reward-row"><span><b>${o.reward} монет</b> · +${story?18:12} опыта</span>${item?btn('fulfill','Передать →','',`data-order="${esc(o.id)}" data-item="${item.id}"`):btn('prepare','Подготовить →','',`data-order="${esc(o.id)}"`)}</div>${item?'':`<p class="order-hint">${esc(orderHint(o))}</p>`}</article>`;}
+function ordersHTML(){const story=G.currentStory(state);return head('Заказы и истории','Твои изделия помогают горожанам.',`${state.storyIndex}/5 глав`)+state.expeditions.map(e=>`<div class="pending-card">${icon('explore')}<div>Заказчик в пути. Вернётся в день ${e.due} с новостями и ресурсами.</div></div>`).join('')+(story?orderHTML(story,true):`<div class="event-card">${icon('crown')}<div><strong>${state.ended?'Маяк восстановлен':'Элин в последней экспедиции'}</strong><p>Кузница продолжает работать. Впереди новые заказы и навыки.</p></div></div>`)+`<div class="subheading">Повседневные заказы</div>`+state.orders.map(o=>orderHTML(o)).join('');}
+function prepareOrder(id){const o=[G.currentStory(state),...state.orders].find(o=>o?.id===id);if(!o)return;selected=o.recipe;forgeTab='work';if(!G.knownRecipe(state,o.recipe)||(o.material&&!G.knownMaterial(state,o.material))||(o.rune&&!state.technologies.includes('runes'))){setView('develop');toast(orderHint(o));}else{metal=o.material||'iron';rune=o.rune||'none';setView('forge');}}
+function exploreHTML(){let html=head(state.trip?'Экспедиция':'Долина за порогом',state.trip?'Выбирай, на что потратить время в пути.':'Нажми на место на пиксельной карте.','2 силы');if(state.trip){const t=state.trip;html+=`<div class="craft-card"><p class="modal-eyebrow">${t.step===0?'Первая остановка':'Вторая остановка'} · ${G.REGIONS.find(r=>r.id===t.region).name}</p><h2>${t.step===0?'Куда направиться?':'Что исследовать перед возвращением?'}</h2><p class="help-text">${t.step===0?'У дороги видны следы руды, старые тайники и лагерь путника.':'Первый выбор сделан. Собери ещё находки или помоги встретившемуся человеку.'}</p><div class="choice-list">${G.TRIP_CHOICES.map(c=>btn('trip-action',`${icon(c.icon)}<span>${c.name}<small>${c.desc}</small></span>`,'choice-button',`data-choice="${c.id}"`)).join('')}</div>${t.step?`<div class="loot-grid">${Object.entries(t.found).map(([id,n])=>`<div>${icon(id)}+${n}</div>`).join('')}</div>`:''}</div>${btn('retreat-ask','Вернуться без находок','secondary danger')}`;return html;}
+  const r=G.REGIONS.find(r=>r.id===region),open=G.regionAvailable(state,region),hint={mine:'Открой шахту заказом Миры или улучши горн.',ruins:'Нужны рунная гравировка, язык древних или заказ Ады.',pass:'Изучи лунную металлургию в древе.'}[region];
+  html+=`<div class="region-tabs">${G.REGIONS.map(r=>btn('select-region',`${icon(r.id==='forest'?'wood':r.id==='mine'?'pickaxe':r.id==='ruins'?'relic':'moon')}<span>${r.name}</span>`,`region-tab${r.id===region?' selected':''}${G.regionAvailable(state,r.id)?'':' locked'}`,`data-region="${r.id}"`)).join('')}</div><div class="craft-card"><p class="modal-eyebrow">${open?'Путь открыт':'Пока недоступно'}</p><h2>${r.name}</h2><p class="help-text">${r.subtitle}. ${open?'Две остановки: сбор, поиск тайников или помощь путникам.':hint}</p>${btn('begin-trip',open?'Отправиться · 2 силы':'Путь закрыт','primary',`data-region="${r.id}" ${open&&state.energy>=2&&!state.work?'':'disabled'}`)}</div><div class="subheading">Древние находки <small>${state.relics.length} / 20</small></div>`;
+  html+=state.relics.length?state.relics.map(r=>`<article class="relic-card"><div class="item-heading"><div class="item-icon">${icon('relic')}</div><div><h2>Старый ${G.recipeById(r.recipe).short.toLowerCase()}</h2><p>Реставрация — пять этапов в кузнице.</p></div></div><p class="help-text">Восстановить: 8 монет, дерево ×2, уголь ×1, 1 сила. Изучить: чертёж. Разобрать: железо ×3, кристаллы ×2.</p><div class="button-row">${btn('restore-relic','Восстановить','secondary',`data-relic="${r.id}"`)}${btn('process-relic','Изучить','secondary',`data-relic="${r.id}" data-process="study"`)}${btn('process-relic','Разобрать','secondary',`data-relic="${r.id}" data-process="salvage"`)}</div></article>`).join(''):'<p class="help-text">Артефакты находятся в руинах и продаются у каравана.</p>';return html;
 }
-function exploreHTML() {
-  let html = head('За порогом кузницы','Редкие материалы ждут вдали от прилавка.','Вылазка: 2 силы') + resourcesHTML();
-  const hints = { mine: 'Фонарь для Миры или горн уровня 1', ruins: 'Заказ Ады или рунная гравировка', pass: 'Изучи лунную металлургию' };
-  html += G.REGIONS.map(r => { const open = G.regionAvailable(state,r.id); return `<article class="region-card${open ? '' : ' locked'}"><div class="region-art" style="background:${r.color}44">${icon(r.id === 'forest' ? 'wood' : r.id === 'mine' ? 'pickaxe' : r.id === 'ruins' ? 'relic' : 'crystal',r.color)}</div><div class="region-info"><h2>${r.name}</h2><p>${r.subtitle}</p><small>${open ? 'Мгновенная вылазка · 2 силы' : hints[r.id]}</small></div>${button('explore',open ? 'В путь →' : 'Закрыто','secondary',`data-region="${r.id}" ${!open || state.energy < 2 ? 'disabled' : ''}`)}</article>`; }).join('');
-  html += `<div class="subheading">Древние находки <small>${state.relics.length} / 20</small></div>`;
-  html += state.relics.length ? state.relics.map(r => `<article class="relic-card"><div class="item-heading"><div class="item-icon">${icon('relic')}</div><div><h2>Старый ${G.recipeById(r.recipe).short.toLowerCase()}</h2><p>Следы магии на потускневшем металле.</p></div></div><p class="help-text">Восстановить: 8 монет, дерево ×2, уголь ×1, качество 82. Изучить: новый чертёж. Разобрать: железо ×3 и кристаллы ×2. Любое действие — 1 сила.</p><div class="button-row">${[['restore','Восстановить'],['study','Изучить'],['salvage','Разобрать']].map(([a,l]) => button('process-relic',l,'secondary',`data-relic="${r.id}" data-process="${a}" ${state.energy < 1 ? 'disabled' : ''}`)).join('')}</div></article>`).join('') : '<p class="help-text">Находки можно добыть в руинах или купить у каравана. Выбирай: заработать на реставрации, открыть чертёж или получить материалы.</p>';
-  return html;
-}
-function developHTML() {
-  let html = head('Ремесло растёт','Улучшай мастерскую и открывай новые возможности.',rank()) + resourcesHTML();
-  html += '<div class="subheading">Твоя мастерская</div>' + G.UPGRADES.map(u => {
-    const level = state.upgrades[u.id], max = level >= u.max;
-    return `<article class="upgrade-card"><div class="item-icon">${icon(u.id === 'furnace' ? 'forge' : u.id === 'bench' ? 'hammer' : u.id === 'shelves' ? 'shop' : 'energy')}</div><div><h2>${u.name} <span class="muted">${level} / ${u.max}</span></h2><div class="level-dots">${Array.from({length:u.max},(_,i) => `<i class="${i < level ? 'filled' : ''}"></i>`).join('')}</div><p>${max ? 'Все улучшения установлены.' : u.desc[level]}</p>${max ? '' : costsHTML(u.costs[level])}${max ? '<span class="trait">Готово</span>' : button('upgrade', `${u.prices[level]} монет · улучшить`,'secondary',`data-upgrade="${u.id}" ${state.gold < u.prices[level] || !G.canAfford(state,u.costs[level]) || (u.need && !state.upgrades[u.need]) ? 'disabled' : ''}`)}${u.need && !state.upgrades[u.need] ? '<p class="help-text">Сначала улучши верстак.</p>' : ''}</div></article>`;
-  }).join('');
-  html += '<div class="subheading" id="technology-list">Новые технологии <small>Исследование: 1 сила</small></div>' + G.TECHNOLOGIES.map(t => { const known = state.technologies.includes(t.id), ready = state.upgrades[t.need] >= t.level; return `<article class="technology">${icon(t.id === 'alloys' ? 'copper' : t.id === 'runes' ? 'amulet' : 'crystal')}<div><h2>${t.name}</h2><p>${t.desc}${known ? '' : !ready ? `<br>Нужен ${t.need === 'furnace' ? 'горн' : 'верстак'} уровня ${t.level}.` : ''}</p></div>${known ? '<span class="trait">Изучено</span>' : button('technology',`${t.cost} ◈`,'secondary',`data-tech="${t.id}" aria-label="Изучить ${t.name} за ${t.cost} монет" ${!ready || state.gold < t.cost || !state.energy ? 'disabled' : ''}`)}</article>`; }).join('');
-  html += '<div class="subheading" id="blueprint-list">Библиотека чертежей <small>Обучение: 1 сила</small></div>' + G.RECIPES.filter(r => !r.starter).map(r => `<article class="technology">${icon(r.id)}<div><h2>${r.name}</h2><p>${r.desc}</p></div>${G.knownRecipe(state,r.id) ? '<span class="trait">Изучено</span>' : button('learn-recipe',`${r.learn} ◈`,'secondary',`data-recipe="${r.id}" aria-label="Изучить ${r.name} за ${r.learn} монет" ${state.gold < r.learn || !state.energy ? 'disabled' : ''}`)}</article>`).join('');
-  html += '<div class="subheading">Путь мастера</div><div class="stats-grid"><div><strong>'+state.crafted+'</strong><span>вещей создано</span></div><div><strong>'+state.sold+'</strong><span>вещей продано</span></div><div><strong>'+state.completed+'</strong><span>заказов выполнено</span></div></div><div class="subheading">Дневник кузницы <small>Последние события</small></div><div class="journal">'+(state.log.length ? state.log.map(e => `<div class="journal-entry"><time>День ${e.day}</time><p>${escape(e.text)}</p></div>`).join('') : '<p class="help-text">Первая история начнётся с искры в горне.</p>')+'</div>';
-  return html;
-}
-function prepareOrder(id) {
-  const order = [G.currentStory(state),...state.orders].find(o => o?.id === id);
-  if (!order) return;
-  selected = order.recipe;
-  if (!G.knownRecipe(state,order.recipe) || (order.material && !G.knownMaterial(state,order.material)) || (order.rune && !state.technologies.includes('runes'))) {
-    setView('develop'); toast(orderHint(order));
-    if (!G.knownRecipe(state,order.recipe)) $('#blueprint-list').scrollIntoView({ block:'start' });
-  } else { metal = order.material || 'iron'; rune = order.rune || 'none'; setView('forge'); }
-}
-function finishDay() {
-  const previous = state.day;
-  const reports = act(() => G.endDay(state));
-  if (!reports) return;
-  showModal(`<p class="modal-eyebrow">Утро у порога</p><h2 id="dialog-title">День ${state.day}</h2><p>Ты отдохнул. Запас сил восстановлен до ${state.energy}. В городе новые планы.</p><div class="event-card">${icon('star')}<div><strong>${G.demandEvent(state).name}</strong><p>${G.demandEvent(state).text}</p></div></div>${reports.map(r => `<div class="report"><div class="report-head"><img src="${portraitURL(G.CLIENTS.find(c => c.id === r.client))}" alt=""><strong>Новости от ${r.clientName}</strong></div><p>${r.returnText}</p><div class="loot-grid">${Object.entries(r.returns).map(([id,n]) => `<div>${icon(id)}+${n}</div>`).join('')}</div></div>`).join('')}${state.ended && reports.some(r => r.unlock === 'beacon') ? '<p>Ты восстановил маяк и завершил историю города! Продолжай развивать мастерскую: впереди ещё новые изделия и заказы.</p>' : ''}<p class="modal-note">За день ${previous}: ${state.stock.length} вещей на витрине. Плата за ожидание отсутствует — играй в своём темпе.</p>${button('close','Разжечь новый день','primary')}`);
-}
-function startForge() {
-  const costs = G.craftCosts(state,selected,metal,rune);
-  if (state.energy < 2 || !G.canAfford(state,costs) || state.stock.length >= 60) { toast('Нужны материалы, 2 силы и свободное место на витрине.',true); return; }
-  const recipe = selected, material = metal, chosenRune = rune;
-  showModal(`<p class="modal-eyebrow">Ручная работа</p><h2 id="dialog-title">Разогрей металл</h2><p>Удерживай кнопку и отпусти, когда огонь попадёт в зелёную зону.</p><div class="craft-stage">${icon(recipe,G.MATERIALS[material].color,'big-item')}<div class="stage-label" id="forge-label">Нагрев заготовки</div><div class="meter" role="meter" aria-label="Нагрев металла" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="meter-target"></div><div class="meter-fill" id="meter-fill"></div><div class="meter-cursor" id="meter-cursor"></div></div><div class="meter-labels"><span>Холодно</span><span>В самый раз</span><span>Перегрев</span></div><div class="hit-dots" id="hit-dots"></div></div><p class="craft-instruction" id="forge-instruction">На клавиатуре: удерживай пробел. Материалы спишутся после завершения.</p>${button('forge-press','Удерживать: нагреть','primary hammer-button','id="forge-press"')}${button('calm-forge','Спокойная ковка · качество '+(74+state.upgrades.furnace*4),'secondary','style="width:100%;margin-top:12px"')}<p class="modal-note">Спокойная ковка создаёт вещь без проверки реакции. Горн добавляет качество обоим режимам.</p>`);
-  forging = { recipe, material, rune: chosenRune, stage:'heat', started:performance.now(), holding:false, heat:0, hits:[], position:0 };
-  const press = $('#forge-press');
-  press.addEventListener('pointerdown', e => { e.preventDefault(); if (!forging) return; if (forging.stage === 'heat') { forging.holding = true; forging.started = performance.now(); press.setPointerCapture(e.pointerId); } else hammerHit(); });
-  press.addEventListener('pointerup', e => { e.preventDefault(); if (forging?.stage === 'heat' && forging.holding) finishHeat(); });
-  press.addEventListener('pointercancel', () => { if (forging?.stage === 'heat') { forging.holding = false; forging.position = 0; } });
-}
-function precision(position) { return Math.max(0,1 - Math.abs(position - .68) / .48); }
-function finishHeat() {
-  if (!forging || forging.stage !== 'heat') return;
-  forging.heat = precision(forging.position); forging.holding = false; forging.stage = 'hammer'; forging.started = performance.now();
-  $('#dialog-title').textContent = 'Три удара молота';
-  $('#dialog-title').nextElementSibling.textContent = 'Нажимай, когда бегунок находится в зелёной зоне. Три удара — и вещь готова.';
-  $('#forge-label').textContent = 'Закалка и форма';
-  $('#forge-instruction').textContent = 'Нажимай кнопку или пробел три раза. Точные удары повышают качество.';
-  $('#forge-press').textContent = 'Ударить молотом';
-  $('#hit-dots').innerHTML = '<span></span><span></span><span></span>';
-  $('#meter-fill').style.width = '0%';
-  sound('hit');
-}
-function hammerHit() {
-  if (!forging || forging.stage !== 'hammer') return;
-  const f = forging; f.hits.push(precision(f.position)); sound('hit');
-  $('#hit-dots').children[f.hits.length-1].classList.add('done');
-  if (f.hits.length === 3) completeForge(Math.round(50 + f.heat * 18 + f.hits.reduce((a,b) => a+b,0) / 3 * 24));
-}
-function completeForge(quality) {
-  const f = forging; if (!f) return;
-  forging = null;
-  const item = act(() => G.craft(state,f.recipe,f.material,f.rune,quality));
-  if (!item) { closeModal(); return; }
-  const order = [G.currentStory(state),...state.orders].find(o => o && G.orderMatches(item,o));
-  showModal(`<p class="modal-eyebrow">Искра стала вещью</p><h2 id="dialog-title">${G.itemName(item)}</h2>${icon(item.recipe,G.MATERIALS[item.material].color,'result-icon')}<div class="result-quality">Качество ${item.quality} / 100</div><div class="result-grid">${G.itemTraits(item).map(t => `<span class="trait">${t}</span>`).join('')}<span class="trait">Цена: ${G.itemValue(item)} монет</span></div><p>${order ? 'Изделие подходит для заказа. Передай его заказчику и узнай, куда отправится твоя работа.' : 'Новая вещь уже на витрине. Продай её или сохрани для будущего заказа.'}</p>${button('result-go',order ? 'Передать заказчику →' : 'Выставить в лавке →','primary',`data-view="${order ? 'orders' : 'shop'}"`)}${button('close','Продолжить ковку','secondary','style="width:100%;margin-top:10px"')}`);
-}
-document.addEventListener('keydown', e => {
-  if (e.code !== 'Space' || !forging || e.repeat || e.target?.dataset.action === 'close') return;
-  e.preventDefault();
-  if (forging.stage === 'heat') { forging.holding = true; forging.started = performance.now(); }
-  else hammerHit();
-});
-document.addEventListener('keyup', e => { if (e.code === 'Space' && forging?.holding) { e.preventDefault(); finishHeat(); } });
-window.addEventListener('blur', () => { if (forging?.stage === 'heat') forging.holding = false; });
-function showSettings() {
-  showModal(`<p class="modal-eyebrow">Твоя кузница</p><h2 id="dialog-title">Настройки и прогресс</h2><div class="settings-row"><div>Звуки кузницы<small>Короткие сигналы ковки и торговли</small></div>${button('sound',state.sound ? 'Включены' : 'Выключены','secondary')}</div><div class="settings-row"><div>Скачать сохранение<small>Перенеси прогресс на другой телефон</small></div>${button('export','Скачать','secondary')}</div>${loadError ? `<div class="settings-row"><div>Исходное сохранение<small>Скачать файл, который не удалось прочитать</small></div>${button('export-original','Скачать','secondary')}</div>` : ''}<div class="settings-row"><div>Загрузить сохранение<small>Текущий прогресс будет заменён после проверки</small></div>${button('import','Выбрать','secondary')}</div><div class="settings-row"><div>Как играть<small>Ковка, торговля и истории города</small></div>${button('help','Открыть','secondary')}</div><div class="settings-row"><div>Начать заново<small>Удалить прогресс на этом устройстве</small></div>${button('reset-ask','Сбросить','secondary danger')}</div><p class="modal-note">Игра хранит прогресс в этом браузере. Перед очисткой данных скачай сохранение. Чтобы установить игру, выбери «На экран Домой» в меню браузера. Первый запуск требует интернета.</p>`);
-}
-function exportSave(original = false) {
-  let raw;
-  try { raw = original ? localStorage.getItem(STORAGE_KEY) : G.serialize(state); } catch { toast('Не удалось прочитать исходный файл.',true); return; }
-  const url = URL.createObjectURL(new Blob([raw || ''],{type:'application/json'}));
-  const link = document.createElement('a'); link.href = url; link.download = original ? 'pix-original-save.json' : `pix-day-${state.day}.json`; link.click();
-  setTimeout(() => URL.revokeObjectURL(url),1000);
-  toast('Сохранение скачано. Храни файл, чтобы перенести прогресс.');
-}
-function showHelp() {
-  showModal(`<p class="modal-eyebrow">С чего начинается ремесло</p><h2 id="dialog-title">Как играть</h2><ol class="modal-list"><li>В «Кузнице» выбери чертёж, металл и руну. Нагрей заготовку и нанеси три удара в зелёной зоне.</li><li>В «Заказах» передай подходящую вещь горожанину. За сюжетный заказ он принесёт новые ресурсы на следующий день.</li><li>В «Лавке» продавай вещи, закупай материалы и перепродавай товары каравана. Дорогая цена работает при высоком спросе.</li><li>В «Поисках» добывай материалы и древние находки. Артефакты можно восстановить, изучить или разобрать.</li><li>В «Развитии» улучшай горн, верстак и витрины. Изучай чертежи, сплавы и руны. Ученик делает партии без мини-игры.</li><li>Когда силы кончатся, заверши день. Спешить не нужно: штрафа за ожидание нет.</li></ol><p>Главная цель — помочь пяти путешественникам восстановить городской маяк. После этого кузница продолжает работать.</p>${button('close','Понятно, к работе','primary')}`);
-}
-document.addEventListener('click', e => {
-  const target = e.target.closest('[data-action]'); if (!target || target.disabled) return;
-  const d = target.dataset;
-  switch (d.action) {
-    case 'navigate': setView(d.view); break;
-    case 'close': closeModal(); break;
-    case 'welcome-start': state.welcomed = true; save(); closeModal(); break;
-    case 'select-recipe': selected = d.recipe; render(); break;
-    case 'all-recipes': allRecipes = !allRecipes; render(); break;
-    case 'start-forge': startForge(); break;
-    case 'calm-forge': completeForge(74); break;
-    case 'batch': act(() => G.batchCraft(state,selected,metal,rune,Number(d.count)), items => `Ученик изготовил ${items.length} вещей. Они уже на витрине.`); break;
-    case 'shop-tab': shopTab = d.tab; render(); break;
-    case 'policy': policy = d.policy; render(); break;
-    case 'supplier': shopTab = 'materials'; setView('shop'); break;
-    case 'buy-material': act(() => G.buyMaterial(state,d.material,3), price => `Куплено: ${G.MATERIALS[d.material].name} ×3 за ${price} монет.`); break;
-    case 'sell': act(() => G.sell(state,Number(d.item),policy), price => `Продано за ${price} монет.`); break;
-    case 'trade-buy': act(() => G.buyTradeItem(state),'Товар куплен. Перепродай его на витрине.'); break;
-    case 'buy-relic': act(() => G.buyRelic(state),'Находка ждёт тебя в разделе «Поиски».'); break;
-    case 'process-relic': act(() => G.processRelic(state,Number(d.relic),d.process),'Находка раскрыла свой секрет. Запись добавлена в дневник.'); break;
-    case 'prepare': prepareOrder(d.order); break;
-    case 'fulfill': act(() => G.fulfill(state,d.order,Number(d.item)), o => `Заказ выполнен! +${o.reward} монет, +${o.fame} репутации.`); break;
-    case 'explore': {
-      const oldRecipes = state.blueprints.length, oldRelics = state.relics.length;
-      const found = act(() => G.explore(state,d.region));
-      if (found) showModal(`<p class="modal-eyebrow">Возвращение домой</p><h2 id="dialog-title">Удачная вылазка</h2><p>${G.REGIONS.find(r => r.id === d.region).name}: ты нашёл новые материалы для своей кузницы.</p><div class="loot-grid">${Object.entries(found).map(([id,n]) => `<div>${icon(id)}${G.MATERIALS[id].name} +${n}</div>`).join('')}</div>${state.relics.length > oldRelics ? '<p>Среди камней найден древний артефакт. Его можно восстановить, изучить или разобрать.</p>' : ''}${state.blueprints.length > oldRecipes ? `<p>Найден новый чертёж: ${G.recipeById(state.blueprints.at(-1)).name}!</p>` : ''}${button('close','Разложить находки','primary')}`);
-      break;
-    }
-    case 'upgrade': act(() => G.upgrade(state,d.upgrade),'Мастерская стала лучше. Новые возможности уже доступны.'); break;
-    case 'technology': act(() => G.learnTechnology(state,d.tech),'Технология изучена. Попробуй её у наковальни.'); break;
-    case 'learn-recipe': act(() => G.learnRecipe(state,d.recipe),'Чертёж изучен. Теперь можно ковать новое изделие.'); break;
-    case 'end-day': finishDay(); break;
-    case 'result-go': closeModal(); setView(d.view); break;
-    case 'sound': state.sound = !state.sound; save(); showSettings(); sound(); break;
-    case 'export': exportSave(); break;
-    case 'export-original': exportSave(true); break;
-    case 'import': $('#import-file').click(); break;
-    case 'help': showHelp(); break;
-    case 'reset-ask': showModal(`<p class="modal-eyebrow">Новая история</p><h2 id="dialog-title">Начать заново?</h2><p>Все вещи, улучшения и монеты на этом устройстве будут сброшены. Сначала можно скачать сохранение.</p>${button('export','Скачать текущий прогресс','secondary','style="width:100%;margin:10px 0"')}${button('reset','Да, начать новую игру','primary gold')}${button('settings','Вернуться','secondary','style="width:100%;margin-top:10px"')}`); break;
-    case 'reset': loadError = false; state = G.newGame(Date.now() >>> 0); state.welcomed = true; G.ensureOrders(state); selected = 'lantern'; metal = 'iron'; rune = 'none'; shopTab = 'stock'; policy = 'fair'; save(); closeModal(); setView('forge'); toast('Новая кузница готова. Мира ждёт первый фонарь.'); break;
-    case 'settings': showSettings(); break;
+function treeHTML(){const m=G.mastery(state);return head('Древо мастерства','Ремесло, торговля и открытие долины.',`Уровень ${m.level}`)+`<div class="mastery-card"><div><strong>${m.points}</strong><span>очков мастерства</span></div><div class="xp-info"><b>${state.xp} опыта</b><span>${m.progress} / 30 до нового уровня</span><div class="xp-bar"><i style="width:${m.progress/30*100}%"></i></div></div></div><p class="help-text">Каждые 30 опыта дают 1 очко. Работа: +12, продажа гостю: +6, сюжетный заказ: +18. Навыки требуют очков, монет и 1 силы.</p><div class="tree-branches"><span>Ремесло</span><span>Торговля</span><span>Путешествия</span></div><div class="skill-tree" id="skill-tree"><svg id="tree-lines" aria-hidden="true"></svg>${G.SKILLS.map(s=>{const status=G.skillStatus(state,s.id);return btn('skill-detail',`${icon(s.icon)}<strong>${s.name}</strong><small>${status==='learned'?'✓ Открыто':`${s.points} оч. · ${s.cost} ◈`}</small>`,`skill-node ${status}`,`data-skill="${s.id}" style="grid-column:${s.col+1};grid-row:${s.row+1}" aria-label="${s.name} — ${status==='learned'?'открыто':status==='available'?'доступно':'закрыто'}"`);}).join('')}</div><div class="tree-legend"><span>● Открыто</span><span>● Доступно</span><span>● Закрыто</span></div><div class="button-row">${btn('equipment-go','Оборудование кузницы →','secondary')}</div><div class="subheading" id="blueprint-list">Чертежи <small>Можно находить в тайниках</small></div>${G.RECIPES.filter(r=>!r.starter).map(r=>`<article class="technology">${icon(r.id)}<div><h2>${r.name}</h2><p>${r.desc}</p></div>${G.knownRecipe(state,r.id)?'<span class="trait">Изучен</span>':btn('learn-recipe',`${r.learn} ◈`,'secondary',`data-recipe="${r.id}" ${state.gold<r.learn||!state.energy?'disabled':''}`)}</article>`).join('')}<div class="subheading">Дневник мастерской</div><div class="journal">${state.log.slice(0,12).map(e=>`<div class="journal-entry"><time>День ${e.day}</time><p>${esc(e.text)}</p></div>`).join('')}</div>`;}
+function drawTreeLines(){const tree=$('#skill-tree'),svg=$('#tree-lines');if(!tree||!svg)return;const base=tree.getBoundingClientRect();svg.setAttribute('viewBox',`0 0 ${base.width} ${base.height}`);svg.innerHTML=G.SKILLS.flatMap(s=>s.parents.map(p=>{const from=tree.querySelector(`[data-skill="${p}"]`).getBoundingClientRect(),to=tree.querySelector(`[data-skill="${s.id}"]`).getBoundingClientRect();const x1=from.left-base.left+from.width/2,y1=from.bottom-base.top,x2=to.left-base.left+to.width/2,y2=to.top-base.top;const learned=G.skillStatus(state,s.id)==='learned';return `<path d="M ${x1} ${y1} C ${x1} ${(y1+y2)/2}, ${x2} ${(y1+y2)/2}, ${x2} ${y2}" class="${learned?'learned':''}"/>`;})).join('');}
+function skillDetail(id){const s=G.SKILLS.find(s=>s.id===id),status=G.skillStatus(state,id),m=G.mastery(state);modal(`<p class="modal-eyebrow">${{root:'Начало пути',craft:'Ветвь ремесла',trade:'Ветвь торговли',travel:'Ветвь путешествий'}[s.branch]}</p><h2 id="dialog-title">${s.name}</h2>${icon(s.icon,undefined,'result-icon')}<p>${s.desc}</p><div class="report"><p>Предыдущие навыки: ${s.parents.map(id=>G.SKILLS.find(s=>s.id===id).name).join(', ')||'не требуются'}.</p>${s.need?`<p>Нужен ${s.need==='furnace'?'горн':'верстак'} уровня ${s.level} (у тебя ${state.upgrades[s.need]}).</p>`:''}<p>${s.points} оч. мастерства · ${s.cost} монет · 1 сила. У тебя ${m.points} оч.</p></div>${status==='learned'?'<span class="trait">Навык уже открыт</span>':btn('learn-skill','Открыть навык','primary',`data-skill="${id}" ${status==='available'&&m.points>=s.points&&state.gold>=s.cost&&state.energy?'':'disabled'}`)}${status==='locked'?btn('equipment-go','Оборудование и требования →','secondary','style="width:100%;margin-top:10px"'):''}`);}
+function finishDay(){if(busy)return;const reports=act(()=>G.endDay(state));if(!reports)return;npcActors.clear();buyerId=state.customers[0].id;modal(`<p class="modal-eyebrow">Утро в долине</p><h2 id="dialog-title">День ${state.day}</h2><p>Силы восстановлены. В лавку пришли новые покупатели.</p><div class="event-card">${icon('star')}<div><strong>${G.demandEvent(state).name}</strong><p>${G.demandEvent(state).text}</p></div></div>${reports.map(r=>`<div class="report"><div class="report-head"><img src="${portraitURL(G.CLIENTS.find(p=>p.id===r.client))}" alt=""><strong>Новости от ${r.clientName}</strong></div><p>${r.returnText}</p><div class="loot-grid">${Object.entries(r.returns).map(([id,n])=>`<div>${icon(id)}+${n}</div>`).join('')}</div></div>`).join('')}${btn('close','Начать новый день','primary')}`);}
+function showHaggle(){const c=currentBuyer(),item=state.stock[itemIndex];if(!c||!item)return;const q=G.customerQuote(state,item,c.id,policy);modal(`<p class="modal-eyebrow">Разговор о цене</p><h2 id="dialog-title">Торг с ${G.CLIENTS.find(p=>p.id===c.client).name}</h2><p>${G.itemName(item)} · ${c.attempts} из 2 попыток использовано.${state.skills.includes('appraisal')?` Покупатель даст до ${q.budget} монет.`:''}</p><label class="field-label" for="offer-price">Твоя цена в монетах</label><input id="offer-price" class="offer-input" type="number" min="1" max="100000" value="${q.price}">${btn('offer','Предложить цену','primary',c.attempts>=2?'disabled':'')}<p class="modal-note">Слишком высокая цена расходует попытку торга. Можно вернуться к обычной цене или выбрать другое изделие.</p>`);}
+function showSettings(){if(busy)return;modal(`<p class="modal-eyebrow">Твоя кузница</p><h2 id="dialog-title">Настройки и прогресс</h2><div class="settings-row"><div>Звуки работы</div>${btn('sound',state.sound?'Включены':'Выключены','secondary')}</div><div class="settings-row"><div>Скачать сохранение<small>Все вещи, навыки и незавершённые этапы</small></div>${btn('export','Скачать','secondary')}</div>${loadError?`<div class="settings-row"><div>Исходный файл</div>${btn('export-original','Скачать','secondary')}</div>`:''}<div class="settings-row"><div>Загрузить прогресс</div>${btn('import','Выбрать','secondary')}</div><div class="settings-row"><div>Как играть</div>${btn('help','Открыть','secondary')}</div><div class="settings-row"><div>Начать заново</div>${btn('reset-ask','Сбросить','secondary danger')}</div><p class="modal-note">Сохранения первой версии переносятся автоматически. Прогресс хранится в этом браузере. Перед очисткой данных скачай его. Для установки выбери «На экран Домой» в меню браузера.</p>`);}
+function exportSave(original=false){let raw;try{raw=original?localStorage.getItem(SAVE):G.serialize(state);}catch{toast('Не удалось прочитать файл.',true);return;}const url=URL.createObjectURL(new Blob([raw||''],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=original?'pix-original.json':`pix-day-${state.day}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function help(){modal(`<p class="modal-eyebrow">Мастерская оживает</p><h2 id="dialog-title">Как играть</h2><ol class="modal-list"><li>Выбери чертёж, металл и руну. Возьми материалы, разметь заготовку, нагрей её мехами и нанеси пять ударов.</li><li>Выбери закалку: вода, воздух или масло. Собери, отполируй или заточи изделие. Персонаж подходит к каждой станции и работает.</li><li>В отдельной лавке поговори с гостем, пролистай витрину и предложи подходящий товар. Навык торга открывает собственную цену.</li><li>На карте выбери доступное место. За две остановки собери материалы, ищи тайники или помогай путникам.</li><li>За опыт получай очки мастерства. В древе открывай связанные навыки. Оборудование покупается во вкладке кузницы.</li><li>Выполняй сюжетные заказы и завершай день: заказчики возвращаются и открывают новые места.</li></ol><p>На рабочем этапе есть помощь мастера без проверки реакции. Она проходит только текущий этап. Клавиатура: пробел — рабочая кнопка, стрелки — ходьба.</p>${btn('close','К работе','primary')}`);}
+document.addEventListener('click',e=>{const target=e.target.closest('[data-action]');if(!target||target.disabled)return;const d=target.dataset;
+  if(d.action==='heat-press')return;
+  if(busy&&!['close'].includes(d.action)){toast('Дождись завершения движения и работы.');return;}
+  switch(d.action){
+    case'navigate':setView(d.view);break;
+    case'close':close();break;
+    case'welcome-start':state.welcomed=true;save();close();break;
+    case'forge-tab':forgeTab=d.tab;render();break;
+    case'select-recipe':selected=d.recipe;render();break;
+    case'all-recipes':allRecipes=!allRecipes;render();break;
+    case'begin-work':if(act(()=>G.beginWork(state,selected,metal,rune))!==undefined)approachStage();break;
+    case'station':{const s=STATIONS[d.station];moveActor(actor,s.x,s.y);if(state.work&&G.workStage(state).station!==d.station)toast(`Сейчас нужен ${STATIONS[G.workStage(state).station].label.toLowerCase()}.`);else toast(`Мастер подходит: ${s.label}.`);break;}
+    case'work-mark':case'work-hit':markOrHit();break;
+    case'stage-assist':{const stage=G.workStage(state);if(stage&&state.work.step<3)completeStage(stage.id,.5);break;}
+    case'quench':completeStage('quench',d.method);break;
+    case'finish-work':completeStage('finish',d.method);break;
+    case'cancel-work-ask':modal(`<h2 id="dialog-title">Убрать заготовку?</h2><p>До разметки возвращаются материалы и силы. После разметки возвращается половина металла; остальные материалы и силы уже потрачены.</p>${btn('cancel-work','Убрать заготовку','primary gold')}${btn('close','Продолжить работу','secondary','style="width:100%;margin-top:10px"')}`);break;
+    case'cancel-work':act(()=>G.cancelWork(state));uiTask=null;close();render();break;
+    case'batch':act(()=>G.batchCraft(state,selected,metal,rune,Number(d.count)),items=>`Ученик изготовил ${items.length} вещей.`);break;
+    case'equipment':act(()=>G.buyEquipment(state,d.equipment),'Оборудование установлено.');break;
+    case'upgrade':act(()=>G.upgrade(state,d.upgrade),'Мастерская улучшена.');break;
+    case'equipment-go':close();forgeTab='equipment';setView('forge');break;
+    case'skill-detail':skillDetail(d.skill);break;
+    case'learn-skill':if(act(()=>G.learnSkill(state,d.skill),'Новый навык открыт.')!==undefined||G.skillStatus(state,d.skill)==='learned'){close();render();}break;
+    case'learn-recipe':act(()=>G.learnRecipe(state,d.recipe),'Чертёж изучен.');break;
+    case'shop-tab':shopTab=d.tab;render();break;
+    case'policy':policy=d.policy;render();break;
+    case'buy-material':act(()=>G.buyMaterial(state,d.material,3),`Куплено: ${G.MATERIALS[d.material].name} ×3.`);break;
+    case'trade-buy':act(()=>G.buyTradeItem(state),'Товар каравана на витрине.');break;
+    case'buy-relic':act(()=>G.buyRelic(state),'Находка ждёт в разделе карты.');break;
+    case'select-buyer':buyerId=d.buyer;render();break;
+    case'greet':if(currentBuyer())act(()=>G.greetCustomer(state,currentBuyer().id,d.approach),'Вы поговорили с посетителем.');break;
+    case'item-prev':itemIndex=(itemIndex-1+state.stock.length)%state.stock.length;render();break;
+    case'item-next':itemIndex=(itemIndex+1)%state.stock.length;render();break;
+    case'serve':{const c=currentBuyer(),item=state.stock[itemIndex];if(c&&item)act(()=>G.serveCustomer(state,c.id,item.id,policy),r=>`Продано за ${r.price} монет. +6 опыта.`);break;}
+    case'haggle':showHaggle();break;
+    case'offer':{const c=currentBuyer(),item=state.stock[itemIndex],offer=Number($('#offer-price').value);if(c&&item){const result=act(()=>G.serveCustomer(state,c.id,item.id,policy,offer));if(result?.accepted){close();toast(`Сделка заключена за ${result.price} монет.`);}else if(result){showHaggle();toast('Покупатель отказался. Попробуй меньшую цену.',true);}}break;}
+    case'invite':{const c=act(()=>G.inviteCustomer(state),'Новый посетитель вошёл в лавку.');if(c){buyerId=c.id;render();}break;}
+    case'prepare':prepareOrder(d.order);break;
+    case'fulfill':act(()=>G.fulfill(state,d.order,Number(d.item)),o=>`Заказ выполнен! +${o.reward} монет.`);break;
+    case'map-place':if(d.region==='home'){setView('forge');}else if(d.region==='beacon'){setView('orders');toast(state.ended?'Маяк восстановлен твоей работой.':'Маяк откроется в финале истории Элин.');}else{region=d.region;render();}break;
+    case'select-region':region=d.region;render();break;
+    case'begin-trip':if(act(()=>G.beginTrip(state,d.region))!==undefined){actor.x=225;actor.y=290;moveActor(actor,237,264);render();}break;
+    case'trip-action':{const report=act(()=>G.tripAction(state,d.choice));pulse(d.choice==='gather'?'hammer':d.choice==='search'?'cut':'idle');if(report)modal(`<p class="modal-eyebrow">Возвращение из экспедиции</p><h2 id="dialog-title">Находки для кузницы</h2><div class="loot-grid">${Object.entries(report.found).map(([id,n])=>`<div>${icon(id)}${G.MATERIALS[id].name} +${n}</div>`).join('')}</div><p>+${report.xp} опыта${report.gold?` · +${report.gold} монет`:''}${report.blueprint?` · чертёж «${G.recipeById(report.blueprint).name}»`:''}${report.relic?' · древний артефакт':''}</p>${btn('close','Разложить находки','primary')}`);else if(state.trip)moveActor(actor,actor.x+12,actor.y-12);break;}
+    case'retreat-ask':modal(`<h2 id="dialog-title">Вернуться сейчас?</h2><p>Потраченные силы и находки незавершённой экспедиции не вернутся.</p>${btn('retreat','Вернуться без находок','primary gold')}${btn('close','Остаться на тропе','secondary','style="width:100%;margin-top:10px"')}`);break;
+    case'retreat':act(()=>G.retreatTrip(state));close();break;
+    case'restore-relic':{const r=state.relics.find(r=>r.id===Number(d.relic));if(r&&act(()=>G.beginWork(state,r.recipe,'iron',state.technologies.includes('runes')?'light':'none',r.id))!==undefined){forgeTab='work';setView('forge');}break;}
+    case'process-relic':act(()=>G.processRelic(state,Number(d.relic),d.process),'Находка использована.');break;
+    case'end-day':finishDay();break;
+    case'result-go':close();setView(d.view);break;
+    case'sound':state.sound=!state.sound;save();showSettings();sound();break;
+    case'export':exportSave();break;
+    case'export-original':exportSave(true);break;
+    case'import':$('#import-file').click();break;
+    case'help':help();break;
+    case'reset-ask':modal(`<h2 id="dialog-title">Начать заново?</h2><p>Все вещи, навыки и монеты будут сброшены. Сначала можно скачать сохранение.</p>${btn('export','Скачать текущий прогресс','secondary','style="width:100%;margin:10px 0"')}${btn('reset','Начать новую игру','primary gold')}${btn('close','Отмена','secondary','style="width:100%;margin-top:10px"')}`);break;
+    case'reset':state=G.newGame(Date.now()>>>0);state.welcomed=true;G.ensureOrders(state);G.ensureCustomers(state);loadError=false;uiTask=null;npcActors.clear();selected='lantern';metal='iron';rune='none';forgeTab='work';shopTab='stock';itemIndex=0;save();close();setView('forge');break;
   }
 });
-document.addEventListener('change', e => {
-  if (e.target.id === 'metal-select') { metal = e.target.value; render(); }
-  if (e.target.id === 'rune-select') { rune = e.target.value; render(); }
-});
-$('#menu-button').addEventListener('click', showSettings);
-$('#end-day').addEventListener('click', finishDay);
-$('#import-file').addEventListener('change', async e => {
-  const file = e.target.files[0]; e.target.value = ''; if (!file) return;
-  try {
-    if (file.size > 200000) throw new G.GameError('Файл слишком большой. Выбери сохранение этой игры.');
-    const imported = G.deserialize(await file.text());
-    showModal(`<p class="modal-eyebrow">Перенос прогресса</p><h2 id="dialog-title">Загрузить день ${imported.day}?</h2><p>В файле: ${imported.gold} монет, ${imported.crafted} созданных вещей и ${imported.storyIndex} пройденных глав. Текущий прогресс будет заменён.</p>${button('export','Скачать текущий прогресс','secondary','style="width:100%;margin:10px 0"')}<button class="primary" id="confirm-import">Загрузить это сохранение</button>${button('close','Отмена','secondary','style="width:100%;margin-top:10px"')}`);
-    $('#confirm-import').addEventListener('click', () => { state = imported; loadError = false; state.welcomed = true; save(); closeModal(); setView('forge'); toast('Прогресс загружен. С возвращением в кузницу!'); }, { once:true });
-  } catch (error) { toast(error instanceof G.GameError ? error.message : 'Не удалось прочитать файл сохранения.',true); }
-});
-function animate(t) {
-  if (!document.hidden) {
-    if (forging) {
-      const f = forging;
-      if (f.stage === 'heat' && f.holding) f.position = Math.min(1,(t-f.started)/2100);
-      else if (f.stage === 'hammer') f.position = (Math.sin((t-f.started)/480 - Math.PI/2)+1)/2;
-      const cursor = $('#meter-cursor'), fill = $('#meter-fill');
-      if (cursor) { cursor.style.left = `${Math.min(99,f.position*100)}%`; cursor.parentElement.setAttribute('aria-valuenow',Math.round(f.position*100)); }
-      if (fill && f.stage === 'heat') fill.style.width = `${f.position*100}%`;
-    }
-    if (t-lastFrame > 90 && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) { drawScene(canvas,state,view,t); lastFrame=t; }
-  }
-  requestAnimationFrame(animate);
-}
-document.addEventListener('visibilitychange', () => { if (document.hidden) { if (forging?.stage === 'heat') forging.holding = false; save(); } });
+document.addEventListener('pointerdown',e=>{const target=e.target.closest('[data-action="heat-press"]');if(target&&!busy&&uiTask&&state.work?.step===1){e.preventDefault();uiTask.holding=true;uiTask.started=performance.now()-uiTask.position*2400;target.setPointerCapture(e.pointerId);pulse('heat',100000);}});
+document.addEventListener('pointerup',releaseHeat);
+document.addEventListener('pointercancel',()=>{if(uiTask)uiTask.holding=false;actor.pose='idle';});
+document.addEventListener('keydown',e=>{if(dialog.open)return;if(e.code==='Space'&&state.work&&view==='forge'&&!e.repeat&&!busy&&e.target.tagName!=='SELECT'){e.preventDefault();if(state.work.step===1){uiTask.holding=true;uiTask.started=performance.now()-uiTask.position*2400;pulse('heat',100000);}else markOrHit();}if(e.code.startsWith('Arrow')&&['forge','shop'].includes(view)&&!busy&&e.target===document.body){e.preventDefault();const d={ArrowLeft:[-24,0],ArrowRight:[24,0],ArrowUp:[0,-18],ArrowDown:[0,18]}[e.code];if(d)moveActor(actor,Math.max(45,Math.min(430,actor.x+d[0])),Math.max(264,Math.min(296,actor.y+d[1])),view);}});
+document.addEventListener('keyup',e=>{if(e.code==='Space')releaseHeat();});
+document.addEventListener('change',e=>{if(e.target.id==='metal-select'){metal=e.target.value;render();}if(e.target.id==='rune-select'){rune=e.target.value;render();}});
+let swipeStart=null;
+document.addEventListener('pointerdown',e=>{if(e.target.closest('#showcase')&&!e.target.closest('button,input'))swipeStart={x:e.clientX,y:e.clientY};});
+document.addEventListener('pointerup',e=>{if(!swipeStart)return;const dx=e.clientX-swipeStart.x,dy=e.clientY-swipeStart.y;swipeStart=null;if(Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy)&&state.stock.length){itemIndex=(itemIndex+(dx<0?1:-1)+state.stock.length)%state.stock.length;render();}});
+canvas.addEventListener('click',e=>{if(busy||!['forge','shop'].includes(view))return;const bounds=canvas.getBoundingClientRect(),x=(e.clientX-bounds.left)/bounds.width*480,y=(e.clientY-bounds.top)/bounds.height*320;if(y>263)moveActor(actor,Math.max(44,Math.min(434,x)),Math.max(270,Math.min(295,y)),view);});
+$('#menu-button').addEventListener('click',showSettings);$('#tech-button').addEventListener('click',()=>setView('develop'));$('#end-day').addEventListener('click',finishDay);
+$('#import-file').addEventListener('change',async e=>{const file=e.target.files[0];e.target.value='';if(!file||busy)return;try{if(file.size>250000)throw new G.GameError('Файл слишком большой.');const imported=G.deserialize(await file.text());modal(`<h2 id="dialog-title">Загрузить день ${imported.day}?</h2><p>${imported.gold} монет · уровень ${G.mastery(imported).level} · ${imported.storyIndex} глав. Текущий прогресс будет заменён.</p>${btn('export','Скачать текущий прогресс','secondary','style="width:100%;margin:10px 0"')}<button class="primary" id="confirm-import">Загрузить сохранение</button>${btn('close','Отмена','secondary','style="width:100%;margin-top:10px"')}`);$('#confirm-import').addEventListener('click',()=>{state=imported;state.welcomed=true;loadError=false;uiTask=null;npcActors.clear();save();close();setView(state.trip?'explore':'forge');},{once:true});}catch(e){toast(e instanceof G.GameError?e.message:'Не удалось прочитать сохранение.',true);}});
+function animate(t){const dt=lastTick?Math.min(.05,(t-lastTick)/1000):.016;lastTick=t;if(!document.hidden){updateActor(actor,dt,t);for(const a of npcActors.values())updateActor(a,dt,t);if(view==='forge'&&state.work&&uiTask&&!busy&&!dialog.open){if(state.work.step===1){if(uiTask.holding)uiTask.position=Math.min(1,(t-uiTask.started)/2400);else uiTask.position=Math.max(0,uiTask.position-dt*.06);}else uiTask.position=(Math.sin((t-uiTask.started)/620-Math.PI/2)+1)/2;const cursor=$('#meter-cursor'),fill=$('#meter-fill');if(cursor){cursor.style.left=`${Math.min(99,uiTask.position*100)}%`;cursor.parentElement.setAttribute('aria-valuenow',Math.round(uiTask.position*100));}if(fill)fill.style.width=state.work.step===1?`${uiTask.position*100}%`:'0%';}if(t-lastDraw>(actor.path.length?33:66)&&view!=='develop'){drawScene(canvas,state,view==='orders'?'shop':view,reduced.matches?0:t,runtime());lastDraw=t;}}requestAnimationFrame(animate);}
+window.addEventListener('resize',drawTreeLines);
+window.addEventListener('blur',()=>{if(uiTask)uiTask.holding=false;});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){if(uiTask)uiTask.holding=false;save();}});
 window.addEventListener('pagehide',save);
-render(); save(); requestAnimationFrame(animate);
-if (!state.welcomed && !loadError) {
-  showModal(`<p class="modal-eyebrow">Маленький город · большая искра</p><h2 id="dialog-title">Твоя кузница<br>начинается здесь</h2><p>За воротами мастерской ждут путешественники. Создавай вещи, торгуй находками и помоги городу снова зажечь древний маяк.</p><canvas class="welcome-art" width="384" height="220" aria-label="Твоя будущая мастерская" role="img" id="welcome-scene"></canvas><ul class="welcome-points"><li>${icon('forge')}Куй изделия и открывай новые чертежи</li><li>${icon('shop')}Покупай, восстанавливай и перепродавай</li><li>${icon('orders')}За твоими вещами продолжаются истории</li></ul>${button('welcome-start','Разжечь первую искру','primary')}<p class="modal-note">Без таймеров ожидания. Прогресс сохраняется на этом устройстве.</p>`,false);
-  drawScene($('#welcome-scene'),state,'forge',0);
-}
-if ('serviceWorker' in navigator && ['https:','http:'].includes(location.protocol)) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* The online game still works without offline support. */ }));
-}
+render();save();requestAnimationFrame(animate);
+if(!state.welcomed&&!loadError){modal(`<p class="modal-eyebrow">Кузница чудес · живая мастерская</p><h2 id="dialog-title">Каждая вещь —<br>работа твоих рук</h2><canvas class="welcome-art" width="480" height="320" id="welcome-scene" aria-label="Кузница с детализированным кузнецом"></canvas><ul class="welcome-points"><li>${icon('anvil')}Пять этапов ремесла и рабочие станции</li><li>${icon('handshake')}Покупатели, вкусы и торг</li><li>${icon('map')}Карта, экспедиции и древо мастерства</li></ul>${btn('welcome-start','Начать с первого фонаря','primary')}<p class="modal-note">Прогресс старой версии сохраняется. Играй в своём темпе.</p>`,false);drawScene($('#welcome-scene'),state,'forge',0);}
+if(state.work&&!dialog.open)approachStage();
+if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));

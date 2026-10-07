@@ -1,6 +1,6 @@
-const CACHE = 'pix-forge-v1';
+const CACHE = 'pix-forge-v2';
 const BASE = new URL('./', self.location.href);
-const FILES = ['./', './index.html', './styles.css', './src/app.js', './src/game.js', './src/art.js', './manifest.webmanifest', './assets/icon.svg', './assets/icon-192.png', './assets/icon-512.png'].map(path => new URL(path, BASE).href);
+const FILES = ['./', './index.html', './styles.css', './src/app.js', './src/game.js', './src/art.js', './src/motion.js', './manifest.webmanifest', './assets/icon.svg', './assets/icon-192.png', './assets/icon-512.png'].map(path => new URL(path, BASE).href);
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)).then(() => self.skipWaiting()));
 });

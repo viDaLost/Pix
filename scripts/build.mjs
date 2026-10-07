@@ -19,5 +19,5 @@ async function fingerprint(dir) {
 }
 await fingerprint(dist);
 const swPath = path.join(dist,'sw.js');
-await writeFile(swPath,(await readFile(swPath,'utf8')).replace("'pix-forge-v1'", `'pix-forge-${hash.digest('hex').slice(0,12)}'`));
+await writeFile(swPath,(await readFile(swPath,'utf8')).replace(/'pix-forge-v\d+'/, `'pix-forge-${hash.digest('hex').slice(0,12)}'`));
 console.log('Built dist/ — static mobile game, ready for GitHub Pages.');
