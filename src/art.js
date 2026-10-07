@@ -1,16 +1,16 @@
 // Original articulated pixel sprites and separate rooms; no smoothing or external assets.
 import {drawEffects} from './effects.js';
-import {paintCharacter} from './characters.js';
+import {paintCharacter,paintPortrait} from './characters.js';
 import {paintItemSprite,paintRune} from './items.js';
 import {paintRoom,paintRoomLife,paintCounterFront,paintLighting} from './rooms.js';
 import {paintWorld,paintRegion} from './world.js';
 import {paintWorkCloseup} from './work-art.js';
 export {MAP_POINTS} from './world.js';
 export const SCENE_WIDTH=480,SCENE_HEIGHT=320;
-export const STATIONS={supplies:{x:72,y:266,label:'Склад',icon:'wood',hotX:13,hotY:68},furnace:{x:230,y:204,label:'Горн',icon:'forge',hotX:35,hotY:32},anvil:{x:245,y:278,label:'Наковальня',icon:'anvil',hotX:60,hotY:68},barrel:{x:367,y:246,label:'Закалка',icon:'barrel',hotX:86,hotY:72},bench:{x:334,y:184,label:'Верстак',icon:'grindstone',hotX:82,hotY:45}};
+export const STATIONS={supplies:{x:129,y:260,facing:'left',label:'Склад',icon:'wood',hotX:13,hotY:68},furnace:{x:230,y:204,facing:'left',label:'Горн',icon:'forge',hotX:35,hotY:32},anvil:{x:245,y:278,facing:'right',label:'Наковальня',icon:'anvil',hotX:60,hotY:68},barrel:{x:367,y:278,facing:'right',label:'Закалка',icon:'barrel',hotX:86,hotY:72},bench:{x:334,y:216,facing:'right',label:'Верстак',icon:'grindstone',hotX:82,hotY:45}};
 const P={ink:'#243351',dark:'#152641',stone:'#657b9f',stoneLight:'#cfebe5',wall:'#51b99e',wallLight:'#a6ebc4',wood:'#9d593b',woodLight:'#e6a454',woodDark:'#60383e',gold:'#ffc64b',cream:'#fff4c6',orange:'#ff852f',red:'#e46757',green:'#43b87b',cyan:'#64e6e3',purple:'#ac84f8'};
 const cache=new Map();
-export const WORK_POINTS=[[88,243],[187,150],[283,246],[414,231],[380,160]];
+export const WORK_POINTS=[[88,222],[187,150],[283,246],[414,231],[380,160]];
 function rect(c,x,y,w,h,k){c.fillStyle=k;c.fillRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h));}
 function circle(c,x,y,r,k){for(let dy=-r;dy<=r;dy++){const w=Math.floor(Math.sqrt(r*r-dy*dy));rect(c,x-w,y+dy,w*2+1,1,k);}}
 function box(c,x,y,w,h,k){rect(c,x,y,w,h,P.ink);rect(c,x+2,y+2,w-4,h-4,k);}
@@ -44,7 +44,7 @@ export function drawScene(canvas,s,view='forge',time=0,r={}){
   if(view==='explore'){if(s.trip)paintRegion(c,s,r,t);else paintWorld(c,s,t);}else if(view==='shop')shopRoom(c,s,t,r);else forgeRoom(c,s,t,r);
   drawEffects(c,r.effects,time,r.reduced);c.restore();if(view==='forge'&&s.work)workDetail(c,s,r,t);
 }
-export function portraitURL(p){const key='portrait-v4-'+p.id;if(cache.has(key))return cache.get(key);const c=document.createElement('canvas');c.width=64;c.height=64;const ctx=c.getContext('2d');rect(ctx,0,0,64,64,'#536b63');rect(ctx,3,3,58,58,'#a5ad8c');rect(ctx,6,6,52,52,'#d8cda3');drawCharacter(ctx,{x:32,y:119,pose:'idle',facing:'down'},p,0,3);const url=c.toDataURL();cache.set(key,url);return url;}
+export function portraitURL(p){const key='portrait-v5-'+p.id;if(cache.has(key))return cache.get(key);const c=document.createElement('canvas');c.width=64;c.height=64;paintPortrait(c.getContext('2d'),p);const url=c.toDataURL();cache.set(key,url);return url;}
 function drawItem(ctx,type,color=P.gold){
   if(paintItemSprite(ctx,type,color))return;
   const r=(x,y,w,h,c=color)=>rect(ctx,x,y,w,h,c),line=(x,y,w,h)=>r(x,y,w,h,P.cream);

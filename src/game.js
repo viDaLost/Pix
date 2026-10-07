@@ -1,4 +1,8 @@
 export const SAVE_VERSION = 2;
+export const SETTING = {
+  year:1740,town:'Велен',name:'Веленский порт',
+  intro:'После осеннего шторма маяк погас, а корабли обходят гавань. Развивай кузницу, помогай жителям и верни свет в порт.',
+};
 export const MATERIALS = {
   iron: { name: 'Железо', short: 'Железо', color: '#9ca6b4', price: 5, value: 1, traits: ['Прочный'], costs: { iron: 1 } },
   copper: { name: 'Медь', short: 'Медь', color: '#d78758', price: 4, value: .9, traits: ['Лёгкий'], costs: { copper: 1 } },
@@ -18,14 +22,14 @@ export const RECIPES = [
   { id: 'knife', name: 'Походный нож', short: 'Нож', metal: 2, wood: 1, base: 31, category: 'tools', starter: true, desc: 'Надёжный спутник путешественника.' },
   { id: 'pickaxe', name: 'Кирка', short: 'Кирка', metal: 3, wood: 2, base: 44, category: 'tools', starter: true, desc: 'Для руды, камня и новых открытий.' },
   { id: 'lantern', name: 'Шахтёрский фонарь', short: 'Фонарь', metal: 2, wood: 1, base: 39, category: 'magic', starter: true, desc: 'Закрытый светильник для сырой шахты.' },
-  { id: 'sword', name: 'Меч стражника', short: 'Меч', metal: 4, wood: 1, base: 66, category: 'weapons', learn: 35, desc: 'Хороший клинок удержит опасность за воротами.' },
-  { id: 'shield', name: 'Круглый щит', short: 'Щит', metal: 3, wood: 3, base: 63, category: 'weapons', learn: 30, desc: 'Лёгкая конструкция с прочной окантовкой.' },
+  { id: 'sword', name: 'Портовая сабля', short: 'Сабля', metal: 4, wood: 1, base: 66, category: 'weapons', learn: 35, desc: 'Изогнутый клинок с защитной дужкой для портового караула.' },
+  { id: 'shield', name: 'Парадный щит' , short: 'Щит', metal: 3, wood: 3, base: 63, category: 'weapons', learn: 30, desc: 'Цеховой герб на деревянной основе с металлической окантовкой.' },
   { id: 'amulet', name: 'Дорожный амулет', short: 'Амулет', metal: 2, wood: 0, base: 45, category: 'magic', learn: 30, desc: 'Небольшой предмет для большой дороги.' },
   { id: 'hammer', name: 'Молот мастера', short: 'Молот', metal: 4, wood: 2, base: 61, category: 'tools', learn: 40, desc: 'Инструмент, который прослужит долгие годы.' },
   { id: 'ring', name: 'Кольцо', short: 'Кольцо', metal: 1, wood: 0, base: 24, category: 'jewelry', learn: 25, desc: 'Изящная вещь, которую приятно подарить.' },
-  { id: 'staff', name: 'Посох странника', short: 'Посох', metal: 2, wood: 4, base: 70, category: 'magic', learn: 55, desc: 'Основа для сильного зачарования.' },
+  { id: 'staff', name: 'Жезл навигатора', short: 'Жезл', metal: 2, wood: 4, base: 70, category: 'magic', learn: 55, desc: 'Алхимический прибор для огня маяка и морских путей.' },
   { id: 'axe', name: 'Лесной топор', short: 'Топор', metal: 3, wood: 2, base: 49, category: 'tools', learn: 35, desc: 'Хороший баланс для работы в лесу.' },
-  { id: 'key', name: 'Ключ от руин', short: 'Ключ', metal: 2, wood: 0, base: 36, category: 'magic', learn: 45, desc: 'Точный механизм для древних замков.' },
+  { id: 'key', name: 'Ключ от архива', short: 'Ключ', metal: 2, wood: 0, base: 36, category: 'magic', learn: 45, desc: 'Бородчатый ключ от запертого архива старого аббатства.' },
   { id: 'goblet', name: 'Парадный кубок', short: 'Кубок', metal: 3, wood: 0, base: 58, category: 'jewelry', learn: 40, desc: 'Украшение витрины и праздничного стола.' },
 ];
 export const TECHNOLOGIES = [
@@ -42,18 +46,18 @@ export const UPGRADES = [
 export const REGIONS = [
   { id: 'forest', name: 'Тихий лес', subtitle: 'Дерево · медь · уголь', desc: 'Старая тропа за мастерской. Здесь всегда найдётся что-то полезное.', color: '#86af87' },
   { id: 'mine', name: 'Старая шахта', subtitle: 'Железо · кристаллы', desc: 'Фонарь Миры осветил новый путь под землю.', color: '#cb9f6d' },
-  { id: 'ruins', name: 'Забытые руины', subtitle: 'Артефакты · чертежи', desc: 'В камне ещё живут следы древней магии.', color: '#a896d8' },
+  { id: 'ruins', name: 'Руины аббатства', subtitle: 'Артефакты · чертежи', desc: 'Заброшенное аббатство хранит алхимические записи прошлого века.', color: '#a896d8' },
   { id: 'pass', name: 'Лунный перевал', subtitle: 'Лунный камень · кристаллы', desc: 'Редкий металл ждёт за вершинами гор.', color: '#9ac7dc' },
 ];
 export const CLIENTS = [
-  { id: 'mira', name: 'Мира', role: 'Шахтёр', color: '#d7a162', hair: '#6b443e' },
-  { id: 'bren', name: 'Брен', role: 'Стражник', color: '#92a5bc', hair: '#49373e' },
-  { id: 'ada', name: 'Ада', role: 'Караванщица', color: '#bd806d', hair: '#543244' },
-  { id: 'elin', name: 'Элин', role: 'Исследователь', color: '#9b8ac9', hair: '#ccab82' },
-  { id: 'rowan', name: 'Рован', role: 'Фермер', color: '#7d9e78', hair: '#5c4335' },
-  { id: 'sera', name: 'Сера', role: 'Алхимик', color: '#a68abc', hair: '#e1c080', style: 'hood' },
-  { id: 'nora', name: 'Нора', role: 'Следопыт', color: '#729a91', hair: '#a8593e', style: 'cape' },
-  { id: 'daro', name: 'Даро', role: 'Коллекционер', color: '#ba9363', hair: '#4b3938', style: 'hat' },
+  {id:'mira',name:'Мира',role:'Рудокоп',outfit:'miner',female:true,color:'#9b7652',hair:'#593d32',skin:'#deb28d'},
+  {id:'bren',name:'Брен',role:'Портовый караул',outfit:'officer',color:'#435b7b',hair:'#634637',skin:'#cea07e'},
+  {id:'ada',name:'Ада',role:'Купчиха',outfit:'merchant',female:true,color:'#9b6261',hair:'#543b32',skin:'#c99478'},
+  {id:'elin',name:'Элин',role:'Картограф',outfit:'surveyor',female:true,color:'#547b8a',hair:'#8e683f',skin:'#e0b598'},
+  {id:'rowan',name:'Рован',role:'Землевладелец',outfit:'farmer',color:'#7c8153',hair:'#6a4a34',skin:'#c99573'},
+  {id:'sera',name:'Сера',role:'Аптекарь',outfit:'apothecary',female:true,color:'#82718c',hair:'#af9471',skin:'#e3b99e'},
+  {id:'nora',name:'Нора',role:'Проводница',outfit:'rider',female:true,color:'#567967',hair:'#92593a',skin:'#d9aa84'},
+  {id:'daro',name:'Даро',role:'Антиквар',outfit:'gentleman',color:'#916948',hair:'#b5ac94',skin:'#d4a98e'},
 ];
 export const EQUIPMENT = [
   { id: 'anvil', name: 'Наковальня', icon: 'anvil', max: 2, prices: [45,95], costs: [{iron:3},{iron:5,copper:2}], desc: 'Точная ковка: +2 к качеству за уровень.' },
@@ -74,7 +78,7 @@ export const SKILLS = [
   {id:'cartography',name:'Заметки путника',icon:'map',branch:'travel',row:2,col:2,parents:['scouting'],points:1,cost:40,desc:'Поиск тайников всегда приносит кристалл и чаще — чертёж.'},
   {id:'runes',name:'Рунная гравировка',icon:'amulet',branch:'craft',row:3,col:0,parents:['precision'],points:1,cost:65,need:'bench',level:1,desc:'Открывает руны света, защиты и мороза; путь к руинам.'},
   {id:'showcase',name:'Слава лавки',icon:'shop',branch:'trade',row:3,col:1,parents:['negotiation'],points:1,cost:60,desc:'Каждый день в лавку приходят два дополнительных покупателя.'},
-  {id:'ruinlore',name:'Язык древних',icon:'relic',branch:'travel',row:3,col:2,parents:['cartography'],points:1,cost:60,desc:'Открывает руины. При поиске там всегда находишь артефакт.'},
+  {id:'ruinlore',name:'Архивы аббатства',icon:'relic',branch:'travel',row:3,col:2,parents:['cartography'],points:1,cost:60,desc:'Открывает руины аббатства. При поиске там всегда находишь артефакт.'},
   {id:'hardening',name:'Термообработка',icon:'barrel',branch:'craft',row:4,col:0,parents:['alloys'],points:1,cost:55,desc:'Закалка в масле даёт свойство «Острый» и повышает ценность.'},
   {id:'hospitality',name:'Свои люди',icon:'star',branch:'trade',row:4,col:1,parents:['showcase'],points:1,cost:75,desc:'Знакомые покупатели платят больше; отношения растут быстрее.'},
   {id:'pathfinder',name:'Дальний путь',icon:'backpack',branch:'travel',row:4,col:2,parents:['ruinlore'],points:1,cost:80,desc:'Помощь путникам приносит больше монет и опыта. +1 к запасу сил.'},
@@ -109,25 +113,25 @@ export function recordCraftsmanship(state,stats){check(state.work?.step===2&&val
 function validCraftsmanship(v){return v&&Number.isInteger(v.combo)&&v.combo>=0&&v.combo<=5&&Number.isInteger(v.reheats)&&v.reheats>=0&&v.reheats<=15&&Array.isArray(v.zones)&&v.zones.length===3&&v.zones.every(n=>Number.isInteger(n)&&n>=0&&n<=5)&&v.zones.reduce((a,b)=>a+b,0)===5;}
 const BUYER_TASTES = {
   mira:{category:'tools',trait:'Прочный',line:'В шахте вещам достаётся. Ищу прочный инструмент или надёжный свет.'},
-  bren:{category:'weapons',trait:'Острый',line:'Нужна вещь для дозора. Ценю клинки и качественную заточку.'},
-  ada:{category:'magic',trait:'Защитный',line:'На караванной дороге магия защиты бывает дороже золота.'},
-  elin:{category:'magic',trait:'Магический',line:'Ищу необычные вещи. Редкий сплав и руна меня заинтересуют.'},
+  bren:{category:'weapons',trait:'Острый',line:'Караул охраняет пристань. Ищу надёжный клинок с хорошей заточкой.'},
+  ada:{category:'magic',trait:'Защитный',line:'Торговый обоз ждёт на почтовой дороге. Ищу защиту для ценного груза.'},
+  elin:{category:'magic',trait:'Магический',line:'Для морских карт и огня маяка нужны приборы с редким сплавом и руной.'},
   rowan:{category:'tools',trait:'Прочный',line:'Покажи добротный инструмент. Главное — чтобы служил долго.'},
-  sera:{category:'magic',trait:'Светящийся',line:'Для опытов нужны магические вещи. Особенно люблю руны света.'},
+  sera:{category:'magic',trait:'Светящийся',line:'В аптекарской лаборатории нужен свет. Покажи работу с ясной руной.'},
   nora:{category:'tools',trait:'Лёгкий',line:'В походе важен каждый грамм. Предпочитаю лёгкое снаряжение.'},
-  daro:{category:'jewelry',trait:'Изящный',line:'Покупаю красивые вещи для коллекции. Полировка должна быть безупречной.'},
+  daro:{category:'jewelry',trait:'Изящный',line:'Покупаю украшения для своего кабинета редкостей. Ценю чистую отделку.'},
 };
 export const STORIES = [
-  { id: 'mira-light', client: 'mira', recipe: 'lantern', quality: 55, reward: 65, fame: 6, title: 'Свет под землёй', text: 'В шахте сыро, а открытый огонь опасен. Сделаешь надёжный закрытый фонарь? Завтра принесу тебе руду.', returnText: 'Твой фонарь выдержал сырость! Мы нашли новую жилу. Шахта теперь открыта для тебя.', returns: { iron: 6, crystal: 2 }, unlock: 'mine' },
-  { id: 'rowan-pick', client: 'rowan', recipe: 'pickaxe', quality: 60, reward: 85, fame: 7, title: 'Камни у старого моста', text: 'Хочу расчистить дорогу к мосту. Нужна крепкая кирка. Взамен познакомлю тебя с поставщиком.', returnText: 'Дорога расчищена! Я договорился с поставщиком: материалы для тебя теперь дешевле.', returns: { wood: 6, copper: 3 }, unlock: 'supplier' },
-  { id: 'ada-guard', client: 'ada', recipe: 'amulet', rune: 'guard', quality: 65, reward: 125, fame: 10, title: 'Дорога через туман', text: 'Каравану нужен защитный амулет. Изучи чертёж амулета и рунную гравировку на верстаке.', returnText: 'Караван прошёл через туман. Привезла лунный камень и карту руин.', returns: { moon: 3, crystal: 3 }, unlock: 'ruins' },
-  { id: 'bren-sword', client: 'bren', recipe: 'sword', material: 'bronze', quality: 75, reward: 160, fame: 10, title: 'Лёгкий клинок', text: 'Впереди долгий дозор. Сделай бронзовый меч: прочный, но легче железного.', returnText: 'Меч выдержал дозор. В благодарность гильдия прислала материалы для нового горна.', returns: { iron: 8, wood: 5, coal: 6 }, unlock: 'guild' },
-  { id: 'elin-staff', client: 'elin', recipe: 'staff', material: 'moon', rune: 'light', quality: 80, reward: 240, fame: 18, title: 'Искра древнего города', text: 'Лунный посох со светящейся руной поможет восстановить маяк у перевала. Это работа для настоящего мастера.', returnText: 'Маяк снова горит. В город вернулись торговцы! Теперь все знают имя твоей кузницы.', returns: { moon: 5, crystal: 6 }, unlock: 'beacon' },
+  {id:'mira-light',client:'mira',recipe:'lantern',quality:55,reward:65,fame:6,title:'Фонарь рудной артели',text:'У речной пристани ждут руду. Нужен закрытый фонарь: свечу заливают капли и гасит сквозняк. Завтра артель поделится новой добычей.',returnText:'Фонарь выдержал сырость. Артель вывезла первую партию руды и разрешает тебе искать материалы в штольне.',returns:{iron:6,crystal:2},unlock:'mine'},
+  {id:'rowan-pick',client:'rowan',recipe:'pickaxe',quality:60,reward:85,fame:7,title:'Почтовая дорога',text:'Шторм размыл дорогу к старому мосту. Для ремонта нужна крепкая кирка. Если вернём проезд, познакомлю тебя с цеховым поставщиком.',returnText:'Почтовые кареты снова проходят через мост. Поставщик согласился продавать твоей мастерской материалы дешевле.',returns:{wood:6,copper:3},unlock:'supplier'},
+  {id:'ada-guard',client:'ada',recipe:'amulet',rune:'guard',quality:65,reward:125,fame:10,title:'Печать торгового обоза',text:'Везу стекло и аптекарские припасы через туманный перевал. Сделай защитный амулет с рунной гравировкой — это цеховая печать для моего груза.',returnText:'Обоз прошёл перевал. Привезла лунный камень и план архива старого аббатства.',returns:{moon:3,crystal:3},unlock:'ruins'},
+  {id:'bren-sword',client:'bren',recipe:'sword',material:'bronze',quality:75,reward:160,fame:10,title:'Сабля портового караула',text:'После шторма караул патрулирует пристань по ночам. Гильдия испытывает алхимическую бронзу: выкуй из неё лёгкую саблю с чистой кромкой.',returnText:'Сабля выдержала службу в солёном тумане. Ремесленная гильдия прислала металл и уголь для нового горна.',returns:{iron:8,wood:5,coal:6},unlock:'guild'},
+  {id:'elin-staff',client:'elin',recipe:'staff',material:'moon',rune:'light',quality:80,reward:240,fame:18,title:'Огни Веленского порта',text:'По старым чертежам я восстановила линзу маяка. Теперь нужен жезл навигатора из лунного сплава с руной света. Его огонь снова укажет кораблям вход в гавань.',returnText:'Маяк зажёгся. В гавань вернулись торговые суда, а на картах снова отмечен Велен. На вывеске твоей кузницы появился знак гильдии.',returns:{moon:5,crystal:6},unlock:'beacon'},
 ];
 const EVENTS = [
-  { name: 'Путники на дороге', category: 'tools', text: 'Караван покупает инструменты. Их цена сегодня выше.' },
-  { name: 'Дозор у ворот', category: 'weapons', text: 'Стража готовится к дозору: клинки и щиты пользуются спросом.' },
-  { name: 'Ночь фонарей', category: 'magic', text: 'Городу нужны светильники и магические вещи.' },
+  { name: 'Торговый обоз', category: 'tools', text: 'Поставщики закупают инструменты для почтовой дороги.' },
+  { name: 'Караул на пристани', category: 'weapons', text: 'Караулу и цехам нужны клинки и парадные щиты.' },
+  { name: 'Ночь в гавани', category: 'magic', text: 'В порту закупают фонари и алхимические приборы.' },
   { name: 'Праздник на площади', category: 'jewelry', text: 'Жители ищут украшения и подарки.' },
 ];
 const recipeById = id => RECIPES.find(r => r.id === id);
@@ -201,7 +205,7 @@ export function batchCraft(state, id, material, rune, count = 2) {
 }
 export function buyMaterial(state, id, count = 3) {
   check(MATERIALS[id]?.price && Number.isInteger(count) && count > 0 && count <= 99, 'Недопустимая закупка.');
-  check(id !== 'moon' || state.technologies.includes('lunar') || state.flags.includes('ruins'), 'Лунный камень появится после возвращения каравана или изучения технологии.');
+  check(id !== 'moon' || state.technologies.includes('lunar') || state.flags.includes('ruins'), 'Лунный камень появится после возвращения обоза или изучения технологии.');
   const price = purchasePrice(state, id, count); check(state.gold >= price, `Нужно ${price} монет.`);
   state.gold -= price; state.resources[id] += count; log(state, `Куплено: ${MATERIALS[id].name} ×${count} за ${price} монет.`); return price;
 }
@@ -222,12 +226,12 @@ export function sell(state, id, policy = 'fair') {
   state.fame += item.quality >= 80 ? 2 : 1; gainXP(state,3); log(state, `Продано: ${itemName(item)} за ${quote.price} монет.`); return quote.price;
 }
 export function buyTradeItem(state) {
-  check(state.marketToday < 3, 'Все товары каравана на сегодня куплены. Он обновит ассортимент завтра.');
+  check(state.marketToday < 3, 'Все товары обоза на сегодня куплены. Ассортимент обновится завтра.');
   check(state.stock.length < 60, 'Сначала освободи витрину.');
   const recipe = ['knife', 'ring', 'shield'][(state.day - 1 + state.marketToday) % 3];
-  const item = { id: state.nextId, recipe, material: 'copper', rune: 'none', quality: 64, day: state.day, source: 'Караван' };
+  const item = { id: state.nextId, recipe, material: 'copper', rune: 'none', quality: 64, day: state.day, source: 'Торговый обоз' };
   const cost = Math.round(itemValue(item) * .75); check(state.gold >= cost, `Нужно ${cost} монет.`);
-  state.nextId++; state.gold -= cost; state.stock.push(item); state.marketToday++; log(state, `Товар каравана: ${itemName(item)} за ${cost} монет.`); return item;
+  state.nextId++; state.gold -= cost; state.stock.push(item); state.marketToday++; log(state, `Товар обоза: ${itemName(item)} за ${cost} монет.`); return item;
 }
 export function tradeOffer(state) {
   const recipe = ['knife', 'ring', 'shield'][(state.day - 1 + state.marketToday) % 3];

@@ -1,4 +1,4 @@
-const CACHE = 'pix-forge-v4';
+const CACHE = 'pix-forge-v5';
 const BASE = new URL('./', self.location.href);
 const FILES = ['./', './index.html', './styles.css', './src/app.js', './src/game.js', './src/art.js', './src/motion.js', './src/effects.js', './src/interactions.js', './src/shop-view.js', './src/pixel.js', './src/characters.js', './src/items.js', './src/rooms.js', './src/world.js', './src/crafting.js', './src/work-ui.js', './src/work-art.js', './manifest.webmanifest', './assets/icon.svg', './assets/icon-192.png', './assets/icon-512.png'].map(path => new URL(path, BASE).href);
 self.addEventListener('install', event => {

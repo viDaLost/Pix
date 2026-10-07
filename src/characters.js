@@ -1,69 +1,179 @@
-import {C,px,oval,polygon,shade,canvas,pixelLine} from './pixel.js';
-const frames=new Map(),LIMIT=320;
-const CLOTH={smith:['#397b88','#75c5c3'],cap:['#8c775b','#dab482'],helmet:['#5b7896','#bbd7df'],scarf:['#a05567','#edb084'],hood:['#706398','#bfa2da'],cape:['#4b8078','#91c2a2'],hat:['#9d7646','#e1bd6c']};
-function sprite(p,facing,pose,frame,blink){
-  const image=canvas(48,48),c=image.getContext('2d'),style=p.style||({mira:'cap',bren:'helmet',ada:'scarf',elin:'hood',rowan:'hat'}[p.id])||'smith';
-  const [base,light]=CLOTH[style]||CLOTH.smith,cloth=p.color||base,hair=p.hair||'#4d3238',skin='#d49a74',skinLight='#f2c39a',skinShade='#a96859',back=facing==='up',side=facing==='left'||facing==='right';
-  const walk=pose==='walk',stride=walk?[-2,-1,0,1,2,1,0,-1][frame%8]:0,bob=walk&&(frame%4===0)?-1:0;
-  const r=(x,y,w,h,k)=>px(c,x+7,y+4+bob,w,h,k),poly=(a,k)=>polygon(c,a.map(([x,y])=>[x+7,y+4+bob]),k);
-  // Separate soles, boots, trouser folds and forward/backward leg frames.
-  r(10,29,5,8,C.ink);r(17,29,5,8,C.ink);r(11,29,3,7,'#405268');r(18,29,3,7,'#405268');
-  r(10-stride,35-Math.max(0,stride),5,5,'#372c38');r(17+stride,35-Math.max(0,-stride),5,5,'#372c38');
-  r(9-stride,39-Math.max(0,stride),7,2,C.ink);r(16+stride,39-Math.max(0,-stride),8,2,C.ink);
-  r(10-stride,37-Math.max(0,stride),4,1,'#a48366');r(17+stride,37-Math.max(0,-stride),4,1,'#a48366');r(12,30,1,4,'#73828d');
-  // Shaped shoulders and layered clothing, rather than one rectangular body.
-  poly([[9,17],[13,15],[20,15],[24,18],[24,27],[21,31],[10,31],[8,26]],C.ink);
-  poly([[10,17],[14,16],[20,16],[23,18],[22,27],[20,30],[11,30],[9,25]],cloth);
-  r(10,18,3,8,shade(cloth,28));r(11,18,1,6,light);r(20,19,2,9,shade(cloth,-24));r(13,17,6,1,shade(cloth,42));r(12,25,8,1,shade(cloth,-10));
-  if(style==='smith'){
-    poly([[13,17],[20,17],[20,22],[22,29],[11,29],[12,22]],'#713f37');poly([[14,18],[19,18],[19,22],[21,28],[12,28],[13,22]],'#b86d43');
-    r(14,18,4,2,'#e7a76b');r(13,22,7,1,'#d79254');r(14,24,5,3,'#80453b');r(14,24,5,1,'#e2a865');r(17,25,1,1,C.gold);r(13,18,1,7,'#efb475');r(20,26,1,2,'#683b37');
-    r(12,16,1,4,'#c79562');r(20,16,1,4,'#c79562');r(12,17,1,1,C.cream);r(20,17,1,1,C.cream);
-  }else if(style==='cape'||style==='hood'){
-    poly([[9,17],[7,20],[7,29],[11,33],[12,25],[12,17]],shade(cloth,-30));poly([[22,17],[25,20],[25,31],[21,33],[20,24],[20,17]],shade(cloth,-38));r(8,21,1,8,shade(cloth,20));r(23,22,1,6,shade(cloth,16));
-  }else if(style==='helmet'){
-    r(12,18,8,10,'#617c91');r(13,19,6,7,'#9abec6');r(13,19,5,1,'#e5edce');r(15,20,1,6,'#d4d7bf');r(13,25,6,1,'#496275');
-  }else{r(14,17,1,11,shade(cloth,-32));r(15,18,1,1,C.gold);r(15,22,1,1,C.gold);r(11,24,3,3,shade(cloth,-20));r(11,24,3,1,light);}
-  r(10,29,12,2,'#47343b');r(15,29,3,2,C.gold);r(16,29,1,1,C.cream);
-  // Neck, individually shaded face, nose, brow, ears and hairstyle.
-  r(14,13,5,4,skinShade);r(14,14,4,2,skin);poly([[12,4],[20,4],[23,7],[22,13],[19,16],[13,15],[10,11],[10,7]],C.ink);
-  poly([[12,5],[20,5],[22,7],[21,12],[19,14],[14,14],[11,11],[11,7]],skin);
-  r(12,6,7,3,skinLight);r(12,9,3,3,'#e6b087');r(19,9,2,3,skinShade);r(10,9,2,3,skin);r(22,9,1,2,skinShade);r(14,13,5,1,'#b97a64');
-  poly([[11,6],[10,5],[12,2],[20,2],[22,4],[23,7],[21,8],[19,5],[13,5],[12,8]],hair);r(12,3,6,1,shade(hair,38));r(17,4,3,1,shade(hair,20));r(10,6,2,3,hair);r(21,5,2,4,hair);
-  if(back){r(11,5,11,7,hair);r(12,11,9,2,shade(hair,-20));r(12,5,6,1,shade(hair,30));r(19,6,2,4,shade(hair,-12));}
-  else{
-    r(side?16:13,9,2,1,'#402d36');r(20,9,1,1,'#402d36');if(!blink){r(side?17:14,9,1,1,'#f7eed1');r(20,9,1,1,'#f7eed1');r(side?17:14,10,1,1,'#3c4654');r(20,10,1,1,'#3c4654');}
-    r(18,10,1,2,'#bd805f');r(18,10,1,1,'#ffd6a3');r(16,13,3,1,'#875746');r(13,11,1,1,'#dc9074');
-    if(style==='smith'||p.id==='rowan'||p.id==='daro'){r(13,12,7,2,hair);r(15,14,4,2,hair);r(14,12,2,1,shade(hair,25));r(17,13,2,1,skinShade);}
+import {C,px,polygon,oval,shade,pixelLine,canvas} from './pixel.js';
+
+const SIZE=64,BASELINE=60,CENTER=32,CACHE_LIMIT=320;
+const frames=new Map();
+const LOOKS={
+  smith:{outfit:'smith',color:'#496f78',hair:'#624537',skin:'#d4a27e',beard:true},
+  apprentice:{outfit:'smith',color:'#819079',hair:'#83553b',skin:'#e0b395',cap:true},
+  mira:{outfit:'miner',color:'#9b7652',hair:'#593d32',skin:'#deb28d',female:true,cap:true},
+  bren:{outfit:'officer',color:'#435b7b',hair:'#634637',skin:'#cea07e',hat:'tricorn'},
+  ada:{outfit:'merchant',color:'#9b6261',hair:'#543b32',skin:'#c99478',female:true,hat:'bonnet'},
+  elin:{outfit:'surveyor',color:'#547b8a',hair:'#8e683f',skin:'#e0b598',female:true,hat:'tricorn'},
+  rowan:{outfit:'farmer',color:'#7c8153',hair:'#6a4a34',skin:'#c99573',hat:'felt',beard:true},
+  sera:{outfit:'apothecary',color:'#82718c',hair:'#af9471',skin:'#e3b99e',female:true,hat:'bonnet'},
+  nora:{outfit:'rider',color:'#567967',hair:'#92593a',skin:'#d9aa84',female:true,hat:'felt'},
+  daro:{outfit:'gentleman',color:'#916948',hair:'#b5ac94',skin:'#d4a98e',hat:'tricorn',mature:true},
+};
+function look(person){const base=LOOKS[person.id||'smith']||LOOKS.smith;return {...base,...person,color:person.color||base.color,hair:person.hair||base.hair};}
+function limb(c,start,joint,end,cloth,skin,rolled=false){
+  pixelLine(c,...start,...joint,C.ink,4);pixelLine(c,...joint,...end,C.ink,4);
+  pixelLine(c,start[0]+1,start[1],joint[0]+1,joint[1],cloth,2);
+  pixelLine(c,joint[0]+1,joint[1],end[0]+1,end[1],rolled?skin:cloth,2);
+  px(c,joint[0]+1,joint[1]-1,2,2,shade(cloth,34));
+  if(!rolled)px(c,end[0],end[1]-2,4,2,'#e4d9ba');
+  px(c,end[0],end[1],4,3,shade(skin,-17));px(c,end[0]+1,end[1],2,2,shade(skin,21));
+}
+function elbowFor(start,end){
+  // Keep both arm segments the same length throughout work and walking poses.
+  const dx=end[0]-start[0],dy=end[1]-start[1],distance=Math.max(.01,Math.hypot(dx,dy));
+  const along=Math.min(13.95,distance)/2,bend=Math.sqrt(49-along*along),sign=dy<0?1:-1;
+  return [Math.round(start[0]+dx/distance*along-sign*dy/distance*bend),Math.round(start[1]+dy/distance*along+sign*dx/distance*bend)];
+}
+function legs(c,p,pose,frame,side){
+  const walk=pose==='walk',swing=walk?[0,1,2,1,0,-1,-2,-1][frame%8]:0;
+  const boots=['miner','rider','surveyor'].includes(p.outfit),breeches=p.outfit==='officer'?'#c4b48d':p.outfit==='gentleman'?'#766046':'#58626a';
+  for(const [i,hip]of[27,35].entries()){
+    const advance=(i?1:-1)*swing,knee=hip+advance,ankle=hip+Math.round(advance*.8),lift=walk?Math.max(0,(i?1:-1)*swing):0;
+    const dark=side&&i===0;
+    polygon(c,[[hip-2,35],[hip+3,35],[knee+3,43-lift],[knee-2,43-lift]],C.ink);
+    polygon(c,[[hip-1,36],[hip+2,36],[knee+2,42-lift],[knee-1,42-lift]],shade(breeches,dark?-24:0));
+    px(c,knee-1,41-lift,3,2,shade(breeches,25));
+    pixelLine(c,knee-1,44-lift,ankle-1,56-lift,C.ink,5);
+    const stocking=boots?'#725646':p.outfit==='smith'?'#9b9d8b':'#c8c4aa';
+    pixelLine(c,knee,44-lift,ankle,55-lift,shade(stocking,dark?-25:0),3);
+    px(c,knee,44-lift,2,1,boots?'#b58b5f':'#e4d9b8');
+    px(c,ankle-2,56-lift,7,4,'#3b3335');px(c,ankle-1,56-lift,5,2,'#695346');px(c,ankle-2,59-lift,8,1,C.ink);
+    px(c,ankle+2,57-lift,2,1,boots?'#b48b61':'#cdb681');
   }
-  if(style==='hat'){r(9,5,16,2,'#614334');poly([[12,4],[12,1],[20,0],[22,4]],'#b78b4e');r(13,1,6,1,'#e2bd74');r(12,4,10,1,'#4f3b37');r(22,5,4,1,'#ddb577');}
-  if(style==='cap'){poly([[10,6],[11,2],[14,0],[20,0],[23,4],[23,6]],'#755143');r(12,2,9,3,'#b38956');r(13,1,6,1,'#e6c387');r(16,4,5,1,C.ink);r(18,2,3,3,'#e0c36c');r(19,2,1,1,'#fff1bd');}
-  if(style==='helmet'){poly([[10,9],[10,4],[13,1],[20,1],[24,5],[23,9],[21,7],[21,4],[13,4],[12,9]],'#536f86');r(13,2,7,1,'#b8d5d3');r(12,4,11,2,'#8caabd');r(17,1,2,6,C.gold);r(10,8,2,4,'#688d9d');r(22,8,2,4,'#688d9d');}
-  if(style==='hood'){poly([[10,12],[8,10],[9,5],[12,1],[20,1],[24,6],[24,12],[22,14],[21,7],[19,4],[13,4],[11,8]],shade(cloth,-14));r(12,2,7,1,light);r(10,5,1,5,shade(cloth,18));r(23,7,1,5,shade(cloth,-38));}
-  if(style==='scarf'){r(11,15,12,3,'#dba86d');r(12,15,9,1,'#f2d49e');r(20,17,3,7,'#b57857');r(21,18,1,5,'#ecc48a');r(11,4,2,10,hair);r(23,5,1,9,hair);}
-  // The moving working arm is independently posed and carries the proper tool.
-  let armY=19,wristX=25,wristY=26;
-  if(walk){armY=19-stride;wristY=26-stride;}
-  if(pose==='hammer'){armY=[17,13,11,14,22,23,21][frame%7];wristY=[18,12,8,12,33,32,24][frame%7];wristX=[26,27,27,28,29,29,27][frame%7];}
-  if(pose==='cut'||pose==='polish'){armY=20;wristX=26+[0,1,2,1,0,-1][frame%6];wristY=26;}
-  if(pose==='heat'){armY=19;wristX=27;wristY=24+frame%2;}
-  if(pose==='quench'){armY=20;wristX=29;wristY=26+frame%2;}
-  if(pose==='chat'){armY=18;wristX=26;wristY=18+frame%3;}
-  r(7,19+stride,3,8,shade(cloth,-18));r(8,25+stride,2,3,skin);r(9,26+stride,1,1,skinLight);
-  r(23,armY,3,5,cloth);r(23,armY,2,1,light);pixelLine(c,32,armY+7,wristX+7,wristY+5,skinShade,3);r(wristX,wristY,3,3,skin);r(wristX,wristY,2,1,skinLight);
-  if(pose==='hammer'){r(wristX+1,wristY-11,2,13,'#b18352');r(wristX+2,wristY-10,1,9,'#ebbf7c');r(wristX-4,wristY-13,12,5,C.ink);r(wristX-3,wristY-13,10,3,'#8caec0');r(wristX-2,wristY-13,6,1,'#e7f4df');r(wristX+5,wristY-12,2,2,'#46607a');}
-  if(pose==='heat'||pose==='quench'){r(wristX+1,wristY,9,1,'#708b9d');r(wristX+2,wristY+2,8,1,'#b0c9ca');r(wristX+9,wristY-1,3,4,pose==='heat'?'#ffb961':'#e0b06b');}
-  if(pose==='polish'||pose==='cut'){r(wristX+1,wristY+1,5,2,pose==='cut'?'#b8dce1':'#ecd7a3');r(wristX+2,wristY+1,2,1,C.cream);}
-  if(p.carry){r(7,22,9,8,'#6e4b3f');r(8,22,7,1,'#dbaa6b');r(9,23,6,5,'#b88655');r(12,23,1,5,'#48383b');}
-  if(facing==='left'){const mirrored=canvas(48,48),ctx=mirrored.getContext('2d');ctx.translate(48,0);ctx.scale(-1,1);ctx.drawImage(image,0,0);return mirrored;}
+}
+function clothes(c,p,side,back,pose){
+  const color=p.color,light=shade(color,37),dark=shade(color,-25),linen='#e6d8b5';
+  const skirt=p.outfit==='merchant'||p.outfit==='apothecary',coat=['officer','surveyor','rider','gentleman'].includes(p.outfit);
+  if(skirt){
+    polygon(c,[[26,31],[36,31],[42,54],[39,57],[22,57],[20,54]],C.ink);
+    polygon(c,[[27,32],[35,32],[40,54],[38,56],[23,56],[22,53]],shade(color,-13));
+    for(const [x,h]of[[25,17],[29,22],[34,19],[37,12]])pixelLine(c,x,35,x-1,35+h,x%2?light:dark,1);
+    px(c,23,54,16,1,light);
+    if(p.outfit==='apothecary'){polygon(c,[[26,34],[35,34],[38,54],[25,54]],'#cec5a6');px(c,27,36,1,16,'#eee2bd');px(c,35,38,1,14,'#a99f8c');}
+  }
+  if(coat){
+    polygon(c,[[24,28],[39,28],[42,43],[35,46],[32,41],[27,45],[21,43]],C.ink);
+    polygon(c,[[25,29],[38,29],[40,42],[35,44],[32,39],[27,43],[23,42]],color);
+    pixelLine(c,24,32,23,41,dark,2);pixelLine(c,37,32,39,41,light,1);
+    px(c,25,35,4,2,'#a39c7b');px(c,36,35,3,2,'#bfb387');
+  }
+  polygon(c,[[26,18],[35,18],[40,22],[38,32],[35,36],[26,36],[23,31],[23,22]],C.ink);
+  polygon(c,[[27,19],[34,19],[38,22],[36,33],[34,35],[27,35],[25,31],[25,22]],coat?'#c4ad7d':color);
+  px(c,26,22,2,9,coat?'#eee0b7':light);px(c,35,22,2,10,coat?'#9b866b':dark);
+  if(back){px(c,31,21,1,12,dark);pixelLine(c,27,21,29,24,light);}
+  else{
+    polygon(c,[[28,18],[33,18],[34,21],[31,24],[28,21]],linen);
+    if(p.female&&skirt){polygon(c,[[25,19],[29,18],[31,22],[34,18],[38,20],[32,26]],linen);px(c,31,23,1,3,'#b1a58a');}
+    for(let y=24;y<34;y+=4){px(c,31,y,1,1,coat?'#e7c78a':'#cab07d');px(c,32,y,1,1,dark);}
+    if(coat){polygon(c,[[25,19],[28,20],[27,33],[24,32]],color);polygon(c,[[34,20],[38,21],[37,33],[34,33]],color);px(c,25,22,1,7,light);px(c,36,25,1,6,dark);}
+  }
+  if(p.outfit==='smith'){
+    polygon(c,[[28,21],[34,21],[34,29],[38,43],[25,43],[26,29]],'#5e433a');
+    polygon(c,[[29,22],[33,22],[33,30],[36,42],[26,42],[28,30]],'#a06c48');
+    px(c,29,23,3,1,'#d8a66e');px(c,28,29,6,1,'#c99a62');px(c,28,32,6,4,'#79503b');px(c,28,32,6,1,'#d4a674');px(c,33,34,1,1,'#dfbc7c');
+    pixelLine(c,28,19,28,24,'#c29665');pixelLine(c,34,19,34,24,'#d0a26c');px(c,27,40,7,1,'#bf8c59');
+  }
+  if(['surveyor','rider','merchant'].includes(p.outfit)){pixelLine(c,25,20,37,35,'#664b3c',2);pixelLine(c,25,20,37,35,'#ac8357');px(c,34,32,6,7,'#5f493f');px(c,35,33,4,5,'#aa8054');px(c,37,34,1,1,'#dbc48c');}
+  if(p.outfit==='officer'){pixelLine(c,25,22,36,34,'#d4c7a3',2);px(c,25,34,13,2,'#7a6852');px(c,31,34,3,2,'#ccb274');}
+  if(p.outfit==='surveyor'&&!back){px(c,29,29,3,7,'#e3c99a');px(c,30,30,1,5,'#b5a483');}
+}
+function head(c,p,side,back,blink){
+  const skin=p.skin||'#d4a27e',light=shade(skin,23),shadow=shade(skin,-23),hair=p.hair,hairLight=shade(hair,23);
+  px(c,29,15,5,5,shadow);px(c,30,16,3,4,skin);
+  // Hair behind the head; a visible neck keeps the jaw clear of the collar.
+  if(p.female){px(c,26,7,10,11,shade(hair,-13));if(back||side){px(c,25,12,3,7,hair);px(c,25,18,2,5,hairLight);px(c,25,21,3,2,'#665a54');}}
+  if(side){
+    polygon(c,[[29,6],[33,6],[35,8],[35,10],[36,12],[37,12],[37,13],[35,14],[35,16],[32,17],[28,15],[27,11]],C.ink);
+    polygon(c,[[29,7],[33,7],[34,9],[34,11],[35,12],[36,12],[36,13],[34,14],[34,16],[31,16],[28,14],[28,10]],skin);
+    px(c,29,8,4,2,light);px(c,31,10,2,4,shade(skin,9));px(c,33,14,2,1,shadow);
+    px(c,28,11,2,3,shadow);px(c,29,11,1,2,light);
+    if(!back){px(c,33,11,1,1,blink?shadow:'#493b35');px(c,32,10,2,1,shade(hair,8));px(c,35,13,1,1,shadow);px(c,34,15,1,1,'#9e6959');}
+  }else{
+    polygon(c,[[29,6],[33,6],[36,9],[35,14],[33,17],[29,17],[26,14],[26,9]],C.ink);
+    polygon(c,[[29,7],[33,7],[35,9],[34,14],[32,16],[29,16],[27,13],[27,10]],skin);
+    px(c,28,8,5,2,light);px(c,28,10,2,4,shade(skin,8));px(c,34,10,1,4,shadow);px(c,26,11,1,2,skin);px(c,35,11,1,2,shadow);
+    if(!back){
+      // One dark pixel per eye: no separated white pixels or misaligned pupils.
+      px(c,28,11,1,1,blink?shadow:'#493b35');px(c,33,11,1,1,blink?shadow:'#493b35');
+      px(c,31,12,1,2,shadow);px(c,31,12,1,1,light);px(c,30,15,3,1,'#aa7660');
+      if(p.mature){px(c,27,12,1,1,shadow);px(c,34,12,1,1,shadow);}
+    }
+  }
+  polygon(c,[[27,9],[26,7],[28,4],[34,4],[36,7],[35,9],[33,6],[29,6],[28,10]],hair);
+  px(c,29,5,4,1,hairLight);px(c,27,7,1,4,hair);px(c,34,6,2,2,hairLight);
+  if(back){polygon(c,[[27,7],[35,7],[36,11],[34,15],[28,15],[26,11]],hair);px(c,28,8,5,1,hairLight);px(c,28,14,6,1,shade(hair,-22));px(c,30,15,3,2,hair);}
+  else if(p.beard){
+    if(side){px(c,32,14,2,3,shade(hair,8));px(c,34,14,1,2,hair);px(c,32,16,2,1,hairLight);}
+    else{px(c,28,14,2,2,hair);px(c,32,14,2,2,hair);px(c,29,16,4,1,shade(hair,15));}
+  }
+  if(p.cap){polygon(c,[[25,8],[26,5],[29,3],[34,4],[37,7],[37,9]],'#655442');px(c,27,5,7,2,'#a89169');px(c,26,8,11,1,'#d2bd8b');px(c,25,9,2,2,'#806346');}
+  if(p.hat==='tricorn'){
+    polygon(c,[[20,7],[25,6],[25,3],[31,2],[37,4],[38,7],[43,7],[39,10],[24,10]],'#282b35');
+    polygon(c,[[22,7],[26,7],[26,4],[31,3],[36,5],[37,8],[41,8],[38,9],[25,9]],'#48454a');
+    pixelLine(c,23,8,31,5,'#a59977');pixelLine(c,31,5,39,8,'#c3b68b');px(c,36,6,2,2,p.outfit==='officer'?'#b76f58':'#cab080');
+  }else if(p.hat==='felt'){
+    polygon(c,[[22,8],[26,7],[27,3],[34,3],[37,7],[41,8],[39,10],[23,10]],'#594b3c');
+    px(c,28,4,6,3,'#aa8c56');px(c,27,7,9,1,'#d1b97e');px(c,23,9,16,1,'#b39e70');
+  }else if(p.hat==='bonnet'){
+    polygon(c,[[25,11],[24,7],[27,3],[34,3],[38,7],[37,12],[35,11],[35,7],[28,6],[27,11]],'#b4ac96');
+    pixelLine(c,25,8,28,4,'#eee2be',2);pixelLine(c,28,4,34,4,'#f5eacf',2);pixelLine(c,35,5,36,10,'#e8dcc0',2);
+    px(c,26,13,1,4,'#e1d2af');px(c,35,14,1,4,'#d3c4a3');px(c,27,17,3,1,'#c6b995');
+  }
+}
+function armAndTool(c,p,pose,frame,temper){
+  const smith=p.outfit==='smith'||p.outfit==='miner',cloth=smith?'#d9cdaa':p.color,skin=p.skin||'#d4a27e';
+  let wrist=[42,34],tool;
+  if(pose==='walk'){const swing=[0,1,2,1,0,-1,-2,-1][frame%8];wrist=[42-swing,34-Math.abs(swing)/2];}
+  else if(pose==='hammer'){
+    wrist=[[47,25],[45,17],[43,14],[48,26],[45,32],[46,33],[47,29]][frame];tool=[[51,13],[46,6],[43,4],[54,18],[55,39],[56,40],[53,24]][frame];
+  }else if(pose==='cut'){wrist=[44,34+frame%2];}
+  else if(pose==='polish'){wrist=[45+frame%3,28];}
+  else if(pose==='heat'){wrist=[44,28+frame%2];}
+  else if(pose==='quench'){wrist=temper==='air'?[42,26]:[46,28+[0,1,2,3,4,3][frame]];}
+  else if(pose==='chat'){wrist=[43+frame%2,25-frame%2];}
+  limb(c,[39,21],elbowFor([39,21],wrist),wrist,cloth,skin,smith);
+  if(pose==='hammer'){
+    pixelLine(c,...wrist,...tool,'#47383b',3);pixelLine(c,wrist[0]+1,wrist[1],tool[0]+1,tool[1],'#bb8e5e',1);
+    polygon(c,[[tool[0]-6,tool[1]-3],[tool[0]+5,tool[1]-3],[tool[0]+7,tool[1]],[tool[0]+5,tool[1]+3],[tool[0]-6,tool[1]+3]],C.ink);
+    px(c,tool[0]-5,tool[1]-2,10,3,'#92abb6');px(c,tool[0]-4,tool[1]-2,7,1,'#dde3c9');px(c,tool[0]+3,tool[1],3,2,'#526c81');
+  }else if(pose==='heat'||pose==='quench'){
+    const tip=pose==='heat'?[55,wrist[1]+2]:temper==='air'?[46,24]:[59,wrist[1]+2];
+    pixelLine(c,wrist[0]+2,wrist[1]+1,tip[0],tip[1],'#546e7b',2);pixelLine(c,wrist[0]+2,wrist[1],tip[0],tip[1]-1,'#adc3be');px(c,tip[0],tip[1]-2,4,3,'#efb57c');px(c,tip[0]+1,tip[1]-2,2,1,'#ffe0a5');
+  }else if(pose==='cut'){
+    pixelLine(c,wrist[0]+1,wrist[1]+1,53,wrist[1]+3,'#a38763',2);px(c,52,wrist[1]+2,4,3,'#a8c5c7');px(c,54,wrist[1]+3,1,2,'#e1dfc2');
+  }else if(pose==='polish'){px(c,wrist[0]+3,wrist[1]-1,9,4,'#b4ab8d');px(c,wrist[0]+4,wrist[1]-1,7,1,'#eee3c0');}
+  if(p.carry){px(c,19,28,7,10,'#564039');px(c,20,29,5,8,'#b0875a');px(c,21,30,3,1,'#e1c286');px(c,23,31,1,5,'#775444');}
+}
+function sprite(p,facing,pose,frame,blink,breath,temper){
+  const image=canvas(SIZE,SIZE),c=image.getContext('2d'),side=facing==='left'||facing==='right',back=facing==='up';
+  legs(c,p,pose,frame,side);
+  const bob=pose==='walk'&&frame%4===2?-1:breath;c.save();c.translate(0,bob);
+  const cloth=p.outfit==='smith'||p.outfit==='miner'?'#c7bea4':shade(p.color,-22);
+  const swing=pose==='walk'?[0,1,2,1,0,-1,-2,-1][frame%8]:0;
+  limb(c,[24,21],[22,28],[22+swing,34],cloth,p.skin,p.outfit==='smith');
+  clothes(c,p,side,back,pose);head(c,p,side,back,blink);armAndTool(c,p,pose,frame,temper);c.restore();
+  if(facing==='left'){const mirrored=canvas(SIZE,SIZE),ctx=mirrored.getContext('2d');ctx.translate(SIZE,0);ctx.scale(-1,1);ctx.drawImage(image,0,0);return mirrored;}
   return image;
 }
-export function paintCharacter(c,a,p={},t=0,scale=2){
-  const pose=a.pose||'idle',id=p.id||'smith',seed=[...id].reduce((n,v)=>n+v.charCodeAt(0),0),elapsed=Math.max(0,t*1000-(a.poseStarted||0));
-  const frame=pose==='walk'?Math.floor((a.phase||0)*2)%8:pose==='hammer'?Math.min(6,Math.floor(elapsed/60)):['heat','polish','cut','quench','chat'].includes(pose)?Math.floor(elapsed/85)%6:0;
-  const blink=pose!=='hammer'&&(t+seed*.1)%5<.12,key=[id,p.color,p.hair,p.style,p.carry,a.facing,pose,frame,blink].join('|');
-  let image=frames.get(key);if(!image){image=sprite(p,a.facing||'right',pose,frame,blink);frames.set(key,image);if(frames.size>LIMIT)frames.delete(frames.keys().next().value);}
-  c.save();c.globalAlpha=.28;oval(c,a.x,a.y+1,19,3,C.deep);c.restore();
-  const breathe=pose==='idle'?Math.round(Math.sin(t*2+seed)*.7):0;
-  c.imageSmoothingEnabled=false;c.drawImage(image,Math.round(a.x-23*scale),Math.round(a.y-45*scale+breathe),48*scale,48*scale);
+function frameImage(p,facing,pose,frame,blink=false,breath=0,temper='water'){
+  const key=[p.id,p.outfit,p.color,p.hair,p.skin,p.female,p.hat,p.cap,p.beard,p.mature,p.carry,facing,pose,frame,blink,breath,temper].join('|');
+  let image=frames.get(key);if(!image){image=sprite(p,facing,pose,frame,blink,breath,temper);frames.set(key,image);if(frames.size>CACHE_LIMIT)frames.delete(frames.keys().next().value);}return image;
+}
+export function paintCharacter(c,a,person={},time=0,scale=2){
+  const p=look(person),pose=a.pose||'idle',seed=[...(p.id||'smith')].reduce((n,v)=>n+v.charCodeAt(0),0),elapsed=Math.max(0,time*1000-(a.poseStarted||0));
+  const frame=pose==='walk'?Math.floor((a.phase||0)*2)%8:pose==='hammer'?Math.min(6,Math.floor(elapsed/60)):pose==='quench'?Math.min(5,Math.floor(elapsed/100)):['heat','polish','cut','chat'].includes(pose)?Math.floor(elapsed/85)%6:0;
+  const blink=pose==='idle'&&(time+seed*.13)%5<.13,breath=pose==='idle'&&Math.sin(time*2+seed)>.7?-1:0,size=scale*.875;
+  const image=frameImage(p,a.facing||'right',pose,frame,blink,breath,pose==='quench'?a.temper||'water':'water');
+  c.save();c.globalAlpha=.25;oval(c,a.x,a.y+1,15,3,C.deep);c.restore();c.imageSmoothingEnabled=false;
+  c.drawImage(image,Math.round(a.x-CENTER*size),Math.round(a.y-BASELINE*size),SIZE*size,SIZE*size);
+}
+export function paintPortrait(c,person,size=64){
+  const p=look(person),image=frameImage(p,'down','idle',0);c.imageSmoothingEnabled=false;
+  px(c,0,0,size,size,'#465669');px(c,2,2,size-4,size-4,'#c8b18b');px(c,4,4,size-8,size-8,'#e6d4ac');
+  c.drawImage(image,18,0,28,31,5,4,size-10,size-8);
 }

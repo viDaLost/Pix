@@ -58,6 +58,7 @@ function forge(c,s){
   timber(c,350,162,106,10,'#c19a64');px(c,352,163,100,1,'#f0d49b');polygon(c,[[356,172],[448,172],[445,179],[359,179]],'#4b3840');
   for(const x of[362,401]){timber(c,x,182,36,20,'#a1754d');px(c,x+15,189,7,3,'#373642');px(c,x+16,189,5,1,'#e3bd75');}
   panel(c,374,151,25,9,'#dac798');px(c,377,154,17,1,'#a69273');px(c,377,157,9,1,'#a69273');panel(c,405,150,15,11,'#75969b');px(c,407,151,9,2,'#c1d9c1');pixelLine(c,424,160,443,158,'#a9c9c7',2);px(c,439,156,3,6,'#dca86b');
+  oval(c,434,151,6,4,'#3b3a42');oval(c,434,150,5,3,'#bf995f');px(c,434,147,1,6,'#e6d3a5');px(c,431,150,7,1,'#597978');px(c,435,148,1,2,'#a26150');
   if(s.equipment.engraver){panel(c,412,145,22,5,'#96759d');px(c,421,140,3,10,C.gold);px(c,421,140,1,5,C.cream);}
   // Anvil: beveled horn, cast steel body, mounting bolts and dark timber block.
   oval(c,287,297,43,6,'#493941');timber(c,266,273,51,23,'#8d6550');for(let x=272;x<313;x+=7){px(c,x,279,1,15,'#5b423e');px(c,x+1,279,1,8,'#b18b5c');}px(c,269,291,46,3,'#3b434d');
@@ -87,6 +88,10 @@ function shop(c,s){
   cabinet(c,143,46);cabinet(c,255,46);
   for(let i=0;i<3;i++){const x=42+i*129;oval(c,x+48,224,54,6,'#523d43');timber(c,x,190,96,32,'#89614a');panel(c,x+7,195,81,18,'#ae8255');px(c,x+9,197,77,1,'#d9b480');timber(c,x-4,181,104,9,'#c5a477');px(c,x-2,183,98,1,'#eee0b1');px(c,x+1,190,91,2,'#473b43');}
   counter(c);counter(c,true);
+  // Brass scales, a coin tray and a bound ledger belong to the trading counter.
+  px(c,184,108,16,3,'#514742');px(c,186,108,12,1,'#d4b27b');pixelLine(c,192,108,192,97,'#b39967',2);pixelLine(c,182,98,202,98,'#dcc591');
+  for(const x of[182,201]){pixelLine(c,x,99,x-2,105,'#9c967b');pixelLine(c,x,99,x+2,105,'#9c967b');px(c,x-4,105,8,2,'#9b8057');px(c,x-3,105,6,1,'#ecd4a2');}
+  panel(c,275,108,20,5,'#865951');px(c,279,110,12,1,'#e2cdaa');px(c,276,109,2,3,'#c59369');
   // Tall shop door, iron fittings and a small stained-glass transom.
   panel(c,24,110,65,82,'#684d46');timber(c,30,116,53,75,'#997957');for(const x of[34,43,52,62,73])px(c,x,121,1,65,'#665044');panel(c,35,121,42,21,'#465e70');px(c,38,124,15,15,'#83b6ba');px(c,55,124,18,15,'#9aa986');px(c,37,130,38,2,'#bdaa79');px(c,52,123,2,17,'#ccb589');px(c,68,163,5,4,C.gold);px(c,69,163,2,1,C.cream);for(const y of[147,179]){px(c,31,y,15,3,'#354355');px(c,34,y,1,1,'#a4aa9c');}
   // Woven rug: a quiet contrasting area for the visitors' silhouettes.

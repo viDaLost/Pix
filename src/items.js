@@ -5,7 +5,13 @@ export function paintItemSprite(c,type,color=C.gold){if(!ITEM_TYPES.includes(typ
 export function paintItem(c,type,color=C.gold){
   if(!ITEM_TYPES.includes(type))return false;
   const mid=color,bright=shade(color,44),dark=shade(color,-55),r=(x,y,w,h,k=mid)=>px(c,x,y,w,h,k),p=(a,k=mid)=>polygon(c,a,k);
-  if(type==='sword'||type==='knife'){
+  if(type==='sword'){
+    p([[20,1],[23,2],[22,8],[19,14],[15,18],[11,20],[9,17],[14,15],[17,10],[19,5]],C.ink);
+    p([[20,2],[21,3],[20,8],[18,13],[14,17],[11,18],[10,17],[14,15],[17,9],[19,4]],mid);pixelLine(c,20,3,18,11,bright);pixelLine(c,18,11,12,17,bright);
+    pixelLine(c,9,18,6,24,C.ink,3);pixelLine(c,10,18,7,24,'#aa7950',2);r(7,24,3,2,C.gold);
+    p([[10,17],[16,18],[17,22],[14,26],[9,27],[5,25],[5,22],[7,23],[7,25],[11,25],[14,23],[14,20],[9,19]],C.ink);
+    pixelLine(c,12,18,15,21,C.gold);pixelLine(c,15,21,13,24,bright);pixelLine(c,13,24,8,25,C.gold);r(7,18,8,1,bright);
+  }else if(type==='knife'){
     const tip=type==='knife'?7:1;p([[13,tip],[17,tip+5],[16,18],[10,18],[11,tip+5]],C.ink);p([[13,tip+1],[15,tip+5],[14,18],[11,18],[12,tip+5]],mid);
     pixelLine(c,13,tip+2,12,16,bright);r(14,tip+5,1,11,dark);r(7,17,13,3,C.ink);r(8,17,11,1,C.gold);r(10,18,7,1,'#bc834c');r(12,20,3,5,'#654137');r(12,21,2,1,'#d5a267');r(12,23,2,1,'#b98052');r(11,25,5,2,C.ink);r(12,25,3,1,C.gold);
   }else if(type==='pickaxe'){

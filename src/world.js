@@ -15,6 +15,7 @@ function house(c,x,y){oval(c,x+24,y+35,43,7,'#527967');panel(c,x,y+5,58,36,'#b8a
 function ruins(c,x,y){oval(c,x+24,y+34,39,7,'#56847a');px(c,x-9,y+31,71,6,'#768b80');for(let i=0;i<3;i++){const xx=x+i*22,yy=y-i%2*7;panel(c,xx,yy,13,34,'#95a59a');px(c,xx+3,yy+3,2,27,'#c0c7ae');px(c,xx+10,yy+6,1,22,'#657e7b');panel(c,xx-3,yy-4,19,7,'#b9c0a5');px(c,xx+4,yy+15,5,1,'#718888');}px(c,x+7,y+35,7,2,'#bbc0a1');px(c,x+26,y+36,8,2,'#a9bba0');}
 function worldBase(c,s){
   px(c,0,0,480,320,'#91b584');polygon(c,[[0,67],[70,60],[126,98],[207,79],[262,129],[370,99],[480,144],[480,320],[0,320]],'#86ab7e');polygon(c,[[0,217],[70,197],[123,235],[200,210],[259,276],[393,242],[480,282],[480,320],[0,320]],'#9dbc88');grass(c);
+  for(let y=220;y<320;y++){const coast=Math.round(467-(y-220)*.65+Math.sin(y*.1)*2);px(c,coast,y,480-coast,1,'#c9bb92');px(c,coast+5,y,475-coast,1,'#6398ad');px(c,coast+8,y,472-coast,1,'#4d819e');}
   for(let i=0;i<8;i++)mountain(c,165+i*43,6+i%2*11,33+i%3*5,67+i%3*7);
   // The river's banks are stationary; just highlights move after caching.
   for(let y=83;y<320;y++){const x=Math.round(279+Math.sin(y/42)*24);px(c,x-4,y,30,1,'#627e77');px(c,x-1,y,24,1,'#477e9c');px(c,x+2,y,17,1,'#6db3c1');px(c,x+3,y,2,1,'#b2d9ce');}
@@ -23,12 +24,14 @@ function worldBase(c,s){
   for(const [x,y,scale]of[[20,125,1.1],[52,129,.8],[98,113,.85],[27,186,1.15],[72,203,.9],[109,178,.8],[30,249,.9],[95,265,.9],[140,145,.7],[439,166,.7],[457,210,.8]])tree(c,x,y,scale);
   for(const[x,y,size]of[[57,84,.8],[129,110,.7],[434,124,.8],[404,193,.8],[164,55,.7],[462,86,.9]])fir(c,x,y,size);
   house(c,176,220);
+  panel(c,393,280,64,10,'#946c4f');for(let x=396;x<455;x+=6){px(c,x,282,1,6,'#564b48');px(c,x+1,282,3,1,'#d2af7a');}for(const x of[396,434,451]){px(c,x,277,3,15,'#4c4244');px(c,x,278,2,2,'#d6b889');}
+  polygon(c,[[445,262],[477,262],[473,269],[451,270]],'#3c4050');px(c,449,263,25,2,'#a17154');pixelLine(c,461,238,461,262,'#7b684e',2);polygon(c,[[459,239],[459,259],[444,258]],'#e3d8b2');polygon(c,[[464,242],[476,258],[464,259]],'#cfcbaa');px(c,459,240,1,15,'#fff0c4');
   oval(c,201,107,34,7,'#697c78');polygon(c,[[177,105],[177,78],[187,70],[213,70],[224,82],[224,105]],'#667d85');polygon(c,[[184,104],[184,84],[190,80],[207,80],[216,89],[216,104]],'#263a51');panel(c,181,77,42,6,'#bc9d68');panel(c,183,83,5,25,'#ab855c');panel(c,212,83,5,25,'#ad865c');px(c,190,103,24,2,'#a9b5a0');panel(c,225,100,20,11,'#946f4e');oval(c,229,112,3,3,C.ink);oval(c,241,112,3,3,C.ink);px(c,228,102,14,1,'#cca36c');
-  ruins(c,328,146);
+  ruins(c,328,146);polygon(c,[[329,145],[334,137],[343,132],[358,132],[368,140],[373,145]],'#bec5aa');polygon(c,[[336,145],[340,140],[347,137],[356,137],[361,142],[363,145]],'#7c9c8c');px(c,349,131,3,5,'#d8d6b6');
   for(let i=0;i<3;i++){panel(c,358+i*13,57-i%2*5,9,16,'#8d85a0');px(c,360+i*13,59-i%2*5,2,10,'#c7b3df');}
   panel(c,406,224,28,51,'#9daaa1');px(c,408,227,3,43,'#d1d3b8');px(c,427,229,3,39,'#6f8689');panel(c,402,219,35,10,'#637b85');panel(c,411,211,18,9,'#bbaa85');panel(c,414,233,10,14,s.ended?'#e3c67b':'#4c6476');px(c,418,235,2,10,s.ended?'#fff5bd':'#3a506a');px(c,413,272,14,3,'#596e71');
   if(!s.flags.includes('mine')&&!s.upgrades.furnace)px(c,170,65,79,51,'#34354c44');if(!s.flags.includes('ruins')&&!s.technologies.includes('runes')&&!s.skills.includes('ruinlore'))px(c,315,134,80,54,'#34354c55');if(!s.technologies.includes('lunar'))px(c,329,25,93,57,'#34354c55');
-  for(let i=0;i<15;i++){const x=18+i*93%450,y=180+i*67%125;px(c,x,y,4,2,'#6b8b77');px(c,x+1,y,2,1,'#b4c49d');}
+  for(let i=0;i<15;i++){const x=18+i*93%450,y=180+i*67%125;if(x>400&&y>276)continue;px(c,x,y,4,2,'#6b8b77');px(c,x+1,y,2,1,'#b4c49d');}
 }
 export function paintWorld(c,s,time){const key=`map-${s.ended}-${s.flags.join('-')}-${s.technologies.join('-')}-${s.upgrades.furnace}-${s.skills.includes('ruinlore')}`;let image=backgrounds.get(key);if(!image){image=canvas(480,320);worldBase(image.getContext('2d'),s);backgrounds.set(key,image);if(backgrounds.size>12)backgrounds.delete(backgrounds.keys().next().value);}c.drawImage(image,0,0);for(let i=0;i<12;i++){const y=104+i*17,x=279+Math.sin(y/42)*24+5+(Math.floor(time*2+i)%3);px(c,x,y,5,1,'#b5e3db');}if(s.ended){c.save();c.globalAlpha=.5+.2*Math.sin(time*2);oval(c,420,218,7,4,'#ffecab');c.restore();}}
 function regionBase(c,id){

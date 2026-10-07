@@ -42,5 +42,5 @@ export function paintWorkCloseup(canvasEl,s,r,time=0){
     panel(c,x+1,hy+10,6,34,'#bd8d5b');polygon(c,[[x-19,hy],[x+19,hy],[x+24,hy+5],[x+20,hy+14],[x-19,hy+14],[x-24,hy+8]],'#243349');px(c,x-18,hy+2,35,8,'#92b1bf');px(c,x-17,hy+2,31,2,'#d2dfcf');px(c,x+13,hy+5,8,6,'#536f87');px(c,x-19,hy+3,3,7,'#bccdc6');
     if(t.hits.length>2){c.save();c.globalAlpha=.34;c.translate(304,14);c.scale(1.4,1.4);paintItemSprite(c,w.recipe,'#d6c799');c.restore();}
   }
-  c.save();const point=[[88,243],[187,150],[283,246]][step];c.translate(180-point[0],76-point[1]);drawEffects(c,r.effects,time,r.reduced);c.restore();paintRune(c,w.rune,315,32,now);
+  c.save();const point=[[88,222],[187,150],[283,246]][step];c.translate(180-point[0],76-point[1]);drawEffects(c,r.effects,time,r.reduced);c.restore();paintRune(c,w.rune,315,32,now);
 }
