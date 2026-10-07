@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#253a36">
+  <meta name="description" content="Кузница чудес — пиксельная игра о ремесле, торговле и маленьком городе. Создавай вещи, открывай чертежи и помогай путешественникам.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./assets/icon-192.png">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./styles.css">
+  <title>Кузница чудес</title>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="Кузница чудес — главная"><img src="./assets/icon.svg" alt=""><span>Кузница <strong>чудес</strong></span></a>
+      <button id="menu-button" class="icon-button menu-button" aria-label="Настройки и сохранение"><span></span><span></span><span></span></button>
+    </header>
+    <div id="hud" class="hud" aria-label="Ресурсы игрока"></div>
+    <main>
+      <section class="scene-card" aria-label="Пиксельная мастерская">
+        <canvas id="scene" width="384" height="220" aria-label="Кузнец у наковальни, горящий горн и лавка с покупателями" role="img"></canvas>
+        <div class="scene-top"><span id="scene-label">Твоя мастерская</span><span id="level-label">Начинающий мастер</span></div>
+        <div id="scene-actions" class="scene-actions"></div>
+        <button id="end-day" class="day-button" aria-label="Завершить день и восстановить силы">Завершить день <span>→</span></button>
+      </section>
+      <div id="guide" class="guide"></div>
+      <div id="storage-warning" class="storage-warning" hidden></div>
+      <section id="panel" class="panel" aria-live="off"></section>
+    </main>
+    <footer class="save-footer"><span id="save-status">Прогресс сохраняется на устройстве</span><span>Сделано с искрой</span></footer>
+    <nav id="navigation" class="bottom-nav" aria-label="Разделы игры"></nav>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <dialog id="dialog" aria-labelledby="dialog-title"><div id="dialog-body"></div></dialog>
+  <input type="file" id="import-file" accept=".json,application/json" hidden>
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
