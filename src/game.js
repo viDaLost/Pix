@@ -88,6 +88,25 @@ export const WORK_STAGES = [
   {id:'quench',name:'Закалка',station:'barrel',icon:'barrel'},
   {id:'finish',name:'Отделка',station:'bench',icon:'grindstone'},
 ];
+export const DESIGNS = [
+  {id:'balanced',name:'Обычный',icon:'anvil',value:1,desc:'Универсальная форма без дополнительных затрат.'},
+  {id:'sturdy',name:'Усиленный',icon:'shield',value:1.05,trait:'Прочный',desc:'+2 к качеству при точной ковке. Требует на одну порцию металла больше.'},
+  {id:'light',name:'Лёгкий',icon:'wind',value:1.03,trait:'Лёгкий',desc:'Экономит одну порцию металла, даёт лёгкость. Качество на 2 ниже.'},
+  {id:'ornate',name:'Изящный',icon:'ring',value:1.12,trait:'Изящный',desc:'Для коллекционеров: +12% к цене и изящность. Расходует кристалл.'},
+];
+export function designAvailable(state,id){return id==='balanced'||(['sturdy','light'].includes(id)&&state.skills.includes('precision'))||(id==='ornate'&&state.equipment.grindstone>0);}
+export function workCosts(state,recipe,material='iron',rune='none',design='balanced'){
+  check(DESIGNS.some(d=>d.id===design)&&designAvailable(state,design),'Сначала открой точную работу или купи точильный круг.');
+  const costs=craftCosts(state,recipe,material,rune),metal=MATERIALS[material].costs;
+  if(design==='sturdy')for(const[id,n]of Object.entries(metal))costs[id]=(costs[id]||0)+n;
+  if(design==='light')for(const[id,n]of Object.entries(metal))costs[id]=Math.max(n,costs[id]-n);
+  if(design==='ornate')costs.crystal=(costs.crystal||0)+1;
+  return costs;
+}
+export function stampOptions(state){return [{id:'none',name:'Без клейма',icon:'anvil'},...(state.crafted>=3?[{id:'ember',name:'Искра',icon:'fire'}]:[]),...(state.crafted>=3&&state.skills.includes('scouting')?[{id:'leaf',name:'Лист',icon:'wood'}]:[]),...(state.skills.includes('mastercraft')?[{id:'star',name:'Мастер',icon:'crown'}]:[])];}
+export function markWork(state,id){check(state.work?.step===4,'Клеймо ставится на этапе отделки.');check(stampOptions(state).some(s=>s.id===id),'Сначала создай три изделия или открой нужный навык.');state.work.mark=id;}
+export function recordCraftsmanship(state,stats){check(state.work?.step===2&&validCraftsmanship(stats),'Некорректный результат ковки.');state.work.craftsmanship={combo:stats.combo,reheats:stats.reheats,zones:[...stats.zones]};}
+function validCraftsmanship(v){return v&&Number.isInteger(v.combo)&&v.combo>=0&&v.combo<=5&&Number.isInteger(v.reheats)&&v.reheats>=0&&v.reheats<=15&&Array.isArray(v.zones)&&v.zones.length===3&&v.zones.every(n=>Number.isInteger(n)&&n>=0&&n<=5)&&v.zones.reduce((a,b)=>a+b,0)===5;}
 const BUYER_TASTES = {
   mira:{category:'tools',trait:'Прочный',line:'В шахте вещам достаётся. Ищу прочный инструмент или надёжный свет.'},
   bren:{category:'weapons',trait:'Острый',line:'Нужна вещь для дозора. Ценю клинки и качественную заточку.'},
@@ -150,10 +169,10 @@ export function newGame(seed = 246819) {
 }
 export function itemValue(item) {
   const r = recipeById(item.recipe); const m = MATERIALS[item.material]; const u = RUNES[item.rune];
-  return Math.max(1, Math.round(r.base * m.value * u.multiplier * (.65 + item.quality / 125) * (item.finish === 'polish' || item.finish === 'sharpen' ? 1.06 : 1) * (item.signature ? 1.1 : 1)));
+  return Math.max(1, Math.round(r.base * m.value * u.multiplier * (.65 + item.quality / 125) * (item.finish === 'polish' || item.finish === 'sharpen' ? 1.06 : 1) * (item.signature ? 1.1 : 1) * (DESIGNS.find(d=>d.id===item.design)?.value||1) * (item.mark&&item.mark!=='none'?1.04:1)));
 }
 export function itemName(item) { return recipeById(item.recipe)?.name || 'Изделие'; }
-export function itemTraits(item) { return [...new Set([...MATERIALS[item.material].traits, ...(RUNES[item.rune].trait ? [RUNES[item.rune].trait] : []), ...(item.temper === 'oil' || item.finish === 'sharpen' ? ['Острый'] : []), ...(item.temper === 'air' ? ['Лёгкий'] : []), ...(item.finish === 'polish' ? ['Изящный'] : [])])]; }
+export function itemTraits(item) { return [...new Set([...MATERIALS[item.material].traits, ...(RUNES[item.rune].trait ? [RUNES[item.rune].trait] : []), ...(item.temper === 'oil' || item.finish === 'sharpen' ? ['Острый'] : []), ...(item.temper === 'air' ? ['Лёгкий'] : []), ...(item.finish === 'polish' ? ['Изящный'] : []), ...(DESIGNS.find(d=>d.id===item.design)?.trait?[DESIGNS.find(d=>d.id===item.design).trait]:[])])]; }
 export function craft(state, id, material = 'iron', rune = 'none', quality = 70, automatic = false) {
   check(!state.work && !state.trip, 'Сначала заверши текущую работу или вылазку.');
   check(knownRecipe(state, id), 'Сначала изучи этот чертёж.');
@@ -315,6 +334,7 @@ export function deserialize(raw) {
   for (const u of UPGRADES) check(Number.isInteger(value.upgrades[u.id]) && value.upgrades[u.id] >= 0 && value.upgrades[u.id] <= u.max, 'Некорректное улучшение.');
   check(Array.isArray(value.stock) && value.stock.length <= 60 && Array.isArray(value.relics) && value.relics.length <= 20, 'Некорректный инвентарь.');
   check(value.stock.every(i => i && Number.isInteger(i.id) && i.id > 0 && i.id <= 1000000 && recipeById(i.recipe) && MATERIALS[i.material]?.costs && RUNES[i.rune] && Number.isInteger(i.quality) && i.quality >= 0 && i.quality <= 100), 'Некорректные изделия.');
+  check(value.stock.every(i=>(!i.design||DESIGNS.some(d=>d.id===i.design))&&(!i.mark||['none','ember','leaf','star'].includes(i.mark))&&(!i.scores||(Array.isArray(i.scores)&&i.scores.length===3&&i.scores.every(n=>Number.isFinite(n)&&n>=0&&n<=1)))&&(!i.craftsmanship||validCraftsmanship(i.craftsmanship))), 'Некорректные свойства изделия.');
   check(value.relics.every(i => i && Number.isInteger(i.id) && i.id > 0 && i.id <= 1000000 && recipeById(i.recipe)), 'Некорректные находки.');
   const inventoryIds = [...value.stock, ...value.relics].map(i => i.id);
   check(new Set(inventoryIds).size === inventoryIds.length, 'Повторяющиеся предметы в сохранении.');
@@ -334,7 +354,7 @@ export function deserialize(raw) {
   check(!value.work || validWork(value.work), 'Некорректная незавершённая работа.');
   check(!value.trip || validTrip(value.trip), 'Некорректная экспедиция.');
   check(!(value.work && value.trip), 'Две активные работы в сохранении.');
-  result.work = value.work || null; result.trip = value.trip || null;
+  result.work = value.work ? {...value.work,design:value.work.design||'balanced',mark:value.work.mark||'none'} : null; result.trip = value.trip || null;
   check(!result.work?.relicId || result.relics.some(r=>r.id===result.work.relicId&&r.recipe===result.work.recipe),'Находка для реставрации отсутствует.');
   check(!value.customers || (Array.isArray(value.customers) && value.customers.length <= 10 && value.customers.every(c => c && typeof c.id === 'string' && c.id.startsWith('buyer-') && CLIENTS.some(p => p.id === c.client) && Number.isInteger(c.wallet) && c.wallet >= 0 && c.wallet <= 10000 && Number.isInteger(c.quality) && c.quality >= 0 && c.quality <= 100 && Number.isInteger(c.attempts) && c.attempts >= 0 && c.attempts <= 2)), 'Некорректные покупатели.');
   result.customers = (value.customers || []).map(c => ({...c,greeted:Boolean(c.greeted),served:Boolean(c.served)}));
@@ -380,7 +400,7 @@ export function buyEquipment(state,id) {
 }
 function qualityBonus(state,rune) { return state.upgrades.furnace*4 + state.equipment.anvil*2 + (state.skills.includes('precision') ? 3 : 0) + (state.skills.includes('mastercraft') ? 5 : 0) + (rune !== 'none' ? state.equipment.engraver*4 : 0); }
 export function workStage(state) { return state.work ? WORK_STAGES[state.work.step] : null; }
-export function beginWork(state,recipe,material='iron',rune='none',relicId=null) {
+export function beginWork(state,recipe,material='iron',rune='none',relicId=null,design='balanced') {
   check(!state.work && !state.trip,'Сначала заверши текущую работу или экспедицию.');
   const relic=relicId===null ? null : state.relics.find(r=>r.id===relicId);
   check(relicId===null || relic,'Эта находка уже использована.');
@@ -390,9 +410,10 @@ export function beginWork(state,recipe,material='iron',rune='none',relicId=null)
   check(state.stock.length<60,'Витрина заполнена.');
   const energy=relic ? 1 : 2, fee=relic ? 8 : 0;
   check(state.energy>=energy,`Нужно ${energy} единицы сил.`); check(state.gold>=fee,'На восстановление нужны 8 монет.');
-  const costs=relic ? {wood:2,coal:1} : craftCosts(state,recipe,material,rune); payResources(state,costs);
+  check(DESIGNS.some(d=>d.id===design)&&designAvailable(state,design),'Этот способ ковки пока не открыт.');
+  const costs=relic ? {wood:2,coal:1} : workCosts(state,recipe,material,rune,design); payResources(state,costs);
   state.gold-=fee; state.energy-=energy;
-  state.work={recipe,material,rune,step:0,scores:[],temper:'water',finish:'plain',day:state.day,costs,energy,fee,relicId:relic?.id || null};
+  state.work={recipe,material,rune,design:relic?'balanced':design,mark:'none',step:0,scores:[],temper:'water',finish:'plain',day:state.day,costs,energy,fee,relicId:relic?.id || null};
   log(state,`Начата работа: ${recipeById(recipe).name}. Материалы отложены для заготовки.`);
   return state.work;
 }
@@ -422,10 +443,11 @@ export function advanceWork(state,action,value) {
   if(work.step<WORK_STAGES.length)return null;
   const [prepare,heat,hammer]=work.scores;
   const base=work.relicId ? 66 : 48;
-  const quality=Math.min(100,Math.round(base + prepare*6 + heat*16 + hammer*22 + (work.temper==='air' ? 2 : 4) + (work.finish==='plain' ? 4 : 7) + qualityBonus(state,work.rune)));
-  const item={id:state.nextId++,recipe:work.recipe,material:work.material,rune:work.rune,quality,day:state.day,source:work.relicId ? 'Восстановлено' : 'Ручная работа',temper:work.temper,finish:work.finish,signature:state.skills.includes('mastercraft')};
+  const design=work.design||'balanced',bonus=(design==='sturdy'&&hammer>=.65?2:design==='light'?-2:0)+(work.craftsmanship?.combo>=3?Math.min(3,work.craftsmanship.combo-1):0);
+  const quality=Math.min(100,Math.round(base + prepare*6 + heat*16 + hammer*22 + (work.temper==='air' ? 2 : 4) + (work.finish==='plain' ? 4 : 7) + qualityBonus(state,work.rune)+bonus));
+  const item={id:state.nextId++,recipe:work.recipe,material:work.material,rune:work.rune,quality,day:state.day,source:work.relicId ? 'Восстановлено' : 'Ручная работа',temper:work.temper,finish:work.finish,signature:state.skills.includes('mastercraft'),design,mark:work.mark||'none',scores:[...work.scores],...(work.craftsmanship?{craftsmanship:work.craftsmanship}:{})};
   if(work.relicId)state.relics=state.relics.filter(r=>r.id!==work.relicId);
-  state.stock.push(item); state.crafted++; gainXP(state,12);
+  state.stock.push(item); state.crafted++; gainXP(state,12);if(item.mark!=='none')state.fame++;
   if(!state.collection.includes(work.recipe))state.collection.push(work.recipe);
   state.work=null; log(state,`Завершена работа: ${itemName(item)} · качество ${quality}. +12 опыта.`);
   return item;
@@ -437,7 +459,7 @@ export function cancelWork(state) {
   state.work=null; log(state,'Заготовка убрана. До разметки возвращаются все материалы, после — половина металла.');
 }
 function validWork(w) {
-  return w && recipeById(w.recipe) && MATERIALS[w.material]?.costs && RUNES[w.rune] && Number.isInteger(w.day) && w.day>=1 && (!w.relicId || (Number.isInteger(w.relicId)&&w.relicId>0)) && Number.isInteger(w.step) && w.step>=0 && w.step<5 && Array.isArray(w.scores) && w.scores.length===Math.min(w.step,3) && w.scores.every(n=>Number.isFinite(n)&&n>=0&&n<=1) && ['water','air','oil'].includes(w.temper) && ['plain','polish','sharpen'].includes(w.finish) && Number.isInteger(w.energy) && w.energy>=1 && w.energy<=2 && Number.isInteger(w.fee) && w.fee>=0 && w.fee<=8 && w.costs && Object.entries(w.costs).every(([id,n])=>MATERIALS[id]&&Number.isInteger(n)&&n>=0&&n<=50);
+  return w && (!w.design||DESIGNS.some(d=>d.id===w.design)) && (!w.mark||['none','ember','leaf','star'].includes(w.mark)) && (!w.craftsmanship||validCraftsmanship(w.craftsmanship)) && recipeById(w.recipe) && MATERIALS[w.material]?.costs && RUNES[w.rune] && Number.isInteger(w.day) && w.day>=1 && (!w.relicId || (Number.isInteger(w.relicId)&&w.relicId>0)) && Number.isInteger(w.step) && w.step>=0 && w.step<5 && Array.isArray(w.scores) && w.scores.length===Math.min(w.step,3) && w.scores.every(n=>Number.isFinite(n)&&n>=0&&n<=1) && ['water','air','oil'].includes(w.temper) && ['plain','polish','sharpen'].includes(w.finish) && Number.isInteger(w.energy) && w.energy>=1 && w.energy<=2 && Number.isInteger(w.fee) && w.fee>=0 && w.fee<=8 && w.costs && Object.entries(w.costs).every(([id,n])=>MATERIALS[id]&&Number.isInteger(n)&&n>=0&&n<=50);
 }
 
 function makeCustomer(state,index=0) {

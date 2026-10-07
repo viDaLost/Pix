@@ -1,5 +1,6 @@
+import {workProfile} from './crafting.js';
 export function createWorkInput(work,now=0) {
-  return {step:work.step,day:work.day,started:now,holding:false,position:0,hits:[],lastHit:-1000,finishMethod:'plain',rivets:[],rubDistance:0,dragging:false};
+  return {step:work.step,day:work.day,started:now,holding:false,position:0,hits:[],lastHit:-1000,finishMethod:'plain',rivets:[],rubDistance:0,dragging:false,profile:workProfile(work),cutPositions:[],temperature:.92,zoneHits:[0,0,0],combo:0,bestCombo:0,reheats:0,reheating:false};
 }
 export function finishProgress(input) {
   return input.finishMethod==='plain'?input.rivets.length/3:Math.min(1,input.rubDistance/260);
