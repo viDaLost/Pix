@@ -242,8 +242,8 @@ function animate(t){
     const cy=working?Math.max(160/zoom,Math.min(320-160/zoom,(point[1]+actor.y-20)/2)):160;
     const ease=reduced.matches?1:1-Math.exp(-dt*6);camera.x+=(cx-camera.x)*ease;camera.y+=(cy-camera.y)*ease;camera.zoom+=(zoom-camera.zoom)*ease;
     const sceneControl=$('#scene-work-target');if(sceneControl&&working){
-      sceneControl.style.left=`${((point[0]-camera.x)*camera.zoom+240)/480*100}%`;
-      sceneControl.style.top=`${((point[1]-28-camera.y)*camera.zoom+160)/320*100}%`;
+      sceneControl.style.left=`${((point[0]+(state.work.step===0?30:0)-camera.x)*camera.zoom+240)/480*100}%`;
+      sceneControl.style.top=`${((point[1]-(state.work.step===0?40:28)-camera.y)*camera.zoom+160)/320*100}%`;
     }
     if(working&&uiTask&&!busy&&!dialog.open&&state.work.step<3){
       if(state.work.step===1){if(uiTask.holding)uiTask.position=Math.min(1,(t-uiTask.started)/2400);else uiTask.position=Math.max(0,uiTask.position-dt*.06);}
