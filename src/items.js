@@ -1,5 +1,5 @@
 import {C,px,polygon,oval,shade,pixelLine,sparkle,canvas} from './pixel.js';
-export const ITEM_TYPES=['knife','sword','axe','pickaxe','hammer','lantern','shield','amulet','ring','staff','key','goblet'];
+export const ITEM_TYPES=['knife','sword','axe','pickaxe','hammer','lantern','shield','amulet','ring','staff','key','goblet','horseshoe','shears','compass','bell'];
 const sprites=new Map();
 export function paintItemSprite(c,type,color=C.gold){if(!ITEM_TYPES.includes(type))return false;const key=type+'-'+color;let image=sprites.get(key);if(!image){image=canvas(28,28);paintItem(image.getContext('2d'),type,color);sprites.set(key,image);if(sprites.size>192)sprites.delete(sprites.keys().next().value);}c.imageSmoothingEnabled=false;c.drawImage(image,0,0);return true;}
 export function paintItem(c,type,color=C.gold){
@@ -35,6 +35,24 @@ export function paintItem(c,type,color=C.gold){
     pixelLine(c,10,27,15,10,C.ink,4);pixelLine(c,11,26,16,10,'#a97751',2);pixelLine(c,11,25,16,11,'#dbb177');p([[9,3],[17,1],[21,5],[19,11],[14,14],[8,10],[7,6]],C.ink);p([[10,3],[16,2],[20,5],[18,10],[14,12],[9,9],[8,6]],mid);p([[11,4],[15,3],[17,6],[15,10],[11,9],[10,6]],C.purple);r(11,5,2,3,'#e5caff');r(12,14,6,2,C.gold);r(12,19,4,1,C.gold);r(12,15,2,1,C.cream);
   }else if(type==='key'){
     p([[8,2],[17,2],[21,5],[21,11],[18,14],[15,14],[15,26],[10,26],[10,14],[7,13],[4,9],[5,5]],C.ink);p([[8,3],[17,3],[20,6],[20,10],[17,13],[13,13],[13,25],[11,25],[11,13],[8,12],[5,9],[6,6]],mid);r(9,5,8,5,C.ink);r(10,6,6,3,'#535269');r(8,4,9,1,bright);r(6,6,1,3,bright);r(11,15,1,8,bright);r(13,19,6,2,dark);r(13,23,7,2,mid);r(14,23,5,1,bright);
+  }else if(type==='horseshoe'){
+    p([[6,3],[9,3],[9,17],[11,21],[17,21],[19,17],[19,3],[23,3],[24,17],[21,24],[17,27],[10,27],[6,24],[3,17],[4,5]],C.ink);
+    p([[6,4],[8,4],[8,17],[11,23],[17,23],[21,17],[21,4],[22,4],[23,16],[20,23],[16,25],[11,25],[7,22],[5,16]],mid);
+    pixelLine(c,6,5,6,16,bright);pixelLine(c,7,20,11,24,bright);pixelLine(c,12,24,16,24,bright);pixelLine(c,21,5,21,16,dark);
+    for(const x of[7,21])for(const y of[8,12,17]){r(x,y,1,2,C.ink);r(x-1,y,1,1,bright);}
+  }else if(type==='shears'){
+    pixelLine(c,11,16,7,2,C.ink,4);pixelLine(c,12,15,21,2,C.ink,4);pixelLine(c,11,14,8,3,mid,2);pixelLine(c,13,14,20,3,mid,2);pixelLine(c,8,4,11,12,bright);pixelLine(c,19,4,14,12,bright);
+    for(const [x,y]of[[8,22],[20,22]]){oval(c,x,y,6,5,C.ink);oval(c,x,y,5,4,mid);oval(c,x,y,3,2,'#3b4556');r(x-3,y-3,3,1,bright);}
+    pixelLine(c,11,15,9,20,mid,3);pixelLine(c,14,15,18,20,dark,3);r(11,13,4,4,C.ink);r(12,14,2,2,C.gold);r(12,14,1,1,C.cream);
+  }else if(type==='compass'){
+    oval(c,14,15,12,11,C.ink);oval(c,14,15,11,10,dark);oval(c,14,14,10,9,mid);oval(c,14,14,8,7,'#dfd8b7');oval(c,14,14,6,5,'#b5bcb2');
+    r(11,0,6,3,C.ink);r(12,1,4,1,bright);r(13,3,2,2,mid);pixelLine(c,6,7,10,5,bright);pixelLine(c,20,6,23,12,bright);
+    for(const [x,y]of[[14,7],[21,14],[14,21],[7,14]])r(x,y,1,2,'#577177');
+    p([[12,16],[17,9],[15,16]],'#ae6558');p([[12,16],[9,20],[15,16]],'#46657a');r(13,14,2,2,C.gold);r(13,14,1,1,C.cream);r(8,9,3,1,'#fff2cf');r(7,11,1,3,'#fff2cf');
+  }else if(type==='bell'){
+    r(11,1,6,4,C.ink);r(12,2,4,1,bright);r(12,5,4,2,mid);
+    p([[9,6],[19,6],[21,10],[21,17],[25,22],[25,25],[3,25],[3,22],[7,17],[7,10]],C.ink);
+    p([[10,7],[18,7],[19,10],[19,18],[23,22],[23,23],[5,23],[9,18],[9,10]],mid);pixelLine(c,11,8,11,18,bright);pixelLine(c,10,18,8,21,bright);pixelLine(c,18,10,18,18,dark);r(8,20,14,1,dark);r(5,23,18,1,bright);r(12,25,4,2,C.ink);r(13,25,2,1,C.gold);
   }else if(type==='goblet'){
     p([[4,3],[24,3],[23,12],[20,17],[16,19],[16,23],[22,24],[23,27],[5,27],[6,24],[12,23],[12,19],[8,17],[5,12]],C.ink);p([[5,4],[23,4],[22,11],[19,16],[15,18],[15,24],[21,25],[21,26],[7,26],[7,25],[13,24],[13,18],[9,16],[6,11]],mid);r(6,4,15,2,bright);r(7,6,2,6,bright);r(8,11,2,3,bright);r(20,6,2,7,dark);r(19,13,2,2,dark);r(13,19,1,5,bright);r(9,25,10,1,bright);r(11,8,7,1,shade(mid,-20));r(12,10,5,3,C.ink);r(13,10,3,2,C.red);r(13,10,1,1,'#ffd5ab');
   }

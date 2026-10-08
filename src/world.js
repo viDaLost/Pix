@@ -1,5 +1,6 @@
 import {C,px,oval,polygon,noise,texture,panel,pixelLine,canvas} from './pixel.js';
 import {paintCharacter} from './characters.js';
+import {routeEvent} from './content.js';
 export const MAP_POINTS={forest:{x:77,y:155},mine:{x:202,y:88},ruins:{x:352,y:164},pass:{x:375,y:51},home:{x:205,y:251},beacon:{x:420,y:267}};
 const backgrounds=new Map();
 function firSprite(c,x,y,scale=1){c.save();c.translate(Math.round(x),Math.round(y));c.scale(scale,scale);oval(c,0,6,14,4,'#42655b');px(c,-3,-8,6,20,'#5c4846');px(c,-2,-5,2,14,'#b78b62');polygon(c,[[-18,-3],[-14,-13],[-10,-14],[-13,-17],[-8,-27],[-3,-31],[0,-42],[7,-30],[11,-28],[10,-23],[15,-16],[11,-15],[18,-6],[17,-1]],'#36566a');polygon(c,[[-17,-5],[-12,-15],[-7,-18],[-7,-27],[0,-38],[5,-28],[9,-25],[7,-22],[12,-15],[8,-13],[15,-6],[14,-2],[-7,1]],'#508377');polygon(c,[[-11,-7],[-6,-17],[-3,-17],[-4,-27],[0,-34],[4,-26],[2,-22],[6,-15],[2,-14],[6,-9],[0,-7],[-5,-2]],'#7daa81');px(c,-7,-8,4,1,'#b0c995');px(c,-2,-25,2,1,'#a8c893');px(c,3,-16,3,1,'#aac593');px(c,-1,-4,5,1,'#91b98b');c.restore();}
@@ -33,7 +34,7 @@ function worldBase(c,s){
   if(!s.flags.includes('mine')&&!s.upgrades.furnace)px(c,170,65,79,51,'#34354c44');if(!s.flags.includes('ruins')&&!s.technologies.includes('runes')&&!s.skills.includes('ruinlore'))px(c,315,134,80,54,'#34354c55');if(!s.technologies.includes('lunar'))px(c,329,25,93,57,'#34354c55');
   for(let i=0;i<15;i++){const x=18+i*93%450,y=180+i*67%125;if(x>400&&y>276)continue;px(c,x,y,4,2,'#6b8b77');px(c,x+1,y,2,1,'#b4c49d');}
 }
-export function paintWorld(c,s,time){const key=`map-${s.ended}-${s.flags.join('-')}-${s.technologies.join('-')}-${s.upgrades.furnace}-${s.skills.includes('ruinlore')}`;let image=backgrounds.get(key);if(!image){image=canvas(480,320);worldBase(image.getContext('2d'),s);backgrounds.set(key,image);if(backgrounds.size>12)backgrounds.delete(backgrounds.keys().next().value);}c.drawImage(image,0,0);for(let i=0;i<12;i++){const y=104+i*17,x=279+Math.sin(y/42)*24+5+(Math.floor(time*2+i)%3);px(c,x,y,5,1,'#b5e3db');}if(s.ended){c.save();c.globalAlpha=.5+.2*Math.sin(time*2);oval(c,420,218,7,4,'#ffecab');c.restore();}}
+export function paintWorld(c,s,time){const key=`map-${s.ended}-${s.flags.join('-')}-${s.technologies.join('-')}-${s.upgrades.furnace}-${s.skills.includes('ruinlore')}`;let image=backgrounds.get(key);if(!image){image=canvas(480,320);worldBase(image.getContext('2d'),s);backgrounds.set(key,image);if(backgrounds.size>32)backgrounds.delete(backgrounds.keys().next().value);}c.drawImage(image,0,0);for(let i=0;i<12;i++){const y=104+i*17,x=279+Math.sin(y/42)*24+5+(Math.floor(time*2+i)%3);px(c,x,y,5,1,'#b5e3db');}for(let i=0;i<3;i++){const x=42+(Math.floor(time*8)+i*54)%165,y=34+i*8+Math.round(Math.sin(time*2+i)*2);pixelLine(c,x-3,y,x,y+1,'#526a79');pixelLine(c,x,y+1,x+3,y,'#526a79');}if(s.ended){c.save();c.globalAlpha=.5+.2*Math.sin(time*2);oval(c,420,218,7,4,'#ffecab');c.restore();}}
 function regionBase(c,id){
   px(c,0,0,480,320,id==='pass'?'#a6b6c9':'#9dbc9a');for(let y=0;y<121;y+=8)px(c,0,y,480,8,['#99bfc8','#b1d0ce','#c5dcd0','#d7e4d4'][Math.min(3,Math.floor(y/31))]);
   for(let i=0;i<6;i++)mountain(c,25+i*92,36+i%2*15,70,116-i%3*13);
@@ -45,4 +46,35 @@ function regionBase(c,id){
   if(id==='ruins'){for(const x of[54,104,362,416]){panel(c,x,132,26,98,'#96ada1');panel(c,x-5,126,36,11,'#c3cbb2');px(c,x+5,140,3,76,'#d0d3b4');px(c,x+20,142,2,74,'#6c8c87');for(let y=145;y<214;y+=14)px(c,x+8,y,10,1,'#75918b');}panel(c,345,235,53,35,'#697787');px(c,349,240,45,5,'#ae8cbd');px(c,349,255,45,1,'#92ae9f');for(let i=0;i<7;i++)fir(c,50+i*59,155+i%2*25,.6);}
   if(id==='pass'){for(let i=0;i<8;i++){const x=29+i*56,y=172+i%3*26;polygon(c,[[x,y+30],[x+1,y+10],[x+11,y],[x+24,y+16],[x+20,y+34]],'#666e94');polygon(c,[[x+4,y+29],[x+5,y+12],[x+11,y+4],[x+19,y+17],[x+15,y+30]],'#a7a2c4');px(c,x+9,y+8,2,16,'#d6ccec');px(c,x+5,y+30,13,1,'#8ca2b2');}for(let i=0;i<35;i++)px(c,i*71%480,159+i*47%154,5,1,'#d8dfd6');}
 }
-export function paintRegion(c,s,r,time){const id=s.trip?.region||'forest',key=`region-${id}`;let image=backgrounds.get(key);if(!image){image=canvas(480,320);regionBase(image.getContext('2d'),id);backgrounds.set(key,image);}c.drawImage(image,0,0);paintCharacter(c,r.actor||{x:237,y:282,facing:'up',pose:'idle'},{},time);if(id==='ruins'||id==='pass'){c.save();c.globalAlpha=.5+.2*Math.sin(time*3);for(let i=0;i<4;i++)px(c,67+i*95,189+i%2*44,2,2,'#c5b7e9');c.restore();}}
+function encounterProps(c,event){
+  const x=344,y=262;
+  oval(c,x+29,y+4,43,7,'#536d69');
+  if(event.region==='forest'||event.region==='mine'){
+    for(const xx of[x+8,x+54]){oval(c,xx,y,10,10,'#344653');oval(c,xx,y,7,7,'#a78561');oval(c,xx,y,3,3,'#e0c794');pixelLine(c,xx-6,y-4,xx+6,y+4,'#665246');pixelLine(c,xx-4,y+6,xx+4,y-6,'#665246');}
+    panel(c,x,y-29,64,24,event.region==='mine'?'#667e88':'#967449');px(c,x+3,y-28,56,2,'#d8bb86');
+    for(let i=0;i<4;i++)px(c,x+5+i*15,y-24,2,15,'#5a5150');px(c,x+2,y-7,60,2,'#3f4750');
+    pixelLine(c,x-14,y-10,x+4,y-8,'#9e7751',3);pixelLine(c,x-14,y-10,x+4,y-8,'#cfad78');
+    if(event.region==='mine'){for(let i=0;i<4;i++){polygon(c,[[x+4+i*14,y-29],[x+10+i*14,y-40-i%2*3],[x+21+i*14,y-34],[x+18+i*14,y-27]],'#637a8b');px(c,x+10+i*14,y-37,6,1,'#b5c6b4');}}
+    else{for(let i=0;i<3;i++){panel(c,x+8+i*14,y-39-i%2*7,12,11,'#b2a17c');px(c,x+12+i*14,y-38-i%2*7,2,10,'#77604a');}}
+  }else if(event.region==='ruins'){
+    panel(c,x+5,y-48,52,50,'#657d84');panel(c,x+2,y-53,58,8,'#b7b698');px(c,x+10,y-43,42,2,'#c3c7ab');
+    for(let i=0;i<3;i++){panel(c,x+11+i*13,y-36,10,21,['#ad805a','#8a7e8c','#83966f'][i]);px(c,x+13+i*13,y-34,2,16,'#dfc597');px(c,x+12+i*13,y-22,7,1,'#ecd6a6');}
+    panel(c,x+10,y-10,42,8,'#8d7158');px(c,x+30,y-8,3,3,'#e3bd73');pixelLine(c,x+7,y-39,x+7,y-11,'#c1b993');
+  }else{
+    polygon(c,[[x-6,y],[x+21,y-49],[x+63,y],[x+44,y],[x+23,y-26],[x+13,y]],'#667c86');
+    polygon(c,[[x-3,y-2],[x+21,y-45],[x+21,y-28],[x+12,y-2]],'#c8b991');
+    polygon(c,[[x+24,y-43],[x+59,y-2],[x+45,y-2],[x+25,y-28]],'#8fa19b');
+    pixelLine(c,x+21,y-46,x+21,y-27,'#eedab1');pixelLine(c,x+23,y-48,x+67,y+3,'#474f5e');
+    for(let i=0;i<3;i++)panel(c,x+65+i*5,y-10-i*3,9,5,'#846646');
+  }
+}
+export function paintRegion(c,s,r,time){
+  const id=s.trip?.region||'forest',key=`region-${id}`;let image=backgrounds.get(key);
+  if(!image){image=canvas(480,320);regionBase(image.getContext('2d'),id);backgrounds.set(key,image);}c.drawImage(image,0,0);
+  const event=routeEvent(s.trip?.encounter||s.trip?.encounterResult?.event),hero=r.actor||{x:237,y:282,facing:'up',pose:'idle'};
+  if(event){const propKey=`event-${event.id}`;let props=backgrounds.get(propKey);if(!props){props=canvas(480,320);encounterProps(props.getContext('2d'),event);backgrounds.set(propKey,props);}c.drawImage(props,0,0);
+    const npc={x:299,y:258,facing:'left',pose:s.trip.encounter?'inspect':'wave',poseStarted:0};
+    if(hero.y<258)paintCharacter(c,hero,{},time);paintCharacter(c,npc,{id:event.person},time);if(hero.y>=258)paintCharacter(c,hero,{},time);
+  }else paintCharacter(c,hero,{},time);
+  if(id==='ruins'||id==='pass'){c.save();c.globalAlpha=.5+.2*Math.sin(time*3);for(let i=0;i<4;i++)px(c,67+i*95,189+i%2*44,2,2,'#c5b7e9');c.restore();}
+}

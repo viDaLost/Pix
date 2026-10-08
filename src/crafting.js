@@ -12,6 +12,10 @@ const SHAPES={
   goblet:{kind:'disc',name:'Чаша',marks:[.24,.76],zones:[1,0,2,1,1]},
   key:{kind:'blade',name:'Механизм',marks:[.31,.82],zones:[0,1,0,2,2]},
   staff:{kind:'ring',name:'Навершие',marks:[.23,.69],zones:[1,2,0,1,2]},
+  horseshoe:{kind:'horseshoe',name:'Зацеп и ветви',marks:[.21,.78],zones:[1,0,2,0,2]},
+  shears:{kind:'shears',name:'Две створки',marks:[.26,.74],zones:[0,2,1,0,2]},
+  compass:{kind:'disc',name:'Оправа',marks:[.32,.68],zones:[0,2,1,2,0]},
+  bell:{kind:'bell',name:'Стенки и ушко',marks:[.17,.83],zones:[0,2,1,0,2]},
 };
 export function workProfile(work){return {...(SHAPES[work.recipe]||SHAPES.knife),heat:({iron:.68,copper:.6,bronze:.72,moon:.81}[work.material]||.68)};}
 export function targetZone(input){return input.profile.zones[Math.min(4,input.hits.length)];}

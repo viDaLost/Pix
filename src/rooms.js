@@ -110,8 +110,13 @@ export function paintRoom(c,s,view){
 }
 function flame(frame){let image=fires.get(frame);if(image)return image;image=canvas(54,58);const c=image.getContext('2d');for(let i=0;i<10;i++){const x=2+i*5,h=17+Math.floor(noise(i,frame,25)*31);polygon(c,[[x,56],[x-1,55-h/3],[x+1,55-h],[x+4,52-h/2],[x+5,56]],'#c35741');polygon(c,[[x+1,56],[x,53-h/3],[x+2,55-h*.8],[x+5,53-h*.25],[x+5,56]],'#f29a49');polygon(c,[[x+2,56],[x+1,55-h*.3],[x+3,55-h*.5],[x+4,56]],'#ffe5a0');if(i%3===0)px(c,x+2,42-h,1,2,'#f4c56f');}fires.set(frame,image);return image;}
 export function paintRoomLife(c,s,view,t){
-  if(view==='forge'){c.drawImage(flame(Math.floor(t*9)%8),143,101);if(s.work?.step===1){c.save();c.globalAlpha=.25;oval(c,169,157,23,5,'#ffc675');c.restore();}if(s.equipment.grindstone){const a=t*4;pixelLine(c,345,247,345+Math.cos(a)*12,247+Math.sin(a)*12,'#6d838c');px(c,344,245,2,3,'#ebc179');}}
-  else{const day=Math.floor(t*3)%8;for(const [x,y]of[[173,79],[292,50],[316,103]])if(day%3===0)sparkle(c,x,y,'#d7e1c1',1);}
+  if(view==='forge'){
+    c.drawImage(flame(Math.floor(t*9)%8),143,101);
+    if(s.work?.step===1){c.save();c.globalAlpha=.25;oval(c,169,157,23,5,'#ffc675');c.restore();const lift=Math.round((Math.sin(t*9)+1)*2);px(c,216,148-lift,22,2,'#d5b27e');for(let i=0;i<4;i++)px(c,218,152-lift+i*4,18,1,'#4b3e3d');}
+    if(s.equipment.grindstone){const a=t*4;pixelLine(c,345,247,345+Math.cos(a)*12,247+Math.sin(a)*12,'#6d838c');px(c,344,245,2,3,'#ebc179');}
+    for(let i=0;i<3;i++){const phase=(t*.6+i*.3)%1,x=159+i*8+Math.round(Math.sin(t*2+i)*2),y=141-Math.floor(phase*23);c.save();c.globalAlpha=(1-phase)*.65;px(c,x,y,1,2,'#ffdc90');c.restore();}
+  }else{const day=Math.floor(t*3)%8;for(const [x,y]of[[173,79],[292,50],[316,103]])if(day%3===0)sparkle(c,x,y,'#d7e1c1',1);const sway=Math.round(Math.sin(t*1.6));for(let i=0;i<4;i++)pixelLine(c,237+i*7,44,237+i*7+sway,48,'#c5cc9d');}
+  for(const x of[110,335]){c.save();c.globalAlpha=.1+Math.sin(t*3+x)*.015;oval(c,x,59,16,16,'#ffdaa0');c.restore();px(c,x-1,55,1,6,'#fff0bc');}
   // Just six quiet motes in the light. They do not allocate particles.
   c.save();for(let i=0;i<6;i++){c.globalAlpha=.12+(i%3)*.04;const x=48+i*41+Math.sin(t*.3+i)*5,y=45+(t*5+i*33)%127;px(c,x,y,1,1,'#fff1c7');}c.restore();
 }

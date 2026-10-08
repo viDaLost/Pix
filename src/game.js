@@ -1,3 +1,5 @@
+import {ROUTE_EVENTS,routeEvent,COMMISSION_TITLES} from './content.js';
+export {ROUTE_EVENTS,routeEvent} from './content.js';
 export const SAVE_VERSION = 2;
 export const SETTING = {
   year:1740,town:'Велен',name:'Веленский порт',
@@ -31,6 +33,10 @@ export const RECIPES = [
   { id: 'axe', name: 'Лесной топор', short: 'Топор', metal: 3, wood: 2, base: 49, category: 'tools', learn: 35, desc: 'Хороший баланс для работы в лесу.' },
   { id: 'key', name: 'Ключ от архива', short: 'Ключ', metal: 2, wood: 0, base: 36, category: 'magic', learn: 45, desc: 'Бородчатый ключ от запертого архива старого аббатства.' },
   { id: 'goblet', name: 'Парадный кубок', short: 'Кубок', metal: 3, wood: 0, base: 58, category: 'jewelry', learn: 40, desc: 'Украшение витрины и праздничного стола.' },
+  { id:'horseshoe',name:'Дорожная подкова',short:'Подкова',metal:2,wood:0,base:29,category:'tools',learn:20,desc:'Две ветви, зацеп и ровные отверстия для подковных гвоздей.' },
+  { id:'shears',name:'Ножницы ремесленника',short:'Ножницы',metal:3,wood:0,base:43,category:'tools',learn:30,desc:'Две створки с точным соединением для ткани и тонкой кожи.' },
+  { id:'compass',name:'Дорожный компас',short:'Компас',metal:2,wood:1,base:52,category:'magic',learn:40,desc:'Металлическая оправа защищает стрелку и деления на циферблате.' },
+  { id:'bell',name:'Корабельный колокол',short:'Колокол',metal:3,wood:1,base:54,category:'tools',learn:35,desc:'Сигнал на пристани: ровные стенки, прочное ушко и свободный язык.' },
 ];
 export const TECHNOLOGIES = [
   { id: 'alloys', name: 'Искусство сплавов', cost: 55, desc: 'Открывает бронзу: прочную и лёгкую.', need: 'furnace', level: 1 },
@@ -169,7 +175,7 @@ export function newGame(seed = 246819) {
     flags: [], storyIndex: 0, expeditions: [], orders: [], soldToday: {}, marketToday: 0, collection: [], log: [],
     nextId: 1, tutorial: 0, sound: false, welcomed: false, lastSaved: 0, ended: false,
     xp: 0, skills: ['basics'], equipment: Object.fromEntries(EQUIPMENT.map(e => [e.id,0])),
-    customers: [], rapport: {}, invitedToday: 0, work: null, trip: null };
+    customers: [], rapport: {}, invitedToday: 0, commissions:[], music:false,volume:.6,work: null, trip: null };
 }
 export function itemValue(item) {
   const r = recipeById(item.recipe); const m = MATERIALS[item.material]; const u = RUNES[item.rune];
@@ -293,14 +299,17 @@ export function processRelic(state, id, action) {
   state.energy--; state.relics.splice(index, 1);
 }
 export function currentStory(state) { return STORIES[state.storyIndex] || null; }
-export function orderMatches(item, order) { return item.recipe === order.recipe && item.quality >= order.quality && (!order.material || item.material === order.material) && (!order.rune || item.rune === order.rune); }
+export function orderMatches(item, order) { return item.recipe === order.recipe && item.quality >= order.quality && (!order.material || item.material === order.material) && (!order.rune || item.rune === order.rune) && (!order.design || (item.design||'balanced')===order.design) && (!order.finish || item.finish===order.finish); }
 export function fulfill(state, orderId, itemId) {
   const story = currentStory(state); const isStory = story?.id === orderId;
-  const order = isStory ? story : state.orders.find(o => o.id === orderId); check(order, 'Заказ уже выполнен.');
+  const commission=state.commissions.find(o=>o.id===orderId);
+  const order = isStory ? story : commission||state.orders.find(o => o.id === orderId); check(order, 'Заказ уже выполнен.');
+  check(!commission||commission.deadline>=state.day,'Срок личного заказа истёк.');
   const itemIndex = state.stock.findIndex(i => i.id === itemId); check(itemIndex >= 0, 'Нужное изделие не найдено.');
   check(orderMatches(state.stock[itemIndex], order), 'Предмет не соответствует требованиям заказа.');
-  state.stock.splice(itemIndex, 1); state.gold += order.reward; state.fame += order.fame; state.completed++; gainXP(state,isStory ? 18 : 12);
+  state.stock.splice(itemIndex, 1); state.gold += order.reward; state.fame += order.fame; state.completed++; gainXP(state,isStory ? 18 : commission?16:12);
   if (isStory) { state.storyIndex++; state.tutorial = Math.max(state.tutorial, 2); state.expeditions.push({ story: story.id, due: state.day + 1 }); }
+  else if(commission){state.commissions=state.commissions.filter(o=>o.id!==orderId);state.rapport[order.client]=Math.min(50,(state.rapport[order.client]||0)+2);}
   else state.orders = state.orders.filter(o => o.id !== orderId);
   log(state, `Выполнен заказ «${order.title}». +${order.reward} монет, +${order.fame} репутации.`); return order;
 }
@@ -310,13 +319,15 @@ export function ensureOrders(state) {
   while (state.orders.length < 2) {
     const r = choices[Math.floor(random(state) * choices.length)]; const client = CLIENTS[Math.floor(random(state) * CLIENTS.length)];
     state.orders.push({ id: `order-${state.nextId++}`, client: client.id, recipe: r.id, quality: 55 + Math.floor(random(state) * 3) * 5,
-      reward: Math.round(r.base * 1.6 + state.day * 2), fame: 3, title: `Заказ: ${r.short}`, text: 'Нужна добротная вещь для работы и дороги. Материал выбери сам.' });
+      reward: Math.round(r.base * 1.6 + Math.min(30,mastery(state).level*2)), fame: 3, title: `Заказ: ${r.short}`, text: 'Нужна добротная вещь для работы и дороги. Материал выбери сам.' });
   }
 }
 export function endDay(state) {
   check(!state.work && !state.trip, 'Сначала закончи работу или вернись из экспедиции.');
   state.day++; state.energy = maxEnergy(state); state.soldToday = {}; state.marketToday = 0; state.customers = []; state.invitedToday = 0;
   const reports = [];
+  for(const o of state.commissions.filter(o=>o.deadline<state.day))log(state,`Срок заказа «${o.title}» истёк. Материалы и изделия остаются у тебя.`);
+  state.commissions=state.commissions.filter(o=>o.deadline>=state.day);
   for (const expedition of state.expeditions.filter(e => e.due <= state.day)) {
     const story = STORIES.find(s => s.id === expedition.story); add(state, story.returns);
     if (!state.flags.includes(story.unlock)) state.flags.push(story.unlock);
@@ -347,6 +358,7 @@ export function deserialize(raw) {
   check(Array.isArray(value.expeditions) && value.expeditions.length <= STORIES.length && value.expeditions.every(e => e && STORIES.some(s => s.id === e.story) && Number.isInteger(e.due) && e.due >= 1), 'Некорректные путешествия.');
   check(new Set(value.expeditions.map(e => e.story)).size === value.expeditions.length, 'Повторяющиеся путешествия.');
   check(Array.isArray(value.orders) && value.orders.length <= 2 && value.orders.every(o => o && typeof o.id === 'string' && o.id.startsWith('order-') && o.id.length <= 40 && CLIENTS.some(c => c.id === o.client) && recipeById(o.recipe) && Number.isFinite(o.reward) && o.reward >= 0 && o.reward <= 100000 && Number.isFinite(o.fame) && o.fame >= 0 && o.fame <= 100 && Number.isInteger(o.quality) && o.quality >= 0 && o.quality <= 100 && (!o.material || MATERIALS[o.material]?.costs) && (!o.rune || RUNES[o.rune])), 'Некорректные заказы.');
+  check(!value.commissions||(Array.isArray(value.commissions)&&value.commissions.length<=2&&value.commissions.every(o=>o&&/^commission-buyer-\d+$/.test(o.id)&&CLIENTS.some(c=>c.id===o.client)&&recipeById(o.recipe)&&Number.isInteger(o.deadline)&&o.deadline>=1&&o.deadline<=value.day+30&&Number.isInteger(o.reward)&&o.reward>=1&&o.reward<=1000&&Number.isInteger(o.fame)&&o.fame>=0&&o.fame<=10&&Number.isInteger(o.quality)&&o.quality>=0&&o.quality<=100&&MATERIALS[o.material]?.costs&&RUNES[o.rune]&&(!o.design||DESIGNS.some(d=>d.id===o.design))&&(!o.finish||['plain','polish','sharpen'].includes(o.finish)))&&new Set(value.commissions.map(o=>o.id)).size===value.commissions.length),'Некорректные личные заказы.');
   check(Array.isArray(value.flags) && value.flags.every(f => ['mine', 'supplier', 'ruins', 'guild', 'beacon'].includes(f)), 'Некорректные события.');
   const result = { ...newGame(), ...value, version:SAVE_VERSION, day: int(value.day, 1), gold: int(value.gold), fame: int(value.fame), storyIndex: int(value.storyIndex, 0, STORIES.length), nextId: int(value.nextId, 1), sound: Boolean(value.sound), welcomed: Boolean(value.welcomed), ended: Boolean(value.ended) };
   result.xp = int(value.xp, value.crafted*8 + value.sold*3 + value.completed*12);
@@ -355,13 +367,15 @@ export function deserialize(raw) {
   result.equipment = Object.fromEntries(EQUIPMENT.map(e => [e.id,int(value.equipment?.[e.id],0,e.max)]));
   result.rapport = Object.fromEntries(CLIENTS.map(c => [c.id,int(value.rapport?.[c.id],0,50)]));
   result.invitedToday = int(value.invitedToday,0,3);
+  result.music=Boolean(value.music);result.volume=Number.isFinite(value.volume)?Math.max(0,Math.min(1,value.volume)):.6;
+  result.commissions=(value.commissions||[]).filter(o=>o.deadline>=result.day).map(o=>({...o,title:COMMISSION_TITLES[o.client],text:typeof o.text==='string'?o.text.slice(0,500):'Личный заказ жителя порта.'}));
   check(!value.work || validWork(value.work), 'Некорректная незавершённая работа.');
   check(!value.trip || validTrip(value.trip), 'Некорректная экспедиция.');
   check(!(value.work && value.trip), 'Две активные работы в сохранении.');
   result.work = value.work ? {...value.work,design:value.work.design||'balanced',mark:value.work.mark||'none'} : null; result.trip = value.trip || null;
   check(!result.work?.relicId || result.relics.some(r=>r.id===result.work.relicId&&r.recipe===result.work.recipe),'Находка для реставрации отсутствует.');
-  check(!value.customers || (Array.isArray(value.customers) && value.customers.length <= 10 && value.customers.every(c => c && typeof c.id === 'string' && c.id.startsWith('buyer-') && CLIENTS.some(p => p.id === c.client) && Number.isInteger(c.wallet) && c.wallet >= 0 && c.wallet <= 10000 && Number.isInteger(c.quality) && c.quality >= 0 && c.quality <= 100 && Number.isInteger(c.attempts) && c.attempts >= 0 && c.attempts <= 2)), 'Некорректные покупатели.');
-  result.customers = (value.customers || []).map(c => ({...c,greeted:Boolean(c.greeted),served:Boolean(c.served)}));
+  check(!value.customers || (Array.isArray(value.customers) && value.customers.length <= 10 && value.customers.every(c => c && typeof c.id === 'string' && /^buyer-\d+$/.test(c.id) && CLIENTS.some(p => p.id === c.client) && Number.isInteger(c.wallet) && c.wallet >= 0 && c.wallet <= 10000 && Number.isInteger(c.quality) && c.quality >= 0 && c.quality <= 100 && Number.isInteger(c.attempts) && c.attempts >= 0 && c.attempts <= 2)), 'Некорректные покупатели.');
+  result.customers = (value.customers || []).map(c => ({...c,greeted:Boolean(c.greeted),served:Boolean(c.served),ordered:Boolean(c.ordered)}));
   result.energy = int(value.energy, 0, maxEnergy(result));
   result.collection = Array.isArray(value.collection) ? [...new Set(value.collection.filter(id => recipeById(id)))] : [];
   result.tutorial = int(value.tutorial, 0, 3);
@@ -482,6 +496,30 @@ export function greetCustomer(state,id,approach='needs') {
   if(approach==='craft')c.wallet+=Math.min(30,state.crafted*2);
   return customerLine(c);
 }
+export function commissionOffer(state,customerId){
+  const c=state.customers.find(c=>c.id===customerId);
+  if(!c||c.served||c.ordered||!c.greeted)return null;
+  const known=RECIPES.filter(r=>knownRecipe(state,r.id)),liked=known.filter(r=>r.category===BUYER_TASTES[c.client].category),choices=liked.length?liked:known;
+  const recipe=choices[Number(c.id.slice(6))%choices.length],quality=Math.min(80,Math.max(55,c.quality+10));
+  let material=c.client==='nora'||c.client==='daro'?'copper':'iron',rune='none',design,finish;
+  if(state.skills.includes('precision')&&['mira','rowan','nora'].includes(c.client))design=c.client==='nora'?'light':'sturdy';
+  if(state.equipment.grindstone&&c.client==='daro')finish='polish';
+  if(state.equipment.grindstone&&c.client==='bren'&&['tools','weapons'].includes(recipe.category))finish='sharpen';
+  if(state.technologies.includes('runes')&&['ada','elin','sera'].includes(c.client))rune=c.client==='ada'?'guard':'light';
+  if(c.client==='elin'&&state.technologies.includes('lunar'))material='moon';
+  const reward=Math.round(itemValue({recipe:recipe.id,material,rune,design,finish,quality:quality+6})*1.25);
+  return {id:`commission-${c.id}`,client:c.client,recipe:recipe.id,material,rune,quality,reward,fame:4,deadline:state.day+2,...(design?{design}:{}),...(finish?{finish}:{}),title:COMMISSION_TITLES[c.client],text:'Личный заказ. Доставь изделие до указанного дня; покупатель ценит точное выполнение требований.'};
+}
+export function acceptCommission(state,customerId){
+  const offer=commissionOffer(state,customerId);check(offer,'Этот гость уже оставил заказ или сначала хочет познакомиться.');
+  check(state.commissions.length<2,'Сначала выполни один из двух личных заказов.');
+  state.commissions.push(offer);state.customers.find(c=>c.id===customerId).ordered=true;
+  log(state,`Принят заказ «${offer.title}». Срок: день ${offer.deadline}.`);return offer;
+}
+export function cancelCommission(state,id){
+  check(state.commissions.some(o=>o.id===id),'Личный заказ уже закрыт.');
+  state.commissions=state.commissions.filter(o=>o.id!==id);log(state,'Личный заказ отменён. Изделия и материалы остаются у тебя.');
+}
 export function customerQuote(state,item,customerId,policy='fair',offer=null) {
   const c=state.customers.find(c=>c.id===customerId); if(!c || c.served)return {accepted:false,reason:'Покупатель уже ушёл.',price:0,budget:0};
   const quote=saleQuote(state,item,policy), taste=BUYER_TASTES[c.client];
@@ -521,8 +559,20 @@ export const TRIP_CHOICES = [
 export function beginTrip(state,region) {
   check(!state.work && !state.trip,'Сначала заверши работу или текущую экспедицию.');
   check(REGIONS.some(r=>r.id===region)&&regionAvailable(state,region),'Этот путь ещё закрыт.'); check(state.energy>=2,'Для экспедиции нужны 2 единицы сил.');
-  state.energy-=2; state.trip={region,step:0,choices:[],found:{},gold:0,xp:5,blueprint:null,relic:false};
+  const events=ROUTE_EVENTS.filter(e=>e.region===region),encounter=events[Math.floor(random(state)*events.length)].id;
+  state.energy-=2; state.trip={region,step:0,choices:[],found:{},gold:0,xp:5,blueprint:null,relic:false,encounter};
   return state.trip;
+}
+export function resolveEncounter(state,choiceId){
+  const t=state.trip,e=routeEvent(t?.encounter),choice=e?.choices.find(c=>c.id===choiceId);
+  check(t&&t.step===0&&e?.region===t.region&&choice,'Событие уже завершено или выбор недоступен.');
+  payResources(state,choice.costs);
+  for(const [id,n]of Object.entries(choice.loot))t.found[id]=(t.found[id]||0)+n;
+  t.gold+=choice.gold;t.xp+=choice.xp;t.relic||=Boolean(choice.relic);
+  if(choice.blueprint){const locked=RECIPES.filter(r=>!knownRecipe(state,r.id));if(locked.length)t.blueprint=locked[Math.floor(random(state)*locked.length)].id;else t.gold+=8;}
+  if(choice.route==='help')t.helped=e.person;
+  t.encounterResult={event:e.id,choice:choice.id};t.encounter=null;
+  return finishTrip(state,t,choice.route);
 }
 export function tripAction(state,choice) {
   const trip=state.trip; check(trip && trip.step<2,'Экспедиция уже закончилась.'); check(TRIP_CHOICES.some(c=>c.id===choice),'Выбери действие на тропе.');
@@ -536,14 +586,17 @@ export function tripAction(state,choice) {
     if(!trip.blueprint && locked.length && random(state)<(state.skills.includes('cartography')?.6:.3))trip.blueprint=locked[Math.floor(random(state)*locked.length)].id;
   }
   if(choice==='help') { trip.gold+=state.skills.includes('pathfinder')?24:14; trip.xp+=state.skills.includes('pathfinder')?8:4; addLoot(primary,1); }
+  trip.encounter=null;return finishTrip(state,trip,choice);
+}
+function finishTrip(state,trip,choice){
   trip.choices.push(choice); trip.step++;
   if(trip.step<2)return null;
   add(state,trip.found); state.gold+=trip.gold; gainXP(state,trip.xp);
   if(trip.blueprint && !knownRecipe(state,trip.blueprint))state.blueprints.push(trip.blueprint);
   if(trip.relic && state.relics.length<20)state.relics.push({id:state.nextId++,recipe:['lantern','amulet','key'][Math.floor(random(state)*3)],day:state.day});
-  if(trip.choices.includes('help')){const id=CLIENTS[state.day%CLIENTS.length].id;state.rapport[id]=Math.min(50,(state.rapport[id]||0)+1);}
+  if(trip.choices.includes('help')){const id=trip.helped||CLIENTS[state.day%CLIENTS.length].id;state.rapport[id]=Math.min(50,(state.rapport[id]||0)+1);}
   log(state,`Экспедиция: ${REGIONS.find(r=>r.id===trip.region).name}. +${trip.xp} опыта${trip.gold?`, +${trip.gold} монет`:''}.`);
   state.trip=null; return trip;
 }
 export function retreatTrip(state) { check(state.trip,'Ты уже дома.'); state.trip=null; log(state,'Возвращение с тропы. Силы потрачены, находки остались в пути.'); }
-function validTrip(t) { return t && REGIONS.some(r=>r.id===t.region) && Number.isInteger(t.step) && t.step>=0 && t.step<2 && Array.isArray(t.choices) && t.choices.length===t.step && t.choices.every(id=>TRIP_CHOICES.some(c=>c.id===id)) && t.found && Object.entries(t.found).every(([id,n])=>MATERIALS[id]&&Number.isInteger(n)&&n>=0&&n<=50) && Number.isInteger(t.gold) && t.gold>=0 && t.gold<=100 && Number.isInteger(t.xp) && t.xp>=0 && t.xp<=50 && (!t.blueprint || recipeById(t.blueprint)); }
+function validTrip(t) { return t && REGIONS.some(r=>r.id===t.region) && Number.isInteger(t.step) && t.step>=0 && t.step<2 && Array.isArray(t.choices) && t.choices.length===t.step && t.choices.every(id=>TRIP_CHOICES.some(c=>c.id===id)) && t.found && Object.entries(t.found).every(([id,n])=>MATERIALS[id]&&Number.isInteger(n)&&n>=0&&n<=50) && Number.isInteger(t.gold) && t.gold>=0 && t.gold<=100 && Number.isInteger(t.xp) && t.xp>=0 && t.xp<=50 && (!t.blueprint || recipeById(t.blueprint)) && (!t.encounter||(t.step===0&&routeEvent(t.encounter)?.region===t.region)) && (!t.encounterResult||(routeEvent(t.encounterResult.event)?.region===t.region&&routeEvent(t.encounterResult.event).choices.some(c=>c.id===t.encounterResult.choice))) && (!t.helped||CLIENTS.some(c=>c.id===t.helped)); }
