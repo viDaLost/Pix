@@ -51,3 +51,7 @@ test('rendering the showcase and orders of a long game stays within the comparis
  const sold=showcase(s,{sort:'fit'}),q=sold.quotes?.counter;if(q?.accepted)P.sell(s,sold.item.id,sold.buyer.id,'counter');
  const seen=s.stock.slice(0,10).filter(i=>i.id!==sold.item.id),after=count(()=>{for(const i of seen)render({itemId:i.id});});assert.ok(after.similarity<=seen.length*2+sameKind(s.stock[0].design)*3,`after a sale ${after.similarity}`);assert.equal(after.evaluate,0);
 });
+test('appraisals, fingerprints and pictures of a long game never reach its save file',()=>{
+ const text=raw('v3-dense.json.gz'),s=P.load(text);showcase(s,{sort:'fit'});orderPieces(s);for(const i of s.stock)J.isFresh(s,i.design);
+ const out=J.serialize(s);assert.ok(out.length<=text.length+2000,`the save grew from ${text.length} to ${out.length} bytes`);
+});

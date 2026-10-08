@@ -12,7 +12,7 @@ import {icon,ELEMENT_ICON} from './icons.js';
 const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const btn=(action,text,cls='',attrs='')=>`<button type="button" data-action="${action}" class="${cls}" ${attrs}>${text}</button>`;
 const SAVE='pix-forge-save-v1',STAMP=SAVE+':at',TAB=Math.random().toString(36).slice(2),portraits=new Map(),scene=new AtelierScene(),audio=new GameAudio();
-let state=P.newGame(Date.now()>>>0),sourceRaw=null,loadError=false,storageOK=true,diskOK=true,known=0,conflict=false,dirty=false,saveTimer=0,toastTimer=0,lastCrash=0,updateReady=false,persistAsked=false;
+let state=P.newGame(Date.now()>>>0),sourceRaw=null,loadError=false,storageOK=true,diskOK=true,known=0,conflict=false,dirty=false,saveTimer=0,writing=Promise.resolve(),toastTimer=0,lastCrash=0,updateReady=false,persistAsked=false;
 // Any uncaught failure keeps the progress reachable: a toast with the save file, and a recovery card instead of a blank panel.
 addEventListener('error',e=>{if(!e.error&&/ResizeObserver/.test(e.message))return;crash(e.error||new Error(e.message||'Ошибка сценария'));});addEventListener('unhandledrejection',e=>crash(e.reason));
 const readStamp=()=>{try{const v=JSON.parse(localStorage.getItem(STAMP)||'null');return Number.isFinite(v?.at)?v:null;}catch{return null;}};
@@ -36,14 +36,19 @@ function notice(){const el=$('#storage-warning');el.hidden=storageOK;el.textCont
 // Serializing a large workshop takes a while, so changes are written in one batch after a short pause;
 // leaving the page writes at once.
 function scheduleSave(){dirty=true;clearTimeout(saveTimer);saveTimer=setTimeout(save,400);}
-function save(){clearTimeout(saveTimer);saveTimer=0;if(loadError||conflict)return;const other=readStamp();if(other&&other.tab!==TAB&&other.at>known){lockTab();return;}
+// A page that is being left cannot wait for IndexedDB, so then a large save goes to the synchronous mirror too.
+// Otherwise a large save drops the mirror, so an older copy is never loaded in place of a newer one.
+function save(leaving=false){clearTimeout(saveTimer);saveTimer=0;if(loadError)return;if(conflict){lockTab();return;}const other=readStamp();if(other&&other.tab!==TAB&&other.at>known){lockTab();return;}
  const since=known;state.savedAt=known=Math.max(Date.now(),known+1);dirty=false;const raw=J.serialize(state);let localOK=false;
- try{localStorage.setItem(STAMP,JSON.stringify({at:known,tab:TAB}));if(raw.length<1500000||!diskOK){localStorage.setItem(SAVE,raw);localOK=true;}}catch{}channel?.postMessage({at:known,tab:TAB});
- saveAtelier(raw,{at:state.savedAt,tab:TAB,since}).then(()=>{diskOK=storageOK=true;notice();}).catch(e=>{if(e instanceof StaleTabError){try{localStorage.setItem(STAMP,JSON.stringify(e.stamp));if(localOK)localStorage.removeItem(SAVE);}catch{}lockTab();return;}diskOK=false;if(!localOK)try{localStorage.setItem(SAVE,raw);localOK=true;}catch{}storageOK=localOK;notice();});
+ try{localStorage.setItem(STAMP,JSON.stringify({at:known,tab:TAB}));if(raw.length<1500000||!diskOK||leaving){localStorage.setItem(SAVE,raw);localOK=true;}}catch{}if(!localOK&&diskOK)try{localStorage.removeItem(SAVE);}catch{}channel?.postMessage({at:known,tab:TAB});
+ writing=saveAtelier(raw,{at:state.savedAt,tab:TAB,since}).then(()=>{diskOK=storageOK=true;notice();}).catch(e=>{if(e instanceof StaleTabError){try{localStorage.setItem(STAMP,JSON.stringify(e.stamp));if(localOK)localStorage.removeItem(SAVE);}catch{}lockTab();return;}diskOK=false;if(!localOK)try{localStorage.setItem(SAVE,raw);localOK=true;}catch{}storageOK=localOK;notice();});
  storageOK=localOK||diskOK;notice();}
-const flushSave=()=>{editor?.finish();if(dirty)save();};
+const flushSave=(leaving=false)=>{editor?.finish();if(dirty)save(leaving);};
+// Reloading cuts off a write in progress, so the page waits for it (but never for long).
+function reload(){try{if(!conflict)flushSave(true);}catch(e){console.error(e);}Promise.race([writing,new Promise(r=>setTimeout(r,3000))]).then(()=>location.reload());}
 // A second tab, or an old one left open, never overwrites newer progress: it stops writing and asks for a reload.
-function lockTab(){if(conflict)return;conflict=true;clearTimeout(saveTimer);modal('Игра открыта в другой вкладке',`<p>В другой вкладке или окне мастерская уже сохранила более новый прогресс. Эта вкладка больше ничего не записывает, чтобы его не стереть.</p><p class="fine-print">Перезагрузи страницу, чтобы продолжить с последнего сохранения. Состояние этой вкладки можно скачать файлом.</p><div class="row fill">${btn('export',`${icon('download')}<span>Скачать</span>`)}${btn('reload-app','Перезагрузить','primary')}</div>`,false,'lock-dialog');}
+// The browser may still force a dialog shut (repeated Escape, the back gesture), so the notice comes back on close.
+function lockTab(){conflict=true;clearTimeout(saveTimer);if(dialog.open&&dialog.classList.contains('lock-dialog'))return;modal('Игра открыта в другой вкладке',`<p>В другой вкладке или окне мастерская уже сохранила более новый прогресс. Эта вкладка больше ничего не записывает, чтобы его не стереть.</p><p class="fine-print">Перезагрузи страницу, чтобы продолжить с последнего сохранения. Состояние этой вкладки можно скачать файлом.</p><div class="row fill">${btn('export',`${icon('download')}<span>Скачать</span>`)}${btn('reload-app','Перезагрузить','primary')}</div>`,false,'lock-dialog');}
 const otherWrite=v=>{if(v&&v.tab!==TAB&&v.at>known)lockTab();};
 channel?.addEventListener('message',e=>otherWrite(e.data));
 // Storage events come only from other tabs; old versions write the save without a stamp.
@@ -56,6 +61,7 @@ function action(fn,message){try{editor?.finish();const result=fn();scheduleSave(
 function modal(title,body,closable=true,cls=''){$('#dialog-body').innerHTML=`<div class="modal-title"><h2 id="dialog-title">${title}</h2>${closable?btn('close',icon('close'),'icon-button ghost','aria-label="Закрыть"'):''}</div><div class="modal-body">${body}</div>`;dialog.className=cls;if(!dialog.open)dialog.showModal();}
 function close(){dialog.close();}
 dialog.addEventListener('click',e=>{if(e.target===dialog&&state.welcomed&&!conflict)close();});
+dialog.addEventListener('close',()=>{if(conflict)lockTab();});
 function currentBuyer(){return state.customers.find(c=>c.id===buyerId&&!c.served)||state.customers.find(c=>!c.served);}
 const currentItem=()=>state.stock.find(i=>i.id===itemId)||state.stock[0];
 const client=id=>J.CLIENTS.find(p=>p.id===id);
@@ -247,8 +253,8 @@ document.addEventListener('click',e=>{
  case'export':editor?.finish();download(loadError?sourceRaw:J.serialize(state),`siyanie-day-${state.day}.json`);break;
  case'legacy-export':download(JSON.stringify(state.legacy),'pix-original-archive.json');break;
  case'import':$('#import-file').click();break;
- case'confirm-import':if(pendingImport){editor?.destroy();editor=null;state=pendingImport;pendingImport=null;loadError=false;state.welcomed=true;view='studio';buyerId=null;itemId=null;resetEditor();scheduleSave();close();render();toast('Сохранение загружено.');}break;
- case'reload-app':if(!conflict)flushSave();location.reload();break;
+ case'confirm-import':if(pendingImport){editor?.destroy();editor=null;state=pendingImport;pendingImport=null;loadError=false;state.welcomed=true;view='studio';buyerId=null;itemId=null;resetEditor();scheduleSave();close();render();toast('Сохранение загружено.');warmShowcase();}break;
+ case'reload-app':reload();break;
  case'reset-recovery':modal('Новое сохранение',`<p>Сначала скачай повреждённый исходный файл через меню. Новый прогресс заменит его на этом устройстве.</p>${btn('confirm-reset','Создать новое сохранение','primary danger')}`);break;
  case'confirm-reset':state=P.newGame(Date.now()>>>0);loadError=false;sourceRaw=null;scheduleSave();close();render();welcome();break;
  }
@@ -267,10 +273,12 @@ $('#menu-button').addEventListener('click',menu);
 $('#end-day').addEventListener('click',nextDay);
 dialog.addEventListener('cancel',e=>{if(conflict||(!state.welcomed&&!loadError))e.preventDefault();});
 document.addEventListener('keydown',e=>{if(!editor||dialog.open||e.target.matches('input,select,textarea'))return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();const b=$(`[data-action="${e.shiftKey?'redo':'undo'}"]`);b?.click();}});
-document.addEventListener('visibilitychange',()=>{if(document.hidden){flushSave();audio.pause();}else{lastFrame=performance.now();audio.resume();if(editor)editor.dirty=true;otherWrite(readStamp());}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){flushSave(true);audio.pause();}else{lastFrame=performance.now();audio.resume();if(editor)editor.dirty=true;otherWrite(readStamp());}});
 document.addEventListener('animationend',e=>e.target.classList?.remove('pulse'));
-window.addEventListener('pagehide',()=>{flushSave();audio.pause();});
+window.addEventListener('pagehide',()=>{flushSave(true);audio.pause();});
 window.addEventListener('pageshow',e=>{if(e.persisted)otherWrite(readStamp());});
-render();requestAnimationFrame(frame);if(!state.welcomed&&!loadError)welcome();
+// A long game has a hundred pieces to appraise and draw once; idle moments do it before the first visit to the showcase.
+function warmShowcase(from=0){const idle=globalThis.requestIdleCallback||(fn=>setTimeout(()=>{const end=performance.now()+12;fn({timeRemaining:()=>end-performance.now()});},80));idle(deadline=>{let i=from;const stock=state.stock;while(i<stock.length&&!editor?.operation&&deadline.timeRemaining()>6){const d=stock[i++].design;J.evaluate(d);jewelURL(d,112,{background:false});}if(i<stock.length&&stock===state.stock)warmShowcase(i);});}
+render();requestAnimationFrame(frame);if(!state.welcomed&&!loadError)welcome();warmShowcase();
 // The first install also fires controllerchange; only a page that already had a worker is out of date.
 if('serviceWorker'in navigator){const controlled=!!navigator.serviceWorker.controller;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!controlled||updateReady)return;updateReady=true;toast('Доступна новая версия',false,{action:'reload-app',label:'Обновить',icon:'download'});});navigator.serviceWorker.register('./sw.js').catch(()=>{});}

@@ -67,3 +67,8 @@ test('the chronicle keeps sixty dated entries and reads older string entries',()
  assert.equal(back.log.length,60);assert.deepEqual(back.log[0],{d:null,t:'Запись 0',k:'note'});
  raw.log=['Старая',{d:4,t:'Создано: Капля',k:'make'},{d:'x',t:'Без дня',k:'BAD'},7];assert.deepEqual(J.deserialize(JSON.stringify(raw)).log,[{d:null,t:'Старая',k:'note'},{d:4,t:'Создано: Капля',k:'make'},{d:null,t:'Без дня',k:'note'}]);
 });
+test('a file with an odd structure is reported as damaged, never as a script error',()=>{
+ const base=JSON.parse(J.serialize(P.newGame(4)));
+ for(const [key,value]of[['stock',[null]],['customers',[null]],['requests',[7]],['demand',[null]],['library',[null]]])assert.throws(()=>P.load(JSON.stringify({...base,[key]:value})),e=>e instanceof J.AtelierError&&/повреж/i.test(e.message),key);
+ assert.throws(()=>P.load('{'),J.AtelierError);assert.equal(P.load(JSON.stringify(base)).gold,base.gold);
+});

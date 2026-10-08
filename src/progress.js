@@ -18,7 +18,8 @@ export function normalize(s){
 const ready=s=>{if(!obj(s.stats)||!obj(s.daily)||!Array.isArray(s.daily.types))normalize(s);return s;};
 const soldType=(s,type)=>{if(!s.daily.types.includes(type)&&s.daily.types.length<6)s.daily.types.push(type);};
 export const newGame=seed=>normalize(J.newGame(seed));
-export const load=raw=>normalize(J.deserialize(raw));
+// A file with an odd structure (null where a record should be) reads as damaged, never as a raw script error.
+export function load(raw){try{return normalize(J.deserialize(raw));}catch(e){throw e instanceof J.AtelierError?e:new J.AtelierError('Файл сохранения повреждён.');}}
 export function complete(s){ready(s);const item=J.complete(s);return {item};}
 // A full sale is one that counts toward demand: fresh design and at least 95% of the fair price.
 export function sell(s,id,buyerId,policy='fair'){ready(s);const item=s.stock.find(i=>i.id===id),buyer=s.customers.find(c=>c.id===buyerId),q=J.sell(s,id,buyerId,policy),full=q.demand.factor===1&&q.price>=q.fair*.95;soldType(s,item.design.type);if(full)s.stats.clients[buyer.client]=(s.stats.clients[buyer.client]||0)+1;return {...q,full,client:buyer.client};}
