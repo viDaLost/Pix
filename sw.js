@@ -1,6 +1,6 @@
-const CACHE = 'pix-forge-v6';
+const CACHE = 'pix-forge-v7';
 const BASE = new URL('./', self.location.href);
-const FILES = ['./', './index.html', './styles.css', './src/app.js', './src/game.js', './src/art.js', './src/motion.js', './src/effects.js', './src/interactions.js', './src/shop-view.js', './src/adventure-view.js', './src/content.js', './src/audio.js', './src/pixel.js', './src/characters.js', './src/items.js', './src/rooms.js', './src/world.js', './src/crafting.js', './src/work-ui.js', './src/work-art.js', './manifest.webmanifest', './assets/icon.svg', './assets/icon-192.png', './assets/icon-512.png'].map(path => new URL(path, BASE).href);
+const FILES = ['./', './index.html', './styles.css', './src/app.js', './src/game.js', './src/art.js', './src/motion.js', './src/effects.js', './src/interactions.js', './src/shop-view.js', './src/adventure-view.js', './src/content.js', './src/audio.js', './src/pixel.js', './src/characters.js', './src/character-rig.js', './src/items.js', './src/rooms.js', './src/world.js', './src/crafting.js', './src/work-ui.js', './src/work-art.js', './manifest.webmanifest', './assets/icon.svg', './assets/icon-192.png', './assets/icon-512.png'].map(path => new URL(path, BASE).href);
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)).then(() => self.skipWaiting()));
 });

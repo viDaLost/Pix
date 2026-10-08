@@ -1,6 +1,6 @@
 {
   "name": "pix-forge-of-wonders",
-  "version": "6.0.0",
+  "version": "7.0.0",
   "private": true,
   "type": "module",
   "description": "A mobile pixel-art crafting and shopkeeping game",

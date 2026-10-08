@@ -56,14 +56,14 @@ export const REGIONS = [
   { id: 'pass', name: 'Лунный перевал', subtitle: 'Лунный камень · кристаллы', desc: 'Редкий металл ждёт за вершинами гор.', color: '#9ac7dc' },
 ];
 export const CLIENTS = [
-  {id:'mira',name:'Мира',role:'Рудокоп',outfit:'miner',female:true,color:'#9b7652',hair:'#593d32',skin:'#deb28d'},
-  {id:'bren',name:'Брен',role:'Портовый караул',outfit:'officer',color:'#435b7b',hair:'#634637',skin:'#cea07e'},
-  {id:'ada',name:'Ада',role:'Купчиха',outfit:'merchant',female:true,color:'#9b6261',hair:'#543b32',skin:'#c99478'},
-  {id:'elin',name:'Элин',role:'Картограф',outfit:'surveyor',female:true,color:'#547b8a',hair:'#8e683f',skin:'#e0b598'},
-  {id:'rowan',name:'Рован',role:'Землевладелец',outfit:'farmer',color:'#7c8153',hair:'#6a4a34',skin:'#c99573'},
-  {id:'sera',name:'Сера',role:'Аптекарь',outfit:'apothecary',female:true,color:'#82718c',hair:'#af9471',skin:'#e3b99e'},
-  {id:'nora',name:'Нора',role:'Проводница',outfit:'rider',female:true,color:'#567967',hair:'#92593a',skin:'#d9aa84'},
-  {id:'daro',name:'Даро',role:'Антиквар',outfit:'gentleman',color:'#916948',hair:'#b5ac94',skin:'#d4a98e'},
+  {id:'mira',name:'Мира',role:'Рудокоп',outfit:'miner',female:true,color:'#b68a54',hair:'#4b332e',skin:'#dca988'},
+  {id:'bren',name:'Брен',role:'Портовый караул',outfit:'officer',color:'#4a6a98',hair:'#574137',skin:'#d5a181'},
+  {id:'ada',name:'Ада',role:'Купчиха',outfit:'merchant',female:true,color:'#ba777d',hair:'#52363b',skin:'#d6a08c'},
+  {id:'elin',name:'Элин',role:'Картограф',outfit:'surveyor',female:true,color:'#4e8c9a',hair:'#bc8648',skin:'#e9b995'},
+  {id:'rowan',name:'Рован',role:'Землевладелец',outfit:'farmer',color:'#899052',hair:'#735139',skin:'#c99470'},
+  {id:'sera',name:'Сера',role:'Аптекарь',outfit:'apothecary',female:true,color:'#9a7ca5',hair:'#d0b891',skin:'#efc5a8'},
+  {id:'nora',name:'Нора',role:'Проводница',outfit:'rider',female:true,color:'#49806d',hair:'#9d583b',skin:'#dca587'},
+  {id:'daro',name:'Даро',role:'Антиквар',outfit:'gentleman',color:'#ad8056',hair:'#bfb9a4',skin:'#dcb18e'},
 ];
 export const EQUIPMENT = [
   { id: 'anvil', name: 'Наковальня', icon: 'anvil', max: 2, prices: [45,95], costs: [{iron:3},{iron:5,copper:2}], desc: 'Точная ковка: +2 к качеству за уровень.' },
