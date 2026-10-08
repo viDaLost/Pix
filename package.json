@@ -1,9 +1,9 @@
 {
-  "name": "pix-forge-of-wonders",
-  "version": "7.0.0",
+  "name": "pix-jewel-atelier",
+  "version": "8.0.0",
   "private": true,
   "type": "module",
-  "description": "A mobile pixel-art crafting and shopkeeping game",
+  "description": "A mobile pixel-art jewelry atelier with a freehand design editor and a demand-driven shop",
   "scripts": {
     "start": "node scripts/serve.mjs",
     "build": "node scripts/build.mjs",

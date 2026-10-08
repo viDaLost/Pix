@@ -1,15 +1,15 @@
 {
   "id": "./",
-  "name": "Кузница чудес",
-  "short_name": "Кузница",
-  "description": "Кузница и алхимическая лавка в Веленском порту, 1740 год.",
+  "name": "Сияние — ювелирная мастерская",
+  "short_name": "Сияние",
+  "description": "Создавай собственные украшения, пробуждай камни и открывай авторскую лавку в Веленском порту, 1740 год.",
   "lang": "ru",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait-primary",
-  "background_color": "#ecd4a6",
-  "theme_color": "#2e425c",
+  "orientation": "any",
+  "background_color": "#fbf2dc",
+  "theme_color": "#203f4b",
   "icons": [
     {
       "src": "./assets/icon-192.png",

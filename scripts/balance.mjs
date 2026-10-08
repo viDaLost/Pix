@@ -1,41 +1,37 @@
 import assert from 'node:assert/strict';
 import {writeFile,mkdir} from 'node:fs/promises';
-import * as G from '../src/game.js';
+import * as J from '../src/jewelry.js';
+import {addPolish} from '../src/jewel-art.js';
 
-const all=G.newGame();all.technologies=['alloys','runes','lunar'];all.blueprints=G.RECIPES.map(r=>r.id);
-const rows=G.RECIPES.map(r=>{
-  const costs=G.workCosts(all,r.id),cost=Object.entries(costs).reduce((n,[id,count])=>n+G.purchasePrice(all,id,count),0),price=G.saleQuote(all,{recipe:r.id,material:'iron',rune:'none',quality:80},'quick').price;
-  assert.ok(price>cost,`${r.id} must cover replacement materials`);return {name:r.name,cost,price,profit:price-cost};
-});
-let minMargin=Infinity;for(const r of G.RECIPES)for(const material of ['iron','copper','bronze','moon'])for(const rune of Object.keys(G.RUNES)){
-  const cost=Object.entries(G.workCosts(all,r.id,material,rune)).reduce((n,[id,count])=>n+G.purchasePrice(all,id,count),0),price=G.saleQuote(all,{recipe:r.id,material,rune,quality:80},'quick').price;
-  minMargin=Math.min(minMargin,price-cost);assert.ok(price>cost,`${r.id}/${material}/${rune}: negative replacement margin`);
+function play(seed,finish){
+ const s=J.newGame(seed);let lowestGold=s.gold,buys=0,saturation=0;
+ const material=(id,n)=>{if(s.materials[id]<n){const count=n-s.materials[id];assert.ok(s.gold>=(J.METALS[id]||J.GEMS[id]).price*count,'replacement materials affordable');J.buy(s,id,count);buys++;}};
+ for(let turn=0;turn<60;turn++){
+  for(const a of J.AREAS)if(s.crafted>=a.need&&!s.daily.areas.includes(a.id)&&s.energy)J.gather(s,a.id);
+  for(const t of J.TOOLS)if(!s.skills.includes(t.id)&&s.xp>=t.xp&&s.gold>=t.cost+100&&t.parents.every(p=>s.skills.includes(p)))J.learn(s,t.id);
+  const type=J.TYPES[turn%J.TYPES.length].id,actual=J.typeAvailable(s,type)?type:'amulet',template=['oval','leaf','heart','diamond'][Math.floor(turn/6)%4],metal=s.skills.includes('gold')&&turn%5===0?'gold':turn%3===0?'silver':'copper';
+  J.startDesign(s,actual,template,metal);const d=s.draft.design,center=actual==='ring'?{x:50,y:24}:actual==='sword'?{x:50,y:75}:actual==='staff'?{x:50,y:24}:{x:50,y:48};d.gems.push({kind:turn%2?'garnet':'amethyst',...center,size:2.5,cut:'round'});
+  const y=center.y;d.strokes.push({kind:'rune',width:1,points:[{x:center.x-3,y:y-4},{x:center.x-2,y:y-2},center]});
+  const points=[];for(let i=0;i<6;i++){const p={x:center.x+Math.cos(i)*7,y:y+Math.sin(i)*7};if(J.onMetal(p,d))points.push(p);}if(points.length>=2)d.strokes.push({kind:'engrave',width:1,points});
+  const polishCells=Array.from({length:144},(_,i)=>({x:(i%12+.5)*100/12,y:(Math.floor(i/12)+.5)*100/12})).filter(p=>J.onMetal(p,d));addPolish(d,polishCells.slice(0,Math.ceil(polishCells.length*finish)),.1);
+  for(const[id,n]of Object.entries(J.costs(d).resources))material(id,n);const item=J.complete(s);let offer=null;
+  for(let day=0;day<4&&!offer;day++){
+   offer=s.customers.filter(c=>!c.served).map(c=>({c,q:J.quote(s,item,c,'fair')})).filter(v=>v.q.accepted).sort((a,b)=>b.q.price-a.q.price)[0];
+   if(!offer)J.nextDay(s);
+  }
+  assert.ok(offer,'some buyer can afford the work');const q=J.sell(s,item.id,offer.c.id);if(q.demand.factor<1)saturation++;
+  assert.ok(s.gold>=0);assert.ok(Object.values(s.materials).every(n=>n>=0));lowestGold=Math.min(lowestGold,s.gold);
+  if(s.customers.every(c=>c.served)||turn%3===2)J.nextDay(s);
+  J.deserialize(J.serialize(s));
+ }
+ assert.equal(s.crafted,60);assert.equal(s.sold,60);assert.equal(s.skills.length,J.TOOLS.length,'every atelier skill reachable without grants');assert.ok(s.gold>180);
+ return {seed,finish,day:s.day,gold:s.gold,lowestGold,buys,saturation};
 }
-
-function play(seed,accuracy){
-  const s=G.newGame(seed);G.ensureOrders(s);G.ensureCustomers(s);let decisions=0,trips=0,lowestGold=s.gold;
-  const checkpoint=()=>{assert.ok(++decisions<2000,'progress stalled');assert.ok(s.gold>=0);assert.ok(Object.values(s.resources).every(n=>n>=0));lowestGold=Math.min(lowestGold,s.gold);};
-  const rest=(energy=2)=>{if(s.energy<energy)G.endDay(s);};
-  const work=(id,material='iron',rune='none',design='balanced',finish='plain')=>{
-    rest();G.beginWork(s,id,material,rune,null,design);for(const a of ['prepare','heat','hammer'])G.advanceWork(s,a,accuracy);G.advanceWork(s,'quench','water');return G.advanceWork(s,'finish',finish);
-  };
-  function collect(){rest();G.beginTrip(s,'forest');const e=G.routeEvent(s.trip.encounter),choice=e.choices.find(c=>G.canAfford(s,c.costs));G.resolveEncounter(s,choice.id);G.tripAction(s,'gather');trips++;checkpoint();}
-  function earn(target){while(s.gold<target){rest();if(!G.canAfford(s,G.workCosts(s,'knife','copper'))){collect();continue;}
-    const item=work('knife','copper');let c=s.customers.find(c=>!c.served);if(!c){G.endDay(s);c=s.customers[0];}if(!c.greeted)G.greetCustomer(s,c.id);G.serveCustomer(s,c.id,item.id,'quick');checkpoint();
-  }}
-  function supplies(costs){for(const [id,n]of Object.entries(costs))while(s.resources[id]<n){earn(G.purchasePrice(s,id,3));G.buyMaterial(s,id,3);checkpoint();}}
-  function improve(id){const u=G.UPGRADES.find(u=>u.id===id),level=s.upgrades[id];supplies(u.costs[level]);earn(u.prices[level]);G.upgrade(s,id);checkpoint();}
-  function skill(id){const node=G.SKILLS.find(n=>n.id===id);earn(node.cost);while(G.mastery(s).points<node.points)earn(s.gold+20);rest(1);G.learnSkill(s,id);checkpoint();}
-  function pattern(id){earn(G.recipeById(id).learn);rest(1);G.learnRecipe(s,id);checkpoint();}
-  function chapter(){const o=G.currentStory(s);supplies(G.workCosts(s,o.recipe,o.material||'iron',o.rune||'none'));const item=work(o.recipe,o.material||'iron',o.rune||'none');G.fulfill(s,o.id,item.id);G.endDay(s);checkpoint();}
-  chapter();chapter();skill('precision');improve('bench');skill('runes');pattern('amulet');chapter();improve('furnace');skill('alloys');pattern('sword');chapter();improve('furnace');skill('lunar');pattern('staff');chapter();
-  assert.ok(s.ended&&s.storyIndex===5);assert.ok(s.day<60);G.deserialize(G.serialize(s));
-  // After the story, unlock and forge the four new patterns using earned funds.
-  for(const id of ['horseshoe','shears','compass','bell']){pattern(id);supplies(G.workCosts(s,id));const item=work(id);assert.equal(item.recipe,id);const buyer=s.customers.find(c=>!c.served);if(buyer){if(!buyer.greeted)G.greetCustomer(s,buyer.id);if(G.customerQuote(s,item,buyer.id,'quick').accepted)G.serveCustomer(s,buyer.id,item.id,'quick');}checkpoint();}
-  return {seed,accuracy,day:s.day,trips,gold:s.gold,level:G.mastery(s).level,lowestGold,decisions};
-}
-const runs=[];for(const accuracy of [.4,.7,.95])for(let seed=1;seed<=40;seed++)runs.push(play(seed,accuracy));
-const dayRange=[Math.min(...runs.map(r=>r.day)),Math.max(...runs.map(r=>r.day))],tripRange=[Math.min(...runs.map(r=>r.trips)),Math.max(...runs.map(r=>r.trips))];
-const report=`# Проверка экономики v6\n\nЭто воспроизводимая проверка правил, а не измерение интереса или удержания настоящих игроков. Команда: \`npm run balance\`.\n\nПроверены 256 сочетаний изделия, металла и руны при качестве 80. Закупка всех расходников по полной цене окупается быстрой продажей: минимальная разница **${minMargin} монет**. Стоимость обучения и улучшений в эту разницу не входит. Силы ограничивают число изделий в день; спрос и бюджет покупателя проверяются отдельно.\n\n| Изделие | Расходники | Быстрая продажа | Разница |\n| --- | ---: | ---: | ---: |\n${rows.map(r=>`| ${r.name} | ${r.cost} | ${r.price} | ${r.profit} |`).join('\n')}\n\n120 прохождений с 40 начальными seed и точностью работы 0,4 / 0,7 / 0,95 завершили все пять глав, затем открыли и изготовили четыре новых изделия. День завершения этого сценария: **${dayRange.join('–')}**, число лесных вылазок: **${tripRange.join('–')}**. День — игровой цикл без реального ожидания. Деньги и материалы не добавлялись напрямую; использованы ручная работа, NPC, закупки, встречи, навыки и отдых. После каждого сценария сохранение успешно перечитано.\n\nЛичные заказы дают 25% над расчётной ценностью вещи, 16 опыта и +2 отношения; срок — текущий день +2. Заказы ограничены двумя активными, новый заказ у того же посетителя после отмены недоступен. Просрочка оставляет вещь и материалы игроку. Обычные новые заказы дают бонус от заработанного мастерства (до 30 монет), поэтому пропуск дней не увеличивает награды. Ранее принятые заказы сохраняют свою цену.\n\nПри банкротстве следующий день даёт небольшой набор материалов гильдии, если не хватает железа или угля; бесплатный вариант встречи и обычный маршрут доступны без закупок. Награды вылазки начисляются после второй остановки, повторное получение невозможно.\n\nНужен последующий плейтест с людьми: время освоения первого изделия, ошибки касаний, частота повторения одних предметов, понятность требований личных заказов и выбор между добычей и покупкой материалов.\n`;
+const runs=[];for(const finish of [.25,.6,.95])for(let seed=1;seed<=40;seed++)runs.push(play(seed,finish));
+// A repeatable design is profitable when fresh, but loses its replacement margin once saturated.
+const s=J.newGame(11),d=J.makeDesign('pendant','oval','silver');d.gems.push({kind:'amethyst',x:50,y:49,size:3,cut:'round'});addPolish(d,[{x:50,y:50}],60);
+const item={id:'probe',design:d},buyer={client:'bren',budget:10000},raw=J.rawValue(d),fresh=J.quote(s,item,buyer).price;s.demand.push({signature:J.fingerprint(d),sales:4,until:s.tradeDay+7});const tired=J.quote(s,item,buyer).price;assert.ok(fresh>raw);assert.ok(tired<raw);assert.equal(tired,Math.round(fresh*.25));
+const dayRange=[Math.min(...runs.map(r=>r.day)),Math.max(...runs.map(r=>r.day))],goldRange=[Math.min(...runs.map(r=>r.gold)),Math.max(...runs.map(r=>r.gold))];
+const report=`# Экономика ювелирной мастерской v8\n\nКоманда: \`npm run balance\`. Это проверка правил и достижимости развития; интерес и удобство рисования нужно проверять с игроками.\n\n120 сценариев: 40 начальных seed и обработка 25%, 60%, 95% поверхности. В каждом создано и продано 60 изделий, открыты все шесть навыков, оружейные оправы и три места находок. Монеты, материалы и опыт не добавлялись напрямую: использованы реальные закупки, сбор, изготовление и продажи. После каждого изделия сохранение перечитано валидатором. Дни: ${dayRange.join('–')}; итоговые монеты: ${goldRange.join('–')}. Все запасы и остаток монет остаются неотрицательными.\n\nКонтрольный серебряный кулон: материалы ${raw} монет, полная цена для подходящего покупателя ${fresh}, после насыщения ${tired}. Продажа одного и того же изделия после четвёртой полной продажи не покрывает закупку материалов. Спрос оценивает нормализованную форму, вырезы, композицию гравировки, рун и расположение камней. Смена названия, толщины, материала, цвета, зеркальное отражение и малое смещение не сбрасывают семью дизайна.\n\nНасыщение длится семь **торговых дней с продажами**. Пропуск пустых дней его не сокращает. Полные цены и личные заказы учитываются вместе; скидочные продажи не повышают счётчик четырёх полных продаж. Новый тип или существенно новая композиция получают отдельный спрос.\n\nМастерство зависит от целостности контура, устойчивости камней, гравировки и обработанной площади. Художественная оценка описывает симметрию, сдержанность, насыщенность, текучесть формы и сочетание камней; вкусы жителей различаются. Магические свойства возникают при связи поддерживаемого камня с руной. Это правила игры, а не универсальная оценка красоты.\n\nПри пустом кошельке берег доступен бесплатно и даёт три порции меди и камень. Небольшую свободную оправу можно сделать из одной порции меди и продать, затем покупать материалы или продолжать собирать находки.\n`;
 if(process.argv.includes('--write')){await mkdir(new URL('../docs/',import.meta.url),{recursive:true});await writeFile(new URL('../docs/BALANCE.md',import.meta.url),report);}
-console.log(JSON.stringify({combinations:256,minReplacementMargin:minMargin,playthroughs:runs.length,accuracy:[.4,.7,.95],dayRange,tripRange,allPassed:true},null,2));
+console.log(JSON.stringify({playthroughs:runs.length,creations:runs.length*60,finish:[.25,.6,.95],dayRange,goldRange,control:{replacement:raw,fresh,saturated:tired},allPassed:true},null,2));

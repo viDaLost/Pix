@@ -17,8 +17,8 @@ function roundRoute(points) {
   route.push(points.at(-1));return route;
 }
 export function moveActor(actor,x,y,room='forge') {
-  const points=[{x:actor.x,y:actor.y}],corridor=room==='shop'?278:286;
-  if(Math.abs(x-actor.x)>80&&Math.min(actor.y,y)<260)points.push({x:actor.x,y:corridor},{x,y:corridor});
+  const points=[{x:actor.x,y:actor.y}],corridor=room==='atelier-shop'?230:room==='shop'?278:286;
+  if(Math.abs(x-actor.x)>80&&Math.min(actor.y,y)<(room==='atelier-shop'?230:260))points.push({x:actor.x,y:corridor},{x,y:corridor});
   points.push({x,y});actor.path=roundRoute(points);actor.after=null;actor.workUntil=0;
 }
 export function updateActor(actor,dt,now) {

@@ -1,333 +1,165 @@
-import * as G from './game.js';
-import {drawScene,drawWorkCloseup,iconURL,itemIconURL,portraitURL,STATIONS,MAP_POINTS,WORK_POINTS} from './art.js';
-import {createActor,moveActor,updateActor} from './motion.js';
-import {createEffects,emitEffect,updateEffects} from './effects.js';
-import {createWorkInput,finishProgress,placeRivet,rubSurface} from './interactions.js';
-import {shopStockView} from './shop-view.js';
-import {tripView} from './adventure-view.js';
+import * as J from './jewelry.js';
+import {JewelEditor} from './jewel-editor.js';
+import {jewelURL} from './jewel-art.js';
+import {AtelierScene,paintMap} from './atelier-scene.js';
+import {paintPortrait} from './characters.js';
 import {GameAudio} from './audio.js';
-import {workConsole} from './work-ui.js';
-import {targetZone,timingTarget,pointAccuracy,advanceTemperature,strike,reheat,craftsmanship} from './crafting.js';
-
-const $=s=>document.querySelector(s);
-const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const icon=(id,color,cls='')=>`<img class="${cls}" src="${typeof id==='object'?itemIconURL(id):iconURL(id,color)}" alt="" draggable="false">`;
-const btn=(action,label,cls='secondary',attrs='')=>`<button class="${cls}" data-action="${action}" ${attrs}>${label}</button>`;
-const SAVE='pix-forge-save-v1'; // Same key: v1 saves migrate through deserialize().
-// Keep scene input beside each station, clear of the smith's face, hands and tool.
-const WORK_TARGET_OFFSETS=[[-10,-40],[0,-28],[32,29],[27,32],[46,34]];
-let state=G.newGame(Date.now()>>>0),storageOK=true,loadError=false;
-try{const raw=localStorage.getItem(SAVE);if(raw)state=G.deserialize(raw);}catch(e){loadError=e instanceof G.GameError||e instanceof SyntaxError;storageOK=false;}
-G.ensureOrders(state);G.ensureCustomers(state);
-let view=state.trip?'explore':'forge',forgeTab='work',shopTab='stock',selected=state.work?.recipe||'lantern',metal='iron',rune='none',design='balanced';
-let itemIndex=0,buyerId=state.customers.find(c=>!c.served)?.id,region='forest',allRecipes=false,policy='fair',ordinaryTrip=false;
-let busy=false,uiTask=null,toastTimer,lastTick=0,lastDraw=0,workTimer=null,lastStep=-1;
-const actor=createActor(222,279),npcActors=new Map(),dialog=$('#dialog'),canvas=$('#scene');
-const effects=createEffects(),camera={x:240,y:160,zoom:1};
-const audio=new GameAudio();
-let gesture=null,lastAmbient=0;
-const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
-
-function storageNotice(){const w=$('#storage-warning');w.hidden=storageOK;w.textContent=loadError?'Сохранение не удалось прочитать. Исходный файл можно скачать в меню.':'Браузер не разрешил автосохранение. Скачай прогресс через меню перед выходом.';}
-function save(){if(loadError)return;try{localStorage.setItem(SAVE,G.serialize(state));storageOK=true;$('#save-status').textContent='Прогресс сохранён на устройстве';}catch{storageOK=false;$('#save-status').textContent='Сохранение недоступно';}storageNotice();}
-function toast(message,error=false){const el=$('#toast');el.textContent=message;el.className=`toast show${error?' error':''}`;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3800);}
-function sound(kind='good'){audio.setOptions(state);audio.play(kind);}
-function act(fn,message){try{const result=fn();save();render();if(message)toast(typeof message==='function'?message(result):message);sound('good');return result;}catch(e){toast(e instanceof G.GameError?e.message:'Не удалось выполнить действие.',true);sound('error');if(!(e instanceof G.GameError))console.error(e);return undefined;}}
-function modal(html,closable=true){$('#dialog-body').innerHTML=`<div class="modal-inner">${closable?btn('close','×','modal-close','aria-label="Закрыть"'):''}${html}</div>`;if(!dialog.open)dialog.showModal();document.body.style.overflow='hidden';}
-function close(){dialog.close();document.body.style.overflow='';}
-dialog.addEventListener('close',()=>document.body.style.overflow='');
-dialog.addEventListener('click',e=>{if(e.target===dialog)close();});
-function costsHTML(costs){return `<div class="costs">${Object.entries(costs).map(([id,n])=>`<span class="cost${state.resources[id]<n?' missing':''}">${icon(id)}${G.MATERIALS[id].name} ${n}</span>`).join('')}</div>`;}
-function resources(){return `<div class="resource-strip" aria-label="Материалы">${Object.entries(state.resources).filter(([id,n])=>id!=='moon'||n||state.technologies.includes('lunar')).map(([id,n])=>`<span class="resource-chip">${icon(id)}<b>${n}</b>${G.MATERIALS[id].short||G.MATERIALS[id].name}</span>`).join('')}</div>`;}
-function head(title,text,meta=''){return `<div class="section-head"><div><h1>${title}</h1><p>${text}</p></div>${meta?`<span class="section-meta">${meta}</span>`:''}</div>`;}
+import {loadAtelier,saveAtelier} from './atelier-store.js';
+const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const btn=(action,text,cls='',attrs='')=>`<button data-action="${action}" class="${cls}" ${attrs}>${text}</button>`;
+const SAVE='pix-forge-save-v1',portraits=new Map(),scene=new AtelierScene(),audio=new GameAudio();
+let state=J.newGame(Date.now()>>>0),sourceRaw=null,loadError=false,storageOK=true,storageTimer=null;
+try{let local=null;try{local=localStorage.getItem(SAVE);}catch{}let disk=null;try{disk=await loadAtelier();}catch{}const stamp=raw=>{try{return JSON.parse(raw)?.savedAt||0;}catch{return -1;}};sourceRaw=disk&&(!local||stamp(disk)>=stamp(local))?disk:local;if(sourceRaw)state=J.deserialize(sourceRaw);}catch{loadError=true;storageOK=false;}
+let view='studio',supplyTab='buy',selectedType='pendant',template='oval',selectedMetal=state.materials.silver?'silver':'copper',itemIndex=0,buyerId=null,policy='fair',editor=null,toastTimer,lastFrame=0;
+let editorOptions={tool:'shape',width:1,symmetry:false,gem:'garnet',cut:'round',zoom:1,pan:{x:0,y:0}};
+const dialog=$('#dialog'),reduced=matchMedia('(prefers-reduced-motion: reduce)');
+function portrait(person){if(portraits.has(person.id))return portraits.get(person.id);const c=document.createElement('canvas');c.width=c.height=64;paintPortrait(c.getContext('2d'),person);const url=c.toDataURL();portraits.set(person.id,url);return url;}
+function notice(){const el=$('#storage-warning');el.hidden=storageOK;el.textContent=loadError?'Сохранение повреждено. Скачай исходный файл в меню или импортируй другой.':'Автосохранение недоступно. Скачай прогресс через меню.';}
+function save(){if(loadError)return;state.savedAt=Date.now();const raw=J.serialize(state);let localOK=false;try{localStorage.setItem(SAVE,raw);localOK=true;}catch{}saveAtelier(raw).then(()=>{storageOK=true;notice();}).catch(()=>{storageOK=localOK;notice();});storageOK=localOK;notice();}
+function toast(text,error=false){const el=$('#toast');el.textContent=text;el.className='toast show'+(error?' error':'');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3300);}
+function action(fn,message){try{editor?.finish();const result=fn();save();render();audio.play('good');if(message)toast(typeof message==='function'?message(result):message);return result;}catch(e){toast(e.message||'Действие не выполнено.',true);audio.play('error');if(!(e instanceof J.AtelierError))console.error(e);}}
+function modal(title,body,closable=true){$('#dialog-body').innerHTML=`<div class="modal-title"><h2 id="dialog-title">${title}</h2>${closable?btn('close','×','','aria-label="Закрыть"'):''}</div><div class="modal-body">${body}</div>`;if(!dialog.open)dialog.showModal();}
+function close(){dialog.close();}
+dialog.addEventListener('click',e=>{if(e.target===dialog&&state.welcomed)close();});
 function currentBuyer(){return state.customers.find(c=>c.id===buyerId&&!c.served)||state.customers.find(c=>!c.served);}
-function setView(next){if(busy){toast('Мастер заканчивает действие.');return;}if(!['forge','shop','orders','explore','develop'].includes(next))return;view=next;actor.path=[];actor.pose='idle';actor.speed=0;actor.x=next==='shop'||next==='orders'?307:222;actor.y=next==='shop'||next==='orders'?176:279;camera.x=240;camera.y=160;camera.zoom=1;effects.particles=[];effects.labels=[];if(next==='explore'&&state.trip){actor.x=237;actor.y=282;}render();$('#panel').scrollTop=0;if(next==='forge'&&state.work)approachStage();}
-function pulse(pose,duration=430){actor.pose=pose;actor.poseStarted=performance.now();actor.workUntil=actor.poseStarted+duration;actor.facing=pose==='heat'||(pose==='cut'&&state.work?.step===0)?'left':'right';}
-function performAt(station,pose,fn){if(busy)return;busy=true;render();const dest=STATIONS[station],arrive=()=>{actor.facing=dest.facing||'right';if(pose!=='idle')pulse(pose,reduced.matches?100:600);workTimer=setTimeout(()=>{busy=false;fn();render();},reduced.matches?100:pose==='idle'?360:650);};if(Math.hypot(actor.x-dest.x,actor.y-dest.y)<2&&!actor.path.length)arrive();else{moveActor(actor,dest.x,dest.y,'forge');actor.after=arrive;}}
-function approachStage(){const step=G.workStage(state);if(!step||view!=='forge'||busy)return;performAt(step.station,'idle',()=>{});}
-function syncNPCs(){
-  const waiting=state.customers.filter(c=>!c.served),chosen=currentBuyer(),seen=new Set();
-  const visible=[...(chosen?[chosen]:[]),...waiting.filter(c=>c.id!==chosen?.id)].filter(c=>{if(seen.has(c.client))return false;seen.add(c.client);return true;}).slice(0,4);
-  const visibleIds=new Set(visible.map(c=>c.id));let slot=0;
-  visible.forEach((customer,i)=>{
-    let a=npcActors.get(customer.id);
-    if(!a){a=createActor(56,280);a.person={...G.CLIENTS.find(p=>p.id===customer.client)};a.enterAt=performance.now()+i*650;a.idleAt=a.enterAt+1800+i*730;a.browseIndex=i;npcActors.set(customer.id,a);}
-    const selected=chosen?.id===customer.id,index=selected?0:slot++,x=selected?244:[76,148,404][index],y=selected?248:[282,289,281][index];
-    a.chosen=selected;a.homeX=x;a.homeY=y;if(selected)a.enterAt=Math.min(a.enterAt,performance.now());
-    if(a.targetX!==x||a.targetY!==y){moveActor(a,x,y,'shop');a.targetX=x;a.targetY=y;}
-  });
-  for(const [id,a]of npcActors){
-    const customer=state.customers.find(c=>c.id===id);
-    if(!customer||(!customer.served&&!visibleIds.has(id))){npcActors.delete(id);continue;}
-    if(customer.served&&!a.leaving){a.leaving=true;a.person.carry=true;moveActor(a,42,282,'shop');a.after=()=>npcActors.delete(id);}
-  }
-}
-function gestureNPC(id){const a=npcActors.get(id);if(a){a.pose='chat';a.poseStarted=performance.now();a.workUntil=a.poseStarted+900;a.facing='down';a.idleAt=a.workUntil+2300;}}
-function runtime(){return{actor,npcs:[...npcActors.values()].filter(a=>performance.now()>=(a.enterAt||0)),selectedItem:itemIndex,task:uiTask,effects,camera,reduced:reduced.matches};}
+const currentItem=()=>state.stock[Math.max(0,Math.min(itemIndex,state.stock.length-1))];
+function typeIcon(type){const d=J.makeDesign(type,'oval','gold');if(!['sword','staff','ring'].includes(type))d.gems.push({kind:'amethyst',x:50,y:47,size:6,cut:'round'});return jewelURL(d,128);}
+const typeName=id=>J.TYPES.find(t=>t.id===id)?.name||id;
+const costText=d=>{const c=J.costs(d);return Object.entries(c.resources).map(([id,n])=>`${(J.METALS[id]||J.GEMS[id]).name} ×${n}`).join(' · ')+(c.coins?' · '+c.coins+' ◈':'');};
+function sceneHTML(shop=false){return `<div class="scene-wrap${shop?'':' studio-scene'}"><canvas id="scene" width="480" height="260" aria-label="Ювелирная мастерская: стол гравировки, камни, оправы и ювелир" role="img"></canvas><span class="scene-caption">${shop?'Лавка авторских украшений':'Веленский порт · 1740'}</span></div>`;}
 function render(){
-  audio.setOptions(state);audio.setScene(view==='shop'||view==='orders'?'shop':view==='explore'?'explore':'forge');
-  const m=G.mastery(state);itemIndex=Math.max(0,Math.min(itemIndex,state.stock.length-1));const buyer=currentBuyer();if(buyer)buyerId=buyer.id;
-  const working=view==='forge'&&Boolean(state.work)&&forgeTab==='work';
-  if(!working)document.body.classList.remove('has-stamps');
-  document.body.dataset.view=view;document.body.classList.toggle('working',working);
-  document.body.classList.toggle('travelling',view==='explore'&&Boolean(state.trip));
-  document.body.dataset.workStep=working?String(state.work.step):'';
-  if(working)syncTask();
-  $('#hud').innerHTML=`<div class="hud-stat" aria-label="${state.gold} монет">${icon('coin')}<span>${state.gold}</span></div><div class="hud-stat" aria-label="Силы ${state.energy} из ${G.maxEnergy(state)}">${icon('energy')}<span>${state.energy}<small> / ${G.maxEnergy(state)}</small></span></div><div class="hud-stat" aria-label="Мастерство уровень ${m.level}">${icon('star')}<span>Ур. ${m.level}</span></div><div class="hud-stat day-stat">День <b>${state.day}</b></div>`;
-  $('.scene-card').hidden=view==='develop';$('#guide').hidden=true;
-  const sceneView=view==='orders'?'shop':view;
-  $('#scene-label').textContent=sceneView==='shop'?`Лавка · ${G.SETTING.year}`:sceneView==='explore'?(state.trip?G.REGIONS.find(r=>r.id===state.trip.region).name:`${G.SETTING.name} · ${G.SETTING.year}`):`Кузница · ${G.SETTING.year}`;
-  $('#level-label').textContent=state.work&&view==='forge'?`Этап ${state.work.step+1} / 5`:`Мастерство ${m.level}`;
-  canvas.setAttribute('aria-label',sceneView==='explore'?'Пиксельная карта леса, шахты, руин, перевала и кузницы':sceneView==='shop'?'Отдельная лавка, витрины и покупатели':'Кузница: горн, меха, инструменты, наковальня, ванна и верстак. Нажми на станцию, чтобы подойти.');
-  $('#scene-actions').innerHTML=working?btn('scene-work',icon(G.workStage(state).icon),'scene-work-target',`id="scene-work-target" aria-label="${G.workStage(state).name}: выполнить действие на сцене" ${busy?'disabled':''}`):view==='forge'?Object.entries(STATIONS).map(([id,s])=>btn('station',`${icon(s.icon)}<span>${s.label}</span>`,'scene-hotspot',`data-station="${id}" style="left:${s.hotX}%;top:${s.hotY}%" aria-label="Подойти: ${s.label}"`)).join(''):view==='explore'&&!state.trip?Object.entries(MAP_POINTS).map(([id,p])=>{const open=['home','beacon'].includes(id)?id==='home'||state.ended:G.regionAvailable(state,id);const name=id==='home'?'Кузница':id==='beacon'?'Маяк':G.REGIONS.find(r=>r.id===id).name.split(' ').at(-1);return btn('map-place',`${open?'':'◆ '}${name}`,`map-pin${open?'':' locked'}${id===region?' active':''}`,`data-region="${id}" style="left:${p.x/480*100}%;top:${p.y/320*100}%" aria-label="${name}${open?'':' — пока закрыто'}"`);}).join(''):'';
-  $('#end-day').hidden=Boolean(state.work||state.trip);$('#actor-status').textContent=busy?'Мастер идёт к станции и выполняет работу…':view==='forge'?'Нажми на оборудование или свободный пол':view==='shop'?'Покупатели осматривают витрины':view==='explore'?'Выбери место на карте':'';
-  $('#navigation').innerHTML=[['forge','Кузница'],['shop','Лавка'],['orders','Заказы'],['explore','Карта'],['develop','Древо']].map(([id,label])=>btn('navigate',`${icon(id==='explore'?'map':id)}<span>${label}</span>` ,`nav-item${view===id?' active':''}`,`data-view="${id}" ${view===id?'aria-current="page"':''}`)).join('');
-  renderGuide();$('#panel').innerHTML=({forge:forgeHTML,shop:shopHTML,orders:ordersHTML,explore:exploreHTML,develop:treeHTML}[view])();
-  $('#panel').classList.toggle('work-panel',working);
-  if(sceneView==='shop')syncNPCs();drawScene(canvas,state,sceneView,performance.now(),runtime());storageNotice();
-  if(view==='forge'&&state.work)syncTask();if(view==='develop')requestAnimationFrame(drawTreeLines);
-  if(view==='shop'&&shopTab==='stock')keepBuyerVisible();
+ if(editor){editorOptions={tool:editor.tool,width:editor.width,symmetry:editor.symmetry,gem:editor.gem,cut:editor.cut,zoom:editor.zoom,pan:{...editor.pan}};editor.destroy();editor=null;}
+ audio.setOptions(state);audio.setScene(view==='shop'||view==='orders'?'shop':view==='supplies'&&supplyTab==='map'?'explore':'forge');
+ $('#hud').innerHTML=`<span>◈ <b>${state.gold}</b></span><span>✦ <b>${Math.floor(state.xp/35)+1}</b></span><span>◇ <b>${state.stock.length}</b></span><span class="day">День ${state.day}</span>`;
+ $('#navigation').innerHTML=[['studio','✎','Мастерская'],['shop','◇','Витрина'],['supplies','◆','Материалы'],['orders','▤','Заказы'],['develop','✦','Развитие']].map(([id,icon,text])=>btn('navigate',`<span>${icon}</span>${text}`,view===id?'active':'',`data-view="${id}" ${view===id?'aria-current="page"':''}`)).join('');
+ $('#panel').className='panel'+(view==='studio'&&state.draft?' editor-panel':'');$('#panel').innerHTML=({studio:studioHTML,shop:shopHTML,supplies:suppliesHTML,orders:ordersHTML,develop:developHTML}[view])();
+ if(view==='studio'&&state.draft){editor=new JewelEditor($('#jewel-canvas'),state,{onChange:updateEditor,onCommit:()=>{save();audio.play(editor?.tool==='rune'?'magic':editor?.tool==='polish'?'polish':'rivet');updateEditor();},onError:text=>toast(text,true)});Object.assign(editor,editorOptions);editor.setWidth(editor.width);if(!state.skills.includes('facets'))editor.cut='round';editor.pan={...editorOptions.pan};editor.dirty=true;updateEditor();}
+ if(view==='shop'){const buyer=currentBuyer();if(buyer)buyerId=buyer.id;const selected=$('.buyer-chip.active');selected?.scrollIntoView({block:'nearest',inline:'nearest'});}
+ notice();paint(performance.now(),0);
 }
-function renderGuide(){const story=G.currentStory(state);let title='Твои вещи меняют город',text='Работай, торгуй и открывай новые возможности.',action='navigate',attrs='data-view="orders"';if(state.work){title=G.workStage(state).name;text='Заготовка сохранена. Вернись в кузницу и выполни следующий этап.';attrs='data-view="forge"';}else if(state.trip){title='Тропа зовёт дальше';text='Выбери два действия и вернись с находками.';attrs='data-view="explore"';}else if(!state.energy){title='Пора отдохнуть';text='Заверши день, чтобы восстановить силы и встретить новых гостей.';action='end-day';attrs='';}else if(state.expeditions.length){title='Заказчик в пути';text='Завтра он вернётся с материалами и новостями.';action='end-day';attrs='';}else if(story){title=story.title;text=state.stock.some(i=>G.orderMatches(i,story))?'Нужная вещь готова. Передай её заказчику.':`Следующая цель: ${G.recipeById(story.recipe).name.toLowerCase()}.`;if(!state.stock.some(i=>G.orderMatches(i,story))){action='prepare';attrs=`data-order="${story.id}"`;}}else{title=state.ended?'Маяк снова горит':'Последний путь Элин';text=state.ended?'Продолжай развивать мастерскую и свою лавку.':'Заверши день, чтобы узнать о восстановлении маяка.';}$('#guide').innerHTML=`${icon('lantern')}<div><strong>${esc(title)}</strong>${esc(text)}</div>${btn(action,'→','guide-arrow',`${attrs} aria-label="${esc(title)}"`)}`;}
-function forgeHTML(){
-  if(state.work&&forgeTab==='work')return workHTML();
-  let html=`<div class="forge-tabs segmented">${btn('forge-tab','Изделия',forgeTab==='work'?'active':'','data-tab="work"')}${btn('forge-tab','Оборудование',forgeTab==='equipment'?'active':'','data-tab="equipment"')}${btn('inventory',icon('backpack'),'inventory-button','aria-label="Запас материалов"')}</div>`;
-  if(forgeTab==='equipment')return html+equipmentHTML();
-  if(!G.designAvailable(state,design))design='balanced';if(!G.knownMaterial(state,metal))metal='iron';if(rune!=='none'&&!state.technologies.includes('runes'))rune='none';
-  const recipe=G.recipeById(selected),costs=G.workCosts(state,selected,metal,rune,design),known=G.knownRecipe(state,selected);
-  html+=`<div class="recipe-grid recipe-rail" aria-label="Чертежи: листай горизонтально">${G.RECIPES.map(r=>btn('select-recipe',`${icon(r.id,G.MATERIALS[metal].color)}<strong>${r.short}</strong>${G.knownRecipe(state,r.id)?'':'<span class="recipe-lock">◆</span>'}`,`recipe${selected===r.id?' selected':''}${G.knownRecipe(state,r.id)?'':' locked'}`,`data-recipe="${r.id}" aria-pressed="${selected===r.id}"`)).join('')}</div>`;
-  html+=`<div class="craft-card recipe-card"><div class="item-heading"><div class="item-icon">${icon(recipe.id,G.MATERIALS[metal].color)}</div><h2>${recipe.name}</h2>${btn('recipe-info','?','info-button',`data-recipe="${recipe.id}" aria-label="Об изделии"`)}</div>${known?`<div class="craft-options"><label><span class="sr-only">Металл</span><select id="metal-select">${['iron','copper','bronze','moon'].map(id=>`<option value="${id}" ${metal===id?'selected':''} ${G.knownMaterial(state,id)?'':'disabled'}>${G.MATERIALS[id].name}${G.knownMaterial(state,id)?'':' ◆'}</option>`).join('')}</select></label><label><span class="sr-only">Руна</span><select id="rune-select">${Object.entries(G.RUNES).map(([id,r])=>`<option value="${id}" ${rune===id?'selected':''} ${id==='none'||state.technologies.includes('runes')?'':'disabled'}>${r.name}</option>`).join('')}</select></label></div>${G.DESIGNS.filter(d=>G.designAvailable(state,d.id)).length>1?`<div class="design-picker segmented" aria-label="Конструкция изделия">${G.DESIGNS.filter(d=>G.designAvailable(state,d.id)).map(d=>btn('design',`${icon(d.icon)}<span>${d.name}</span>`,design===d.id?'active':'',`data-design="${d.id}" title="${d.desc}" aria-pressed="${design===d.id}"`)).join('')}</div>`:''}${costsHTML(costs)}${btn('begin-work',`${icon('anvil')}Начать · 2 силы`,'primary',!G.canAfford(state,costs)||state.energy<2||busy||state.trip?'disabled':'')}${state.upgrades.apprentice?`<div class="button-row apprentice-row">${btn('batch','Ученик ×1','secondary','data-count="1"')}${btn('batch','×3','secondary','data-count="3"')}</div>`:''}`:`<p class="help-text">Чертёж пока не изучен.</p>${btn('learn-recipe',`Открыть · ${recipe.learn} ◈`,'primary',`data-recipe="${recipe.id}"`)}`}</div>`;
-  return html;
+function studioHTML(){
+ if(state.draft)return editorHTML();
+ const templates=['ring','sword','staff'].includes(selectedType)?[['oval','Оправа'],['free','Свой контур']]:[['oval','Овал'],['heart','Сердце'],['leaf','Лист'],['diamond','Ромб'],['free','Свой контур']];if(!templates.some(([id])=>id===template))template='oval';
+ return sceneHTML()+`<div class="section-line"><h1>Твоё новое изделие</h1>${btn('inventory','▦','','aria-label="Запасы материалов"')}</div><div class="type-grid">${J.TYPES.map(t=>btn('select-type',`<img src="${typeIcon(t.id)}" alt=""><span>${t.short}${J.typeAvailable(state,t.id)?'':' ◆'}</span>`,`type-card${selectedType===t.id?' active':''}${J.typeAvailable(state,t.id)?'':' locked'}`,`data-type="${t.id}" aria-pressed="${selectedType===t.id}"`)).join('')}</div><div class="rail template-row" aria-label="Базовые заготовки">${templates.map(([id,name])=>btn('template',name,id===template?'active':'',`data-template="${id}"`)).join('')}</div><div class="row" style="margin-top:8px"><select id="start-metal" aria-label="Металл заготовки">${Object.entries(J.METALS).map(([id,m])=>`<option value="${id}" ${selectedMetal===id?'selected':''} ${J.available(state,id)?'':'disabled'}>${m.name} · ${state.materials[id]}</option>`).join('')}</select><small>Ресурсы списываются при завершении</small></div>${btn('start-design','✎ Создать своё изделие','primary big')}${state.library.length?`<div class="section-line"><h2>Твои модели</h2><small>${state.library.length}/40</small></div><div class="rail">${state.library.map(m=>btn('load-model',`<img src="${jewelURL(m.design,100)}" alt="">${esc(m.design.name)}`,'library-chip',`data-model="${m.id}"`)).join('')}</div>`:''}`;
 }
-function workHTML(){return workConsole(state,uiTask,busy,{btn,icon});}
-function syncTask(){
-  const w=state.work;if(!w)return;if(!uiTask||uiTask.step!==w.step||uiTask.day!==w.day)uiTask=createWorkInput(w,performance.now());
-  document.body.classList.toggle('has-stamps',w.step===4&&G.stampOptions(state).length>1);
-  const dots=$('#hit-dots');if(dots)[...dots.children].forEach((d,i)=>d.classList.toggle('done',i<uiTask.hits.length));
-  const target=$('#meter-target');if(target){const width=w.step===1?.24+state.equipment.bellows*.06:.18,center=timingTarget(uiTask);target.style.left=`${(center-width/2)*100}%`;target.style.width=`${width*100}%`;}
-  for(const el of document.querySelectorAll('.forge-zone')){const zone=Number(el.dataset.zone),target=zone===targetZone(uiTask);el.classList.toggle('target',target);el.setAttribute('aria-label',`Удар по точке ${zone+1}${target?', нужная точка':''}`);}
+function editorHTML(){const d=state.draft.design;
+ return `<div class="editor-heading"><input id="jewel-name" maxlength="48" value="${esc(d.name)}" aria-label="Название изделия">${btn('undo','↶','','aria-label="Отменить действие"')}${btn('redo','↷','','aria-label="Повторить действие"')}${btn('editor-help','?','','aria-label="Как создавать украшение"')}</div><div id="editor-metrics" class="editor-metrics"></div><div class="editor-stage"><canvas id="jewel-canvas" aria-label="Редактор изделия. Рисуй пальцем, перетаскивай контур и камни; два пальца меняют масштаб." tabindex="0"></canvas><span id="editor-hint" class="editor-hint"></span><div class="zoom-controls">${btn('zoom-out','−','','aria-label="Уменьшить масштаб"')}${btn('zoom-reset','⊙','','aria-label="Сбросить масштаб"')}${btn('zoom-in','+','','aria-label="Увеличить масштаб"')}</div><canvas id="artist-scene" class="artist-inset" width="480" height="260" aria-label="Ювелир работает за столом" role="img"></canvas></div><div class="tools" aria-label="Инструменты">${[['shape','○','Форма'],['engrave','✎','Узор'],['stone','◆','Камни'],['rune','✦','Руны'],['polish','▥','Блеск'],['hole','◌','Вырез'],['move','↔','Сдвиг'],['erase','⌫','Убрать']].map(([id,icon,text])=>btn('editor-tool',`<span>${icon}</span>${text}`,editorOptions.tool===id?'active':'',`data-tool="${id}" title="${text}" aria-label="${text}" aria-pressed="${editorOptions.tool===id}"`)).join('')}</div><div id="tool-options" class="tool-options"></div><div class="editor-bottom">${btn('material-picker','◈','secondary','aria-label="Сменить металл и посмотреть расход"')}${btn('finish-design','Готово','primary','id="finish-design"')}${btn('remember','▤','secondary','aria-label="Сохранить модель"')}${btn('discard','×','secondary danger','aria-label="Убрать заготовку"')}</div>`;
 }
-function precision(position,target=.68){return pointAccuracy(position,target);}
-function completeStage(action,value){if(busy)return;const s=G.workStage(state);if(!s||s.id!==action)return;const stage=state.work.step,point=WORK_POINTS[stage];if(action==='quench'){sound('quench');actor.temper=value;emitEffect(effects,value==='air'?'good':'steam',...point,performance.now());}if(action==='finish')emitEffect(effects,state.work.rune==='none'?'good':'magic',...point,performance.now(),'Готово!');performAt(s.station,action==='quench'?'quench':action==='finish'?'polish':action==='heat'?'heat':'idle',()=>{uiTask=null;const item=act(()=>G.advanceWork(state,action,value));if(item)showResult(item);else if(state.work)approachStage();});}
-function markOrHit(zone){
-  if(busy||!state.work||!uiTask)return;const step=G.workStage(state).id;if(!['prepare','hammer'].includes(step))return;
-  const now=performance.now();let score,matching=true;
-  if(step==='hammer'){const hit=strike(uiTask,zone??targetZone(uiTask),now);if(!hit)return;if(hit.cold){toast('Металл остыл. Подогрей его у горна.');return;}score=hit.score;matching=hit.matching;}
-  else{if(now-uiTask.lastHit<280)return;uiTask.lastHit=now;score=precision(uiTask.position,timingTarget(uiTask));uiTask.hits.push(score);uiTask.cutPositions.push(uiTask.position);}
-  pulse(step==='prepare'?'cut':'hammer');const point=WORK_POINTS[state.work.step],stage=state.work.step,label=!matching?'Не та точка':uiTask.combo>=3?`Серия ×${uiTask.combo}`:score>.82?'Точно!':score>.55?'Хорошо':'Есть!';
-  setTimeout(()=>{if(view==='forge'&&state.work?.step===stage){sound('hit');emitEffect(effects,step==='hammer'?'spark':'chip',...point,performance.now(),label);}},reduced.matches?0:step==='hammer'?240:140);
-  syncTask();if(uiTask.hits.length===(step==='prepare'?2:5)){if(step==='hammer')G.recordCraftsmanship(state,craftsmanship(uiTask));completeStage(step,uiTask.hits.reduce((a,b)=>a+b,0)/uiTask.hits.length);}
+function updateEditor(metrics){if(!state.draft||!$('#editor-metrics'))return;const d=editor?.design||state.draft.design,e=metrics||J.evaluate(d);$('#editor-metrics').innerHTML=`<span>Ремесло <b>${e.craft}</b></span><span>${e.label}</span><span>Магия <b>${Math.round(e.magic*(state.skills.includes('alchemy')?1.25:1))}</b></span><span>Блеск ${e.polish}%</span>`;
+ const hints={shape:'Потяни точку или нарисуй новый контур',engrave:'Нанеси свой узор по металлу',stone:'Поставь камень; потяни, чтобы переместить',rune:'Проведи руну к камню: он пробудится',polish:'Обработай поверхность движениями пальца',hole:'Обведи вырез внутри металлической основы',move:'Перемещай поле; два пальца — масштаб',erase:'Коснись камня, линии или выреза'};$('#editor-hint').textContent=hints[editor?.tool||editorOptions.tool];
+ const a=$('[data-action="undo"]'),b=$('[data-action="redo"]');a.disabled=!state.draft.undo.length;b.disabled=!state.draft.redo.length;
+ const c=J.costs(d),afford=Object.entries(c.resources).every(([id,n])=>state.materials[id]>=n)&&state.gold>=c.coins,button=$('#finish-design');button.textContent=`Готово · ▰${c.resources[d.metal]}${d.gems.length?' ◆'+d.gems.length:''}${c.coins?' '+c.coins+'◈':''}`;button.title=costText(d);button.setAttribute('aria-label','Завершить изделие. '+costText(d));button.disabled=!afford||d.outline.length<3||!J.hasHandwork(d);if(!J.hasHandwork(d))button.textContent='Оформи заготовку';else if(!afford)button.textContent=state.gold<c.coins?'Нужны монеты':'Нужны материалы';
+ const opts=$('#tool-options');if(opts.dataset.tool!==(editor?.tool||editorOptions.tool)||opts.dataset.selected!==String(editor?.selected??-1)){opts.dataset.tool=editor?.tool||editorOptions.tool;opts.dataset.selected=String(editor?.selected??-1);renderToolOptions();}
+ for(const el of document.querySelectorAll('[data-action="editor-tool"]')){el.classList.toggle('active',el.dataset.tool===editor?.tool);el.setAttribute('aria-pressed',el.dataset.tool===editor?.tool?'true':'false');}
 }
-function reheatWork(){if(busy||state.work?.step!==2||!uiTask)return;const task=uiTask;task.reheating=true;performAt('furnace','heat',()=>{if(state.work?.step===2&&uiTask===task){reheat(task);approachStage();}});}
-function startHeat(e,target){if(busy||!uiTask||state.work?.step!==1)return;if(e){e.preventDefault();target.setPointerCapture(e.pointerId);}sound('forge');uiTask.holding=true;uiTask.started=performance.now()-uiTask.position*2400;pulse('heat',100000);}
-function releaseHeat(){if(uiTask?.holding&&state.work?.step===1){uiTask.holding=false;completeStage('heat',precision(uiTask.position,timingTarget(uiTask)));}}
-function finishAction(index){if(busy||state.work?.step!==4||!uiTask)return;let done;if(uiTask.finishMethod==='plain'){index??=[0,1,2].find(i=>!uiTask.rivets.includes(i));done=placeRivet(uiTask,index);for(const b of document.querySelectorAll('[data-action="finish-rivet"]'))if(uiTask.rivets.includes(Number(b.dataset.rivet))){b.classList.add('done');b.textContent='✓';b.disabled=true;}}else done=rubSurface(uiTask,32,0);finishFeedback(done);}
-function finishFeedback(done){sound(uiTask.finishMethod==='plain'?'rivet':state.work.rune!=='none'&&done?'magic':'polish');pulse('polish',340);emitEffect(effects,uiTask.finishMethod==='sharpen'?'spark':state.work.rune==='none'?'good':'magic',...WORK_POINTS[4],performance.now());const bar=$('#finish-progress');if(bar)bar.style.width=`${finishProgress(uiTask)*100}%`;if(done)completeStage('finish',uiTask.finishMethod);}
-function sceneAction(){if(busy||!state.work)return;if(state.work.step===0||state.work.step===2)markOrHit();else if(state.work.step===3)completeStage('quench','water');else if(state.work.step===4)finishAction();}
-function showResult(item){const order=[G.currentStory(state),...state.commissions,...state.orders].find(o=>o&&G.orderMatches(item,o));modal(`<p class="modal-eyebrow">Все пять этапов пройдены</p><h2 id="dialog-title">${G.itemName(item)}</h2>${icon(item,undefined,'result-icon')}<div class="result-quality ${item.quality>=95?'masterpiece':''}">${item.quality>=95?'Шедевр':'Качество'} · ${item.quality} / 100</div>${item.scores?`<div class="craft-report">${['Разметка','Нагрев','Ковка'].map((name,i)=>`<div><span>${name}</span><b>${Math.round(item.scores[i]*100)}%</b><i style="--score:${item.scores[i]*100}%"></i></div>`).join('')}</div>`:''}<div class="result-grid">${G.itemTraits(item).map(t=>`<span class="trait">${t}</span>`).join('')}${item.design&&item.design!=='balanced'?`<span class="trait">${G.DESIGNS.find(d=>d.id===item.design).name}</span>`:''}${item.craftsmanship?.combo>=3?`<span class="trait">Серия ×${item.craftsmanship.combo}</span>`:''}${item.mark&&item.mark!=='none'?'<span class="trait">Клеймо · +1 слава</span>':''}<span class="trait">+12 опыта</span></div><p>${order?'Вещь подходит для заказа. Путешественник ждёт твою работу.':'Изделие готово. Покажи его покупателям в лавке.'}</p>${btn('result-go',order?'К заказчику →':'В лавку →','primary',`data-view="${order?'orders':'shop'}"`)}${btn('close','Продолжить работу','secondary','style="width:100%;margin-top:10px"')}`);}
-function equipmentHTML(){return resources()+`<div class="subheading">Здание и помощник</div>${G.UPGRADES.filter(u=>u.id!=='shelves').map(u=>upgradeHTML(u)).join('')}<div class="subheading">Инструменты и станции <small>Влияют на работу и графику</small></div>${G.EQUIPMENT.map(e=>{const level=state.equipment[e.id],max=level>=e.max;return `<article class="upgrade-card"><div class="item-icon">${icon(e.icon)}</div><div><h2>${e.name} <span class="muted">${level}/${e.max}</span></h2><p>${e.desc}</p>${max?'<span class="trait">Максимум</span>':costsHTML(e.costs[level])+btn('equipment',`${level?'Улучшить':'Купить'} · ${e.prices[level]} монет`,'secondary',`data-equipment="${e.id}" ${state.gold<e.prices[level]||!G.canAfford(state,e.costs[level])||(e.need&&!state.technologies.includes(e.need))?'disabled':''}`)}${e.need&&!state.technologies.includes(e.need)?'<p class="help-text">Нужна рунная гравировка.</p>':''}</div></article>`;}).join('')}`;}
-function upgradeHTML(u){const level=state.upgrades[u.id],max=level>=u.max;return `<article class="upgrade-card"><div class="item-icon">${icon(u.id==='furnace'?'forge':u.id==='bench'?'grindstone':u.id==='shelves'?'shop':'energy')}</div><div><h2>${u.name} <span class="muted">${level}/${u.max}</span></h2><p>${max?'Все улучшения установлены.':u.desc[level]}</p>${max?'<span class="trait">Готово</span>':costsHTML(u.costs[level])+btn('upgrade',`Улучшить · ${u.prices[level]} монет`,'secondary',`data-upgrade="${u.id}" ${state.gold<u.prices[level]||!G.canAfford(state,u.costs[level])||(u.need&&!state.upgrades[u.need])?'disabled':''}`)}</div></article>`;}
-function shopHTML(){if(shopTab==='stock')return shopStockView(state,{buyerId,itemIndex,policy},{btn,icon,esc});const event=G.demandEvent(state);let html=head('Лавка чудес','',`${state.stock.length} вещей`)+`<div class="segmented">${[['stock','Витрина'],['materials','Закупка'],['trade','Обоз'],['interior','Интерьер']].map(([id,name])=>btn('shop-tab',name,shopTab===id?'active':'',`data-tab="${id}"`)).join('')}</div>`;
-  if(shopTab==='materials')return html+resources()+`<div class="subheading">Поставщик <small>${state.flags.includes('supplier')?'Скидка 15%':'Пачки по 3'}</small></div><div class="market-grid">${Object.entries(G.MATERIALS).filter(([id,m])=>m.price&&(id!=='moon'||state.flags.includes('ruins')||state.technologies.includes('lunar'))).map(([id,m])=>`<article class="material-card">${icon(id,m.color)}<div><h3>${m.name} ×3</h3><p>В запасе ${state.resources[id]}</p></div>${btn('buy-material',`${G.purchasePrice(state,id,3)} ◈`,'',`data-material="${id}" aria-label="Купить ${m.name}"`)}</article>`).join('')}</div>`;
-  if(shopTab==='interior')return html+`<p class="help-text">Улучшения витрин меняют интерьер и повышают бюджет покупателей. Дополнительных посетителей открывает ветвь торговли в древе.</p>`+upgradeHTML(G.UPGRADES.find(u=>u.id==='shelves'))+btn('navigate','Открыть торговые навыки →','primary','data-view="develop"');
-  if(shopTab==='trade'){const offer=G.tradeOffer(state);return html+`<div class="craft-card"><div class="item-heading"><div class="item-icon">${icon(offer.recipe,G.MATERIALS.copper.color)}</div><div><h2>${G.itemName(offer)}</h2><p>Товар торгового обоза · качество 64</p></div></div><p class="help-text">Купи, покажи подходящему гостю и перепродай с прибылью.</p><div class="craft-summary"><span>На сегодня осталось ${3-state.marketToday}</span><strong>${offer.cost} монет</strong></div>${btn('trade-buy','Купить для витрины','primary',state.gold<offer.cost||state.marketToday>=3?'disabled':'')}</div><div class="craft-card"><div class="item-heading"><div class="item-icon">${icon('relic')}</div><div><h2>Древняя находка</h2><p>Восстанови её в кузнице или открой чертёж.</p></div></div>${btn('buy-relic','Купить артефакт · 28 монет','primary',state.gold<28?'disabled':'')}</div>`;}
-  return html;
+function renderToolOptions(){const tool=editor?.tool||editorOptions.tool,w=editor?.width||editorOptions.width;$('#tool-options').classList.toggle('has-cuts',tool==='stone'&&state.skills.includes('facets'));$('#tool-options').innerHTML=(tool==='stone'?`<select id="gem-kind" aria-label="Камень">${Object.entries(J.GEMS).filter(([id])=>J.available(state,id)).map(([id,g])=>`<option value="${id}" ${editor?.gem===id?'selected':''}>${g.name} · ${state.materials[id]}</option>`).join('')}</select>`:`<small>${tool==='shape'?'Контур':tool==='polish'?'Кисть':'Линия'}</small>`)+`<label><span>${tool==='stone'?'Размер':'Толщина'}</span><input id="brush-width" aria-label="${tool==='stone'?'Размер камня':'Толщина линии'}" type="range" min="0.5" max="${tool==='stone'&&!state.skills.includes('facets')?3:5.5}" step="0.5" value="${w}"></label>${btn('symmetry','↔',editor?.symmetry?'active':'',`id="symmetry" aria-label="Зеркальная симметрия" aria-pressed="${!!editor?.symmetry}"`)}${tool==='stone'&&state.skills.includes('facets')?`<select id="gem-cut" aria-label="Огранка">${[['round','Круг'],['oval','Овал'],['pear','Капля']].map(([id,name])=>`<option value="${id}" ${editor?.cut===id?'selected':''}>${name}</option>`).join('')}</select>`:''}`;}
+function shopHTML(){const guests=state.customers.filter(c=>!c.served),buyer=currentBuyer(),person=buyer&&J.CLIENTS.find(p=>p.id===buyer.client),item=currentItem();if(buyer)buyerId=buyer.id;
+ let html=sceneHTML(true)+`<div class="rail" aria-label="Покупатели">${guests.map(c=>{const p=J.CLIENTS.find(p=>p.id===c.client);return btn('buyer',`<img src="${portrait(p)}" alt=""><b>${p.name}</b>`,`buyer-chip${buyer?.id===c.id?' active':''}`,`data-buyer="${c.id}"`);}).join('')}${!guests.length?btn('next-day','☀ Новые покупатели'):''}</div>`;
+ if(person)html+=`<div class="buyer-intro"><b>${person.name}</b><span>${person.line}</span></div>`;
+ if(!item)return html+`<div class="card empty"><div class="symbol">◇</div><h2>Витрина ждёт твою работу</h2><p class="muted">Форма, узор и камни сохранятся точно как ты их создал.</p>${btn('navigate','Создать украшение','primary big','data-view="studio"')}</div>`;
+ const d=item.design,e=J.evaluate(d),demand=J.demandInfo(state,d),q=buyer?J.quote(state,item,buyer,policy):null;
+ html+=`<div class="card"><div class="section-line"><h2>${esc(d.name)}</h2><small>${itemIndex+1}/${state.stock.length}</small></div><div class="showcase">${btn('previous','‹','','aria-label="Предыдущее изделие"')}<img src="${jewelURL(d,300)}" alt="${esc(d.name)}: авторская форма, рисунок и камни">${btn('next','›','','aria-label="Следующее изделие"')}</div><div class="metrics"><span>Мастерство<b>${e.craft}</b></span><span>Стиль<b>${e.label}</b></span><span>Магия<b>${Math.round(e.magic*(state.skills.includes('alchemy')?1.25:1))}</b></span>${q?`<span>Вкус ${person.name}<b>${q.fit}%</b></span>`:''}</div><div class="market-status${demand.remaining?' cool':''}"><span>${demand.remaining?`Спрос −75% · ещё ${demand.remaining} торговых дней`:'Продажи по полной цене: '+demand.sales+'/4'}</span><span class="demand-dots${demand.remaining?' cool':''}">${Array.from({length:4},(_,i)=>`<i class="${i<demand.sales?'on':''}"></i>`).join('')}</span>${btn('demand-info','?','','aria-label="Как работает спрос" style="min-height:27px;width:27px;padding:0"')}</div>${q?`<div class="price-row">${[['low','Доступно'],['fair','Полная цена'],['high','Дороже']].map(([id,name])=>btn('policy',name,id===policy?'active':'',`data-policy="${id}"`)).join('')}</div>${btn('sell',`Продать · ${q.price} ◈`,'primary sell-button',`data-item="${item.id}" ${q.accepted?'':'aria-describedby="buyer-refusal"'}`)}${!q.accepted?`<p id="buyer-refusal" class="muted" style="margin-top:6px">${q.reason}</p>`:''}`:`${btn('next-day','☀ Открыть лавку завтра','primary big')}`}<div class="detail-actions">${btn('item-info','Оценка работы','','data-item="'+item.id+'"')}${btn('save-item-model','▤ Модель','','data-item="'+item.id+'"')}${btn('recycle','Переплавить','danger','data-item="'+item.id+'"')}</div></div>`;return html;
 }
+function suppliesHTML(){let html=`<div class="section-line"><h1>Материалы</h1>${btn('inventory','▦','','aria-label="Запасы"')}</div><div class="tabs">${btn('supply-tab','Поставщик',supplyTab==='buy'?'active':'','data-tab="buy"')}${btn('supply-tab','Места находок',supplyTab==='map'?'active':'','data-tab="map"')}</div>`;
+ if(supplyTab==='map')return html+`<div class="scene-wrap map-stage"><canvas id="map" width="480" height="260" aria-label="Карта мест находок: берег, сад аббатства и лунный кряж"></canvas>${J.AREAS.map(a=>btn('gather',`${state.crafted>=a.need?'':'◆ '}${a.name}`,`map-pin`, `data-area="${a.id}" style="left:${a.x/480*100}%;top:${a.y/260*100}%" ${state.energy<=0||state.daily.areas.includes(a.id)||state.crafted<a.need?'disabled':''}`)).join('')}</div><div class="card"><h2>Находки для новых работ</h2><p class="muted">Силы: ${state.energy}/4. В каждом месте можно искать один раз за день. Сад открывается после 3 изделий, кряж — после 8.</p>${btn('next-day','☀ Следующий день','big')}</div>`;
+ return html+`<div class="two-grid">${Object.entries({...J.METALS,...J.GEMS}).map(([id,m])=>`<div class="card supply"><span class="swatch" style="background:${m.color}">${J.GEMS[id]?'◆':'▰'}</span><div class="copy"><b>${m.name}</b><small>В запасе ${state.materials[id]}<br>${m.price} ◈ за ${J.GEMS[id]?'камень':'порцию'}</small></div>${J.available(state,id)?btn('buy',`+${J.METALS[id]?5:1}`,'',`data-material="${id}" data-count="${J.METALS[id]?5:1}" ${state.gold<m.price*(J.METALS[id]?5:1)?'disabled':''}`):btn('locked-material','◆','','data-material="'+id+'" aria-label="Как открыть материал"')}</div>`).join('')}</div>`;
+}
+function ordersHTML(){return `<div class="section-line"><h1>Личные заказы</h1><small>По вкусу жителей</small></div>${state.requests.map(r=>{const p=J.CLIENTS.find(p=>p.id===r.client),item=state.stock.find(i=>J.matches(i.design,r)&&!J.demandInfo(state,i.design).remaining),style={organic:'Растительные формы',symmetry:'Симметрия',ornate:'Насыщенный узор',contrast:'Сочетание камней',minimal:'Сдержанность'}[r.style];return `<div class="card order-card"><img src="${portrait(p)}" alt="${p.name}"><div class="order-copy"><h2>${esc(r.title)}</h2><b>${p.name} · ${typeName(r.type)}</b><small>${style} ≥ ${r.min} · мастерство ≥50${r.minMagic?' · магия ≥'+r.minMagic:''}</small><small>${r.done?'Заказ выполнен':'Срок: день '+r.until+' · свежий дизайн · +15% к цене'}</small>${!r.done?(item?btn('deliver','Передать '+esc(item.design.name),'primary',`data-request="${r.id}" data-item="${item.id}"`):btn('prepare-order','Создать для заказа','',`data-type="${r.type}"`)):''}</div></div>`;}).join('')}`;}
+function developHTML(){return `<div class="section-line"><h1>Искусство ювелира</h1><small>Опыт: ${state.xp}</small></div><div class="tree">${[J.TOOLS.slice(0,3),['signature','mounts','alchemy'].map(id=>J.TOOLS.find(t=>t.id===id))].map(row=>`<div class="tree-row">${row.map(t=>{const learned=state.skills.includes(t.id),ready=t.parents.every(p=>state.skills.includes(p));return btn('skill',`<span>${{eye:'◉',gold:'◈',facets:'◆',alchemy:'✦',mounts:'⚔',signature:'✎'}[t.id]}</span><b>${t.name}</b><small>${learned?'Изучено':t.cost+' ◈ · '+t.xp+' опыта'}</small>`,`skill${learned?' unlocked':ready?'':' locked'}`,`data-skill="${t.id}"`);}).join('')}</div>`).join('')}</div><div class="card"><p class="muted">Опыт даётся за создание, продажу и выполнение заказов. Масштаб, отмена, симметрия, базовая гравировка и руны доступны сразу.</p></div>`;}
 
-function finishName(id){return {plain:'Сборка',polish:'Полировка',sharpen:'Заточка'}[id]||'';}
-function orderRequirements(o){return [`Качество ${o.quality}+`,o.material&&G.MATERIALS[o.material].name,o.rune&&G.RUNES[o.rune].name,o.design&&G.DESIGNS.find(d=>d.id===o.design).name,o.finish&&finishName(o.finish)].filter(Boolean).join(' · ');}
-function orderHint(o){if(!G.knownRecipe(state,o.recipe))return `Изучи чертёж «${G.recipeById(o.recipe).name}».`;if(o.rune&&o.rune!=='none'&&!state.technologies.includes('runes'))return 'Нужны точная работа, верстак уровня 1 и рунная гравировка в древе.';if(o.material&&!G.knownMaterial(state,o.material))return o.material==='moon'?'Нужны сплавы, руны, горн уровня 2 и лунный металл.':'Нужны горн уровня 1 и искусство сплавов.';return orderRequirements(o);}
-function orderHTML(o,story=false){
-  const p=G.CLIENTS.find(p=>p.id===o.client),item=state.stock.filter(i=>G.orderMatches(i,o)).sort((a,b)=>a.quality-b.quality)[0];
-  return `<article class="order-card${story?' story':''}"><div class="client-head"><img class="portrait" src="${portraitURL(p)}" alt="${p.name}"><div><h2>${esc(o.title)}</h2><p>${p.name} · ${p.role}</p></div>${story?'<span class="story-label">История</span>':o.deadline?`<span class="commission-deadline">До дня ${o.deadline}</span>`:''}${btn('order-info','?','info-button',`data-order="${esc(o.id)}" aria-label="Прочитать заказ"`)}</div><div class="order-requirement">${icon(o.recipe)}<div><strong>${G.recipeById(o.recipe).name}</strong><small>${esc(orderRequirements(o))}</small></div></div><div class="reward-row"><span><b>${o.reward} монет</b> · +${story?18:o.deadline?16:12} опыта</span>${item?btn('fulfill','Передать →','',`data-order="${esc(o.id)}" data-item="${item.id}"`):btn('prepare','Подготовить →','',`data-order="${esc(o.id)}"`)}</div>${item?'':`<p class="order-hint">${esc(orderHint(o))}</p>`}</article>`;
+function paint(time,dt){
+ editor?.paint(reduced.matches?0:time);
+ const inset=$('#artist-scene'),room=$('#scene'),map=$('#map');
+ if(inset&&editor)scene.paint(inset.getContext('2d'),state,{design:editor.preview(),working:!!editor.operation,tool:editor.tool,time:reduced.matches?0:time,dt});
+ if(room)scene.paint(room.getContext('2d'),state,{shop:view==='shop',design:view==='shop'?currentItem()?.design:null,buyerId,time:reduced.matches?0:time,dt});
+ if(map)paintMap(map.getContext('2d'),state,reduced.matches?0:time);
 }
-function ordersHTML(){
-  const story=G.currentStory(state);
-  return head('Заказы и истории','Работа для жителей порта.',`${state.storyIndex}/5 глав`)+state.expeditions.map(e=>`<div class="pending-card">${icon('explore')}<div>Заказчик вернётся в день ${e.due}.</div></div>`).join('')+(story?orderHTML(story,true):`<div class="event-card">${icon('crown')}<div><strong>${state.ended?'Маяк восстановлен':'Элин в последней экспедиции'}</strong><p>Кузница продолжает работать. Жители ждут новые изделия.</p></div></div>`)+(state.commissions.length?`<div class="subheading">Личные заказы <small>${state.commissions.length}/2</small></div>`+state.commissions.map(o=>orderHTML(o)).join(''):'')+`<div class="subheading">Повседневные заказы</div>`+state.orders.map(o=>orderHTML(o)).join('');
-}
-function showCommission(){
-  const c=currentBuyer(),o=c&&G.commissionOffer(state,c.id);if(!o)return;
-  const p=G.CLIENTS.find(p=>p.id===c.client);
-  modal(`<p class="modal-eyebrow">Личный заказ · ${p.name}</p><h2 id="dialog-title">${G.recipeById(o.recipe).name}</h2><div class="commission-preview">${icon(o.recipe)}<div><strong>${o.reward} монет</strong><span>До дня ${o.deadline}</span></div></div><p>${esc(orderRequirements(o))}</p><div class="traits"><span class="trait">+16 опыта</span><span class="trait">+2 отношения</span></div>${btn('commission-accept','Взять заказ','primary',`data-buyer="${c.id}" ${state.commissions.length>=2?'disabled':''}`)}<p class="modal-note">${state.commissions.length>=2?'Сначала закончи один из двух личных заказов.':'Предоплаты нет. Если срок истечёт, вещь останется на витрине.'}</p>`);
-}
-function keepBuyerVisible(){const strip=$('.buyer-strip'),chip=$('.buyer-chip.selected');if(!strip||!chip)return;const s=strip.getBoundingClientRect(),c=chip.getBoundingClientRect();if(c.right>s.right)strip.scrollLeft+=c.right-s.right+2;else if(c.left<s.left)strip.scrollLeft+=c.left-s.left-2;}
-function showTripReport(report){if(!report)return;modal(`<p class="modal-eyebrow">Возвращение из экспедиции</p><h2 id="dialog-title">Находки для кузницы</h2><div class="loot-grid">${Object.entries(report.found).map(([id,n])=>`<div>${icon(id)}${G.MATERIALS[id].name} +${n}</div>`).join('')}</div><p>+${report.xp} опыта${report.gold?` · +${report.gold} монет`:''}${report.blueprint?` · чертёж «${G.recipeById(report.blueprint).name}»`:''}${report.relic?' · старый артефакт':''}</p>${btn('close','Разложить находки','primary')}`);}
-function prepareOrder(id){const o=[G.currentStory(state),...state.commissions,...state.orders].find(o=>o?.id===id);if(!o)return;selected=o.recipe;design=o.design||'balanced';forgeTab='work';if(!G.knownRecipe(state,o.recipe)||(o.material&&!G.knownMaterial(state,o.material))||(o.rune&&o.rune!=='none'&&!state.technologies.includes('runes'))){setView('develop');toast(orderHint(o));}else{metal=o.material||'iron';rune=o.rune||'none';setView('forge');}}
-function exploreHTML(){let html=head(state.trip?'Экспедиция':'Долина за порогом',state.trip?'Выбирай, на что потратить время в пути.':'Нажми на место на пиксельной карте.','2 силы');if(state.trip)return tripView(state,{ordinary:ordinaryTrip},{btn,icon,esc});
-  const r=G.REGIONS.find(r=>r.id===region),open=G.regionAvailable(state,region),hint={mine:'Открой шахту заказом Миры или улучши горн.',ruins:'Нужны рунная гравировка, архивы аббатства или заказ Ады.',pass:'Изучи лунную металлургию в древе.'}[region];
-  html+=`<div class="region-tabs">${G.REGIONS.map(r=>btn('select-region',`${icon(r.id==='forest'?'wood':r.id==='mine'?'pickaxe':r.id==='ruins'?'relic':'moon')}<span>${r.name}</span>`,`region-tab${r.id===region?' selected':''}${G.regionAvailable(state,r.id)?'':' locked'}`,`data-region="${r.id}"`)).join('')}</div><div class="craft-card"><p class="modal-eyebrow">${open?'Путь открыт':'Пока недоступно'}</p><h2>${r.name}</h2><p class="help-text">${r.subtitle}. ${open?'Две остановки: сбор, поиск тайников или помощь путникам.':hint}</p>${btn('begin-trip',open?'Отправиться · 2 силы':'Путь закрыт','primary',`data-region="${r.id}" ${open&&state.energy>=2&&!state.work?'':'disabled'}`)}</div><div class="subheading">Древние находки <small>${state.relics.length} / 20</small></div>`;
-  html+=state.relics.length?state.relics.map(r=>`<article class="relic-card"><div class="item-heading"><div class="item-icon">${icon('relic')}</div><div><h2>Старый ${G.recipeById(r.recipe).short.toLowerCase()}</h2><p>Реставрация — пять этапов в кузнице.</p></div></div><p class="help-text">Восстановить: 8 монет, дерево ×2, уголь ×1, 1 сила. Изучить: чертёж. Разобрать: железо ×3, кристаллы ×2.</p><div class="button-row">${btn('restore-relic','Восстановить','secondary',`data-relic="${r.id}"`)}${btn('process-relic','Изучить','secondary',`data-relic="${r.id}" data-process="study"`)}${btn('process-relic','Разобрать','secondary',`data-relic="${r.id}" data-process="salvage"`)}</div></article>`).join(''):'<p class="help-text">Артефакты находятся в аббатстве и продаются у торгового обоза.</p>';return html;
-}
-function treeHTML(){const m=G.mastery(state);return head('Древо мастерства','Ремесло, торговля и открытие долины.',`Уровень ${m.level}`)+`<div class="mastery-card"><div><strong>${m.points}</strong><span>очков мастерства</span></div><div class="xp-info"><b>${state.xp} опыта</b><span>${m.progress} / 30 до нового уровня</span><div class="xp-bar"><i style="width:${m.progress/30*100}%"></i></div></div></div><p class="help-text">Каждые 30 опыта дают 1 очко. Работа: +12, продажа гостю: +6, сюжетный заказ: +18. Навыки требуют очков, монет и 1 силы.</p><div class="tree-branches"><span>Ремесло</span><span>Торговля</span><span>Путешествия</span></div><div class="skill-tree" id="skill-tree"><svg id="tree-lines" aria-hidden="true"></svg>${G.SKILLS.map(s=>{const status=G.skillStatus(state,s.id);return btn('skill-detail',`${icon(s.icon)}<strong>${s.name}</strong><small>${status==='learned'?'✓ Открыто':`${s.points} оч. · ${s.cost} ◈`}</small>`,`skill-node ${status}`,`data-skill="${s.id}" style="grid-column:${s.col+1};grid-row:${s.row+1}" aria-label="${s.name} — ${status==='learned'?'открыто':status==='available'?'доступно':'закрыто'}"`);}).join('')}</div><div class="tree-legend"><span>● Открыто</span><span>● Доступно</span><span>● Закрыто</span></div><div class="button-row">${btn('equipment-go','Оборудование кузницы →','secondary')}</div><div class="subheading" id="blueprint-list">Чертежи <small>Можно находить в тайниках</small></div>${G.RECIPES.filter(r=>!r.starter).map(r=>`<article class="technology">${icon(r.id)}<div><h2>${r.name}</h2><p>${r.desc}</p></div>${G.knownRecipe(state,r.id)?'<span class="trait">Изучен</span>':btn('learn-recipe',`${r.learn} ◈`,'secondary',`data-recipe="${r.id}" ${state.gold<r.learn||!state.energy?'disabled':''}`)}</article>`).join('')}<div class="subheading">Дневник мастерской</div><div class="journal">${state.log.slice(0,12).map(e=>`<div class="journal-entry"><time>День ${e.day}</time><p>${esc(e.text)}</p></div>`).join('')}</div>`;}
-function drawTreeLines(){const tree=$('#skill-tree'),svg=$('#tree-lines');if(!tree||!svg)return;const base=tree.getBoundingClientRect();svg.setAttribute('viewBox',`0 0 ${base.width} ${base.height}`);svg.innerHTML=G.SKILLS.flatMap(s=>s.parents.map(p=>{const from=tree.querySelector(`[data-skill="${p}"]`).getBoundingClientRect(),to=tree.querySelector(`[data-skill="${s.id}"]`).getBoundingClientRect();const x1=from.left-base.left+from.width/2,y1=from.bottom-base.top,x2=to.left-base.left+to.width/2,y2=to.top-base.top;const learned=G.skillStatus(state,s.id)==='learned';return `<path d="M ${x1} ${y1} C ${x1} ${(y1+y2)/2}, ${x2} ${(y1+y2)/2}, ${x2} ${y2}" class="${learned?'learned':''}"/>`;})).join('');}
-function skillDetail(id){const s=G.SKILLS.find(s=>s.id===id),status=G.skillStatus(state,id),m=G.mastery(state);modal(`<p class="modal-eyebrow">${{root:'Начало пути',craft:'Ветвь ремесла',trade:'Ветвь торговли',travel:'Ветвь путешествий'}[s.branch]}</p><h2 id="dialog-title">${s.name}</h2>${icon(s.icon,undefined,'result-icon')}<p>${s.desc}</p><div class="report"><p>Предыдущие навыки: ${s.parents.map(id=>G.SKILLS.find(s=>s.id===id).name).join(', ')||'не требуются'}.</p>${s.need?`<p>Нужен ${s.need==='furnace'?'горн':'верстак'} уровня ${s.level} (у тебя ${state.upgrades[s.need]}).</p>`:''}<p>${s.points} оч. мастерства · ${s.cost} монет · 1 сила. У тебя ${m.points} оч.</p></div>${status==='learned'?'<span class="trait">Навык уже открыт</span>':btn('learn-skill','Открыть навык','primary',`data-skill="${id}" ${status==='available'&&m.points>=s.points&&state.gold>=s.cost&&state.energy?'':'disabled'}`)}${status==='locked'?btn('equipment-go','Оборудование и требования →','secondary','style="width:100%;margin-top:10px"'):''}`);}
-function finishDay(){if(busy)return;const reports=act(()=>G.endDay(state));if(!reports)return;npcActors.clear();buyerId=state.customers[0].id;modal(`<p class="modal-eyebrow">Утро в Велене</p><h2 id="dialog-title">День ${state.day}</h2><p>Силы восстановлены. В лавку пришли новые покупатели.</p><div class="event-card">${icon('star')}<div><strong>${G.demandEvent(state).name}</strong><p>${G.demandEvent(state).text}</p></div></div>${reports.map(r=>`<div class="report"><div class="report-head"><img src="${portraitURL(G.CLIENTS.find(p=>p.id===r.client))}" alt=""><strong>Новости от ${r.clientName}</strong></div><p>${r.returnText}</p><div class="loot-grid">${Object.entries(r.returns).map(([id,n])=>`<div>${icon(id)}+${n}</div>`).join('')}</div></div>`).join('')}${btn('close','Начать новый день','primary')}`);}
-function showHaggle(){const c=currentBuyer(),item=state.stock[itemIndex];if(!c||!item)return;const q=G.customerQuote(state,item,c.id,policy);modal(`<p class="modal-eyebrow">Разговор о цене</p><h2 id="dialog-title">Торг с ${G.CLIENTS.find(p=>p.id===c.client).name}</h2><p>${G.itemName(item)} · ${c.attempts} из 2 попыток использовано.${state.skills.includes('appraisal')?` Покупатель даст до ${q.budget} монет.`:''}</p><label class="field-label" for="offer-price">Твоя цена в монетах</label><input id="offer-price" class="offer-input" type="number" min="1" max="100000" value="${q.price}">${btn('offer','Предложить цену','primary',c.attempts>=2?'disabled':'')}<p class="modal-note">Слишком высокая цена расходует попытку торга. Можно вернуться к обычной цене или выбрать другое изделие.</p>`);}
-function showSettings(){if(busy)return;modal(`<p class="modal-eyebrow">Твоя кузница</p><h2 id="dialog-title">Настройки и прогресс</h2><div class="settings-row"><div>Звуки работы</div>${btn('sound',state.sound?'Включены':'Выключены','secondary',`aria-pressed="${state.sound}"`)}</div><div class="settings-row"><div>Музыка</div>${btn('music',state.music?'Включена':'Выключена','secondary',`aria-pressed="${state.music}"`)}</div><label class="volume-setting" for="settings-volume"><span>Громкость <output id="volume-value">${Math.round(state.volume*100)}%</output></span><input id="settings-volume" type="range" min="0" max="100" step="5" value="${Math.round(state.volume*100)}" aria-label="Громкость музыки и эффектов"></label><div class="settings-row"><div>Скачать сохранение<small>Все вещи, навыки и незавершённые этапы</small></div>${btn('export','Скачать','secondary')}</div>${loadError?`<div class="settings-row"><div>Исходный файл</div>${btn('export-original','Скачать','secondary')}</div>`:''}<div class="settings-row"><div>Загрузить прогресс</div>${btn('import','Выбрать','secondary')}</div><div class="settings-row"><div>Как играть</div>${btn('help','Открыть','secondary')}</div><div class="settings-row"><div>Начать заново</div>${btn('reset-ask','Сбросить','secondary danger')}</div><p class="modal-note">Сохранения первой версии переносятся автоматически. Прогресс хранится в этом браузере. Перед очисткой данных скачай его. Для установки выбери «На экран Домой» в меню браузера.</p>`);}
-function exportSave(original=false){let raw;try{raw=original?localStorage.getItem(SAVE):G.serialize(state);}catch{toast('Не удалось прочитать файл.',true);return;}const url=URL.createObjectURL(new Blob([raw||''],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=original?'pix-original.json':`pix-day-${state.day}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-function help(){modal(`<p class="modal-eyebrow">Мастерская оживает</p><h2 id="dialog-title">Как играть</h2><ol class="modal-list"><li>Выбери чертёж, металл и руну. Возьми материалы, разметь заготовку, нагрей её мехами и нанеси пять ударов.</li><li>Выбери закалку: вода, воздух или масло. Собери, отполируй или заточи изделие. Персонаж подходит к каждой станции и работает.</li><li>В отдельной лавке поговори с гостем, пролистай витрину и предложи подходящий товар. После знакомства можно взять личный заказ; навык торга открывает собственную цену.</li><li>На карте выбери доступное место. Встречи предлагают разные затраты и награды. За две остановки собери материалы, ищи тайники или помогай путникам.</li><li>За опыт получай очки мастерства. В древе открывай связанные навыки. Оборудование покупается во вкладке кузницы.</li><li>Выполняй сюжетные заказы и завершай день: заказчики возвращаются и открывают новые места.</li></ol><p>На рабочем этапе есть помощь мастера без проверки реакции. Она проходит только текущий этап. Клавиатура: пробел — рабочая кнопка, стрелки — ходьба.</p>${btn('close','К работе','primary')}`);}
-document.addEventListener('click',e=>{const target=e.target.closest('[data-action]');if(!target||target.disabled)return;const d=target.dataset;
-  if(d.action==='heat-press'||(d.action==='scene-work'&&state.work?.step===1))return;
-  if(busy&&!['close'].includes(d.action)){toast('Дождись завершения движения и работы.');return;}
-  switch(d.action){
-    case'navigate':setView(d.view);break;
-    case'close':close();break;
-    case'welcome-start':state.welcomed=true;save();close();break;
-    case'forge-tab':forgeTab=d.tab;render();break;
-    case'inventory':modal(`<h2 id="dialog-title">Материалы</h2><div class="inventory-grid">${Object.entries(state.resources).map(([id,n])=>`<div>${icon(id)}<strong>${n}</strong><span>${G.MATERIALS[id].name}</span></div>`).join('')}</div>${btn('close','Закрыть','primary')}`);break;
-    case'recipe-info':{const r=G.recipeById(d.recipe);modal(`<h2 id="dialog-title">${r.name}</h2>${icon(r.id,G.MATERIALS[metal].color,'result-icon')}<p>${r.desc}</p><p>Ручная работа · пять этапов · +12 опыта.</p>${btn('close','К работе','primary')}`);break;}
-    case'select-recipe':selected=d.recipe;render();break;
-    case'all-recipes':allRecipes=!allRecipes;render();break;
-    case'begin-work':if(act(()=>G.beginWork(state,selected,metal,rune,null,design))!==undefined)approachStage();break;
-    case'station':{const s=STATIONS[d.station];moveActor(actor,s.x,s.y);if(state.work&&G.workStage(state).station!==d.station)toast(`Сейчас нужен ${STATIONS[G.workStage(state).station].label.toLowerCase()}.`);else toast(`Мастер подходит: ${s.label}.`);break;}
-    case'work-mark':markOrHit();break;
-    case'work-hit':{const bounds=target.closest('.work-board')?.getBoundingClientRect();const zone=bounds&&e.detail?Math.max(0,Math.min(2,Math.floor((e.clientX-bounds.left)/bounds.width*3))):undefined;markOrHit(zone);break;}
-    case'forge-zone':markOrHit(Number(d.zone));break;
-    case'reheat':reheatWork();break;
-    case'design':design=d.design;render();break;
-    case'work-stamp':act(()=>G.markWork(state,d.stamp));pulse('cut');emitEffect(effects,'magic',...WORK_POINTS[4],performance.now());break;
-    case'scene-work':sceneAction();break;
-    case'stage-assist':{const stage=G.workStage(state);if(stage&&state.work.step<3)completeStage(stage.id,.5);break;}
-    case'quench':completeStage('quench',d.method);break;
-    case'finish-method':if(uiTask){uiTask.finishMethod=d.method;uiTask.rivets=[];uiTask.rubDistance=0;render();}break;
-    case'finish-rivet':finishAction(Number(d.rivet));break;
-    case'finish-tap':finishAction();break;
-    case'cancel-work-ask':modal(`<h2 id="dialog-title">Убрать заготовку?</h2><p>До разметки возвращаются материалы и силы. После разметки возвращается половина металла; остальные материалы и силы уже потрачены.</p>${btn('cancel-work','Убрать заготовку','primary gold')}${btn('close','Продолжить работу','secondary','style="width:100%;margin-top:10px"')}`);break;
-    case'cancel-work':act(()=>G.cancelWork(state));uiTask=null;close();render();break;
-    case'batch':act(()=>G.batchCraft(state,selected,metal,rune,Number(d.count)),items=>`Ученик изготовил ${items.length} вещей.`);break;
-    case'equipment':act(()=>G.buyEquipment(state,d.equipment),'Оборудование установлено.');break;
-    case'upgrade':act(()=>G.upgrade(state,d.upgrade),'Мастерская улучшена.');break;
-    case'equipment-go':close();forgeTab='equipment';setView('forge');break;
-    case'skill-detail':skillDetail(d.skill);break;
-    case'learn-skill':if(act(()=>G.learnSkill(state,d.skill),'Новый навык открыт.')!==undefined||G.skillStatus(state,d.skill)==='learned'){close();render();}break;
-    case'learn-recipe':act(()=>G.learnRecipe(state,d.recipe),'Чертёж изучен.');break;
-    case'shop-tab':shopTab=d.tab;render();break;
-    case'buyer-info':{const c=currentBuyer();if(c){const p=G.CLIENTS.find(p=>p.id===c.client);modal(`<h2 id="dialog-title">${p.name} · ${p.role}</h2><img class="portrait" src="${portraitURL(p)}" alt=""><p>${c.greeted?G.customerLine(c):'Познакомься с гостем, чтобы узнать его предпочтения.'}</p><p>Качество ${c.quality}+ · отношения ${state.rapport[p.id]||0}${state.skills.includes('appraisal')?` · ${c.wallet} монет`:''}</p>${btn('close','В лавку','primary')}`);}break;}
-    case'demand-info':{const e=G.demandEvent(state);modal(`<h2 id="dialog-title">${e.name}</h2><p>${e.text}</p>${btn('close','В лавку','primary')}`);break;}
-    case'policy':policy=d.policy;render();break;
-    case'buy-material':act(()=>G.buyMaterial(state,d.material,3),`Куплено: ${G.MATERIALS[d.material].name} ×3.`);break;
-    case'trade-buy':act(()=>G.buyTradeItem(state),'Товар обоза на витрине.');break;
-    case'buy-relic':act(()=>G.buyRelic(state),'Находка ждёт в разделе карты.');break;
-    case'select-buyer':buyerId=d.buyer;render();keepBuyerVisible();break;
-    case'greet':{const c=currentBuyer();if(c){act(()=>G.greetCustomer(state,c.id,d.approach));gestureNPC(c.id);emitEffect(effects,'good',244,180,performance.now());}break;}
-    case'item-prev':itemIndex=(itemIndex-1+state.stock.length)%state.stock.length;render();break;
-    case'item-next':itemIndex=(itemIndex+1)%state.stock.length;render();break;
-    case'serve':{const c=currentBuyer(),item=state.stock[itemIndex];if(c&&item){const sale=act(()=>G.serveCustomer(state,c.id,item.id,policy));if(sale){sound('coin');emitEffect(effects,'coin',244,183,performance.now(),`+${sale.price} ◈`);}}break;}
-    case'haggle':showHaggle();break;
-    case'offer':{const c=currentBuyer(),item=state.stock[itemIndex],offer=Number($('#offer-price').value);if(c&&item){const result=act(()=>G.serveCustomer(state,c.id,item.id,policy,offer));if(result?.accepted){close();toast(`Сделка заключена за ${result.price} монет.`);}else if(result){showHaggle();toast('Покупатель отказался. Попробуй меньшую цену.',true);}}break;}
-    case'invite':{const c=act(()=>G.inviteCustomer(state),'Новый посетитель вошёл в лавку.');if(c){buyerId=c.id;render();}break;}
-    case'commission-info':showCommission();break;
-    case'commission-accept':{const o=act(()=>G.acceptCommission(state,d.buyer),'Личный заказ появился в разделе заказов.');if(o){close();const a=npcActors.get(d.buyer);if(a){a.pose='wave';a.poseStarted=performance.now();a.workUntil=a.poseStarted+650;}render();}break;}
-    case'commission-cancel-ask':modal(`<h2 id="dialog-title">Отменить личный заказ?</h2><p>Вещи и материалы остаются у тебя. Этот посетитель уже не предложит новый заказ сегодня.</p>${btn('commission-cancel','Отменить заказ','primary gold',`data-order="${d.order}"`)}${btn('close','Оставить заказ','secondary')}`);break;
-    case'commission-cancel':act(()=>G.cancelCommission(state,d.order));close();render();break;
-    case'order-info':{const o=[G.currentStory(state),...state.commissions,...state.orders].find(o=>o?.id===d.order);if(o)modal(`<h2 id="dialog-title">${esc(o.title)}</h2><p>${esc(o.text)}</p><p>${esc(orderRequirements(o))}${o.deadline?` · до дня ${o.deadline}`:''}</p>${btn('close','К заказу','primary')}${o.deadline?btn('commission-cancel-ask','Отменить заказ','secondary danger',`data-order="${o.id}"`):''}`);break;}
-    case'prepare':prepareOrder(d.order);break;
-    case'fulfill':act(()=>G.fulfill(state,d.order,Number(d.item)),o=>`Заказ выполнен! +${o.reward} монет.`);break;
-    case'map-place':if(d.region==='home'){setView('forge');}else if(d.region==='beacon'){setView('orders');toast(state.ended?'Маяк восстановлен твоей работой.':'Маяк откроется в финале истории Элин.');}else{region=d.region;render();}break;
-    case'select-region':region=d.region;render();break;
-    case'begin-trip':ordinaryTrip=false;if(act(()=>G.beginTrip(state,d.region))!==undefined){actor.x=225;actor.y=290;moveActor(actor,237,264);render();}break;
-    case'trip-ordinary':ordinaryTrip=true;render();break;
-    case'trip-event':ordinaryTrip=false;render();break;
-    case'encounter-choice':{const report=act(()=>G.resolveEncounter(state,d.choice));ordinaryTrip=false;pulse('wave');if(report)showTripReport(report);else if(state.trip)moveActor(actor,actor.x+12,actor.y-12);break;}
-    case'trip-action':{const report=act(()=>G.tripAction(state,d.choice));ordinaryTrip=false;pulse(d.choice==='gather'?'hammer':d.choice==='search'?'cut':'idle');if(report)showTripReport(report);else if(state.trip)moveActor(actor,actor.x+12,actor.y-12);break;}
-    case'retreat-ask':modal(`<h2 id="dialog-title">Вернуться сейчас?</h2><p>Потраченные силы и находки незавершённой экспедиции не вернутся.</p>${btn('retreat','Вернуться без находок','primary gold')}${btn('close','Остаться на тропе','secondary','style="width:100%;margin-top:10px"')}`);break;
-    case'retreat':act(()=>G.retreatTrip(state));close();break;
-    case'restore-relic':{const r=state.relics.find(r=>r.id===Number(d.relic));if(r&&act(()=>G.beginWork(state,r.recipe,'iron',state.technologies.includes('runes')?'light':'none',r.id))!==undefined){forgeTab='work';setView('forge');}break;}
-    case'process-relic':act(()=>G.processRelic(state,Number(d.relic),d.process),'Находка использована.');break;
-    case'end-day':finishDay();break;
-    case'result-go':close();setView(d.view);break;
-    case'sound':state.sound=!state.sound;audio.setOptions(state);audio.unlock().then(()=>sound('hit'));save();showSettings();break;
-    case'music':state.music=!state.music;audio.setOptions(state);audio.unlock();save();showSettings();break;
-    case'export':exportSave();break;
-    case'export-original':exportSave(true);break;
-    case'import':$('#import-file').click();break;
-    case'help':help();break;
-    case'reset-ask':modal(`<h2 id="dialog-title">Начать заново?</h2><p>Все вещи, навыки и монеты будут сброшены. Сначала можно скачать сохранение.</p>${btn('export','Скачать текущий прогресс','secondary','style="width:100%;margin:10px 0"')}${btn('reset','Начать новую игру','primary gold')}${btn('close','Отмена','secondary','style="width:100%;margin-top:10px"')}`);break;
-    case'reset':state=G.newGame(Date.now()>>>0);state.welcomed=true;G.ensureOrders(state);G.ensureCustomers(state);loadError=false;uiTask=null;npcActors.clear();selected='lantern';metal='iron';rune='none';forgeTab='work';shopTab='stock';itemIndex=0;save();close();setView('forge');break;
-  }
+function frame(time){requestAnimationFrame(frame);if(document.hidden||time-lastFrame<50)return;const dt=Math.min(.1,(time-lastFrame)/1000);lastFrame=time;paint(time,dt);}
+function editorHelp(){modal('Твоя работа — твой рисунок',`<div class="help-grid"><b>○</b><span>Потяни точки заготовки или нарисуй свой замкнутый контур. «Вырез» убирает металл внутри основы.</span><b>✎</b><span>Рисуй узор по металлу. Выбирай толщину; ↔ повторяет линию зеркально.</span><b>◆</b><span>Поставь камни и передвинь их пальцем. Камень должен держаться в оправе.</span><b>✦</b><span>Проведи руну рядом с камнем: его свойство пробудится.</span><b>▥</b><span>Полируй поверхность движениями пальца. Обработанные участки светлеют.</span><b>⊙</b><span>Масштаб — двумя пальцами или +/−. «Сдвиг» передвигает поле. ↶/↷ отменяют и возвращают действия.</span></div><p class="fine-print">Ни рисунок, ни название не теряются при переходе между разделами. Материалы расходуются только после «Готово».</p>`);}
+function showInventory(){modal('Твои материалы',`<div class="inventory-grid">${Object.entries({...J.METALS,...J.GEMS}).map(([id,m])=>`<span><b style="color:${m.color}">${J.GEMS[id]?'◆':'▰'}</b> ${m.name} <b>×${state.materials[id]}</b></span>`).join('')}</div>${btn('go-supplier','К поставщику','primary')}`);}
+function showMaterials(){editor?.finish();const d=state.draft.design;modal('Металл и расход',`<p>${esc(costText(d))}${J.costs(d).coins?' (готовая основа оружия)':''}</p><div class="inventory-grid">${Object.entries(J.METALS).map(([id,m])=>btn('apply-metal',`<b style="color:${m.color}">▰</b> ${m.name}<br><small>Запас ${state.materials[id]}</small>`,d.metal===id?'active':'',`data-metal="${id}" ${J.available(state,id)?'':'disabled'}`)).join('')}</div><p class="fine-print">Цена и расход меняются вместе с площадью твоего контура. Можно вернуться к рисунку и уменьшить оправу.</p>`);}
+function showAssessment(item,completed=false){const d=item.design,e=J.evaluate(d),effects=Object.entries(e.effects).map(([id,power])=>`${J.ELEMENTS[id]} +${Math.round(power*(state.skills.includes('alchemy')?1.25:1))}`).join(' · ');modal(completed?'Украшение готово':'Оценка работы',`<img class="hero-jewel" src="${jewelURL(d,300)}" alt="${esc(d.name)}"><h2>${esc(d.name)}</h2><div class="score-row"><span>Мастерство</span><b>${e.craft}/100</b></div><div class="score-row"><span>Художественный стиль</span><b>${e.label}</b></div><div class="score-row"><span>Магия</span><b>${Math.round(e.magic*(state.skills.includes('alchemy')?1.25:1))}</b></div>${state.skills.includes('eye')?`<p>Обработано ${e.polish}% металла. Связанных камней: ${e.connections}. ${effects||'Без пробуждённых рун.'}</p><div class="inventory-grid">${Object.entries(e.style).map(([id,n])=>`<span>${{symmetry:'Симметрия',ornate:'Богатство',organic:'Растительные формы',minimal:'Сдержанность',contrast:'Контраст'}[id]} <b>${n}</b></span>`).join('')}</div><p class="fine-print">Мастерство зависит от контура, оправ, гравировки и реальной обработки поверхности. У жителей разные вкусы: богатый узор подходит не всем.</p>`:`<p class="muted">Полировка и устойчивые оправы повышают мастерство. «Глаз мастера» открывает подробный разбор.</p>`}${completed?`<div class="row fill">${btn('completed-studio','Ещё изделие')}${btn('completed-shop','На витрину','primary')}</div>`:''}`);}
+function showDemand(){modal('Спрос любит новые работы',`<p>После <b>4 продаж одного дизайна по полной или высокой цене</b> цена следующих экземпляров падает на <b>75%</b>.</p><p>Спрос восстанавливается через <b>7 торговых дней с продажами</b>. Дни без продаж этот срок не сокращают.</p><p>Название, цвет металла и небольшие правки линий не делают старый рисунок новым. Меняй форму, композицию узора и расположение камней.</p><p class="fine-print">Личные заказы тоже учитываются. Заказчики не принимают дизайн, спрос на который уже насыщен.</p>`);}
+function showSkill(id){const t=J.TOOLS.find(t=>t.id===id);if(!t)return;const learned=state.skills.includes(id),parents=t.parents.filter(p=>!state.skills.includes(p));modal(t.name,`<p>${t.desc}</p>${parents.length?`<p>Сначала: ${parents.map(id=>J.TOOLS.find(t=>t.id===id).name).join(', ')}.</p>`:''}<div class="score-row"><span>Стоимость</span><b>${t.cost} ◈</b></div><div class="score-row"><span>Нужный опыт</span><b>${t.xp} / ${state.xp}</b></div><p class="fine-print">Опыт не тратится при изучении.</p>${btn('learn',learned?'Изучено':'Изучить','primary',`data-skill="${id}" ${learned||parents.length||state.gold<t.cost||state.xp<t.xp?'disabled':''}`)}`);}
+function download(raw,filename){const url=URL.createObjectURL(new Blob([raw],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function menu(){editor?.finish();modal('Мастерская «Сияние»',`<div class="settings">${btn('toggle-sound',`Эффекты: ${state.sound?'вкл':'выкл'}`)}${btn('toggle-music',`Музыка: ${state.music?'вкл':'выкл'}`)}<label>Громкость <input id="volume" aria-label="Громкость" type="range" min="0" max="1" step="0.05" value="${state.volume}"></label>${btn('export','Скачать сохранение')}${btn('import','Загрузить сохранение')}${state.legacy?btn('legacy-export','Скачать архив прежней игры'):''}${loadError?btn('reset-recovery','Начать заново','danger'):''}</div><p class="fine-print">Изделия и история действий сохраняются на этом устройстве. Для переноса на другой телефон скачай файл. Веленский порт, 1740 год.</p>${state.legacy?'<p class="fine-print">Монеты и запасы перенесены. Прежние товары обменены на 65% их стоимости, незавершённая работа разобрана; оригинальное сохранение доступно в архиве.</p>':''}`);}
+function welcome(){modal('Добро пожаловать в «Сияние»',`<div class="welcome"><img src="./assets/icon.svg" alt=""><p>Твоя ювелирная мастерская в Веленском порту, 1740 год.</p></div><div class="help-grid"><b>✎</b><span>Придумай форму и нанеси собственный узор.</span><b>◆</b><span>Поставь камни, пробуди их рунами, отполируй оправу.</span><b>◇</b><span>Выставляй работу и ищи покупателя по вкусу. Повторяющиеся дизайны теряют спрос.</span></div>${state.legacy?'<p class="fine-print">Твой прежний прогресс перенесён, исходное сохранение сохранено в архиве.</p>':''}${btn('welcome-start','Открыть мастерскую','primary')}`,false);}
+function resetEditor(){editorOptions={tool:'shape',width:1,symmetry:false,gem:'garnet',cut:'round',zoom:1,pan:{x:0,y:0}};}
+function editAndRefresh(fn){try{editor?.finish();const d=J.clone(state.draft.design);fn(d);J.edit(state,d);save();editor.dirty=true;editor.metrics=J.evaluate(d);updateEditor();}catch(e){toast(e.message,true);}}
+let pendingImport=null;
+document.addEventListener('pointerdown',()=>{audio.unlock();},{passive:true});
+document.addEventListener('click',e=>{
+ const b=e.target.closest('[data-action]');if(!b||b.disabled)return;const id=b.dataset.action;
+ switch(id){
+ case'close':close();break;
+ case'welcome-start':state.welcomed=true;save();close();render();break;
+ case'navigate':editor?.finish();view=b.dataset.view;render();break;
+ case'go-supplier':view='supplies';supplyTab='buy';close();render();break;
+ case'select-type':if(!J.typeAvailable(state,b.dataset.type)){showSkill('mounts');break;}selectedType=b.dataset.type;template='oval';render();break;
+ case'template':template=b.dataset.template;render();break;
+ case'start-design':resetEditor();action(()=>J.startDesign(state,selectedType,template,selectedMetal));break;
+ case'editor-tool':editor.setTool(b.dataset.tool);editorOptions.tool=editor.tool;updateEditor();break;
+ case'zoom-in':editor.changeZoom(editor.zoom*1.3);break;
+ case'zoom-out':editor.changeZoom(editor.zoom/1.3);break;
+ case'zoom-reset':editor.resetZoom();break;
+ case'symmetry':editor.symmetry=!editor.symmetry;editorOptions.symmetry=editor.symmetry;renderToolOptions();break;
+ case'undo':case'redo':editor.finish();J.undo(state,id==='redo');editor.syncSelection();save();editor.dirty=true;editor.metrics=J.evaluate(state.draft.design);updateEditor();renderToolOptions();$('#jewel-name').value=state.draft.design.name;break;
+ case'editor-help':editorHelp();break;
+ case'material-picker':showMaterials();break;
+ case'apply-metal':editAndRefresh(d=>{d.metal=b.dataset.metal;});close();break;
+ case'remember':try{editor.finish();J.remember(state);save();toast('Модель сохранена. Можно создать новый экземпляр.');}catch(e){toast(e.message,true);}break;
+ case'finish-design':{const item=action(()=>J.complete(state));if(item){itemIndex=0;showAssessment(item,true);audio.play('magic');}break;}
+ case'completed-shop':view='shop';close();render();break;
+ case'completed-studio':view='studio';close();render();break;
+ case'discard':modal('Убрать заготовку?',`<p>Рисунок текущей заготовки будет удалён. Материалы ещё не потрачены.</p>${btn('confirm-discard','Убрать заготовку','primary danger')}`);break;
+ case'confirm-discard':action(()=>{state.draft=null;});close();break;
+ case'load-model':action(()=>{J.restoreModel(state,b.dataset.model);view='studio';resetEditor();});break;
+ case'inventory':showInventory();break;
+ case'buyer':buyerId=b.dataset.buyer;render();break;
+ case'policy':policy=b.dataset.policy;render();break;
+ case'previous':case'next':itemIndex=(itemIndex+(id==='next'?1:-1)+state.stock.length)%state.stock.length;render();break;
+ case'sell':action(()=>J.sell(state,b.dataset.item,currentBuyer()?.id,policy),q=>q.saturated?`Продано за ${q.price} ◈. Спрос на этот дизайн насыщен.`:`Продано за ${q.price} ◈`);audio.play('coin');break;
+ case'demand-info':showDemand();break;
+ case'item-info':{const item=state.stock.find(i=>i.id===b.dataset.item);if(item)showAssessment(item);break;}
+ case'save-item-model':action(()=>J.rememberItem(state,b.dataset.item),'Модель сохранена.');break;
+ case'recycle':modal('Разобрать изделие?',`<p>Все камни и 70% металла вернутся в запасы. Готовая оправа и работа будут разобраны.</p>${btn('confirm-recycle','Разобрать','primary danger',`data-item="${b.dataset.item}"`)}`);break;
+ case'confirm-recycle':action(()=>J.recycle(state,b.dataset.item),'Материалы возвращены.');close();break;
+ case'supply-tab':supplyTab=b.dataset.tab;render();break;
+ case'buy':action(()=>J.buy(state,b.dataset.material,Number(b.dataset.count)),'Материалы в запасе.');break;
+ case'locked-material':showSkill(['gold','diamond'].includes(b.dataset.material)?'gold':'alchemy');break;
+ case'gather':action(()=>J.gather(state,b.dataset.area),r=>`Найдено: ${J.GEMS[r.gem].name} и ${J.METALS[r.metal].name} ×3`);break;
+ case'next-day':action(()=>J.nextDay(state),`Открыт новый день. Черновик сохранён.`);break;
+ case'prepare-order':if(state.draft){view='studio';render();toast('Сначала закончи или убери текущую заготовку.');}else{selectedType=b.dataset.type;resetEditor();action(()=>{J.startDesign(state,selectedType,'oval','copper');view='studio';});}break;
+ case'deliver':action(()=>J.deliver(state,b.dataset.request,b.dataset.item),n=>`Заказ выполнен · ${n} ◈ · +16 опыта`);break;
+ case'skill':showSkill(b.dataset.skill);break;
+ case'learn':action(()=>J.learn(state,b.dataset.skill),'Новая техника изучена.');close();break;
+ case'toggle-sound':state.sound=!state.sound;audio.setOptions(state);save();menu();break;
+ case'toggle-music':state.music=!state.music;audio.setOptions(state);save();menu();break;
+ case'export':editor?.finish();download(loadError?sourceRaw:J.serialize(state),`siyanie-day-${state.day}.json`);break;
+ case'legacy-export':download(JSON.stringify(state.legacy),'pix-original-archive.json');break;
+ case'import':$('#import-file').click();break;
+ case'confirm-import':if(pendingImport){editor?.destroy();editor=null;state=pendingImport;pendingImport=null;loadError=false;state.welcomed=true;view='studio';buyerId=null;itemIndex=0;resetEditor();save();close();render();toast('Сохранение загружено.');}break;
+ case'reset-recovery':modal('Новое сохранение',`<p>Сначала скачай повреждённый исходный файл через меню. Новый прогресс заменит его на этом устройстве.</p>${btn('confirm-reset','Создать новое сохранение','primary danger')}`);break;
+ case'confirm-reset':state=J.newGame(Date.now()>>>0);loadError=false;sourceRaw=null;save();close();render();welcome();break;
+ }
 });
-document.addEventListener('pointerdown',()=>{audio.setOptions(state);audio.unlock();},{passive:true});
-document.addEventListener('keydown',()=>{audio.setOptions(state);audio.unlock();},{passive:true});
-document.addEventListener('input',e=>{if(e.target.id==='settings-volume'){state.volume=Number(e.target.value)/100;audio.setOptions(state);audio.unlock();$('#volume-value').textContent=Math.round(state.volume*100)+'%';}});
-document.addEventListener('change',e=>{if(e.target.id==='settings-volume')save();});
-document.addEventListener('pointerdown',e=>{
-  if(busy||dialog.open||!uiTask||view!=='forge')return;
-  const heat=e.target.closest('[data-action="heat-press"]')||(state.work?.step===1&&e.target.closest('[data-action="scene-work"]'));
-  if(heat){startHeat(e,heat);return;}
-  const handle=e.target.closest('#quench-handle'),pad=e.target.closest('#finish-pad');
-  if(handle&&state.work?.step===3){e.preventDefault();handle.setPointerCapture(e.pointerId);gesture={kind:'quench',target:handle,id:e.pointerId,x:e.clientX,y:e.clientY};uiTask.dragging=true;handle.classList.add('dragging');}
-  else if(pad&&state.work?.step===4&&uiTask.finishMethod!=='plain'&&!e.target.closest('button')){e.preventDefault();pad.setPointerCapture(e.pointerId);gesture={kind:'rub',target:pad,id:e.pointerId,x:e.clientX,y:e.clientY};pad.classList.add('rubbing');}
+document.addEventListener('input',e=>{
+ if(e.target.id==='brush-width'&&editor)editor.setWidth(e.target.value);
+ if(e.target.id==='volume'){state.volume=Number(e.target.value);audio.setOptions(state);save();}
 });
-document.addEventListener('pointermove',e=>{
-  if(!gesture||gesture.id!==e.pointerId||busy||!uiTask)return;
-  if(gesture.kind==='quench'){
-    gesture.target.style.transform=`translate(${e.clientX-gesture.x}px,${e.clientY-gesture.y}px)`;
-    const drop=document.elementsFromPoint(e.clientX,e.clientY).find(el=>el.matches?.('.quench-basin:not(:disabled)'));
-    for(const el of document.querySelectorAll('.quench-basin'))el.classList.toggle('drop-target',el===drop);
-  }else if(state.work?.step===4){
-    const done=rubSurface(uiTask,e.clientX-gesture.x,e.clientY-gesture.y);gesture.x=e.clientX;gesture.y=e.clientY;
-    if(performance.now()-(uiTask.lastRubFX||0)>70||done){uiTask.lastRubFX=performance.now();finishFeedback(done);}
-    else {const bar=$('#finish-progress');if(bar)bar.style.width=`${finishProgress(uiTask)*100}%`;}
-    if(done){gesture.target.classList.remove('rubbing');gesture=null;}
-  }
+document.addEventListener('change',e=>{
+ if(e.target.id==='start-metal')selectedMetal=e.target.value;
+ if(e.target.id==='brush-width'&&editor&&editor.tool==='stone')editor.changeStone({size:editor.width+1.5});
+ if(e.target.id==='gem-kind'&&editor){editor.gem=e.target.value;editor.changeStone({kind:editor.gem});}
+ if(e.target.id==='gem-cut'&&editor){editor.cut=e.target.value;editor.changeStone({cut:editor.cut});}
+ if(e.target.id==='jewel-name'&&editor)editAndRefresh(d=>{d.name=e.target.value.trim().slice(0,48)||typeName(d.type);});
 });
-function clearGesture(){if(gesture){gesture.target.classList.remove('dragging','rubbing');gesture.target.style.transform='';}for(const el of document.querySelectorAll('.drop-target'))el.classList.remove('drop-target');if(uiTask)uiTask.dragging=false;gesture=null;}
-document.addEventListener('pointerup',e=>{
-  releaseHeat();if(!gesture||gesture.id!==e.pointerId)return;
-  const drop=gesture.kind==='quench'?document.elementsFromPoint(e.clientX,e.clientY).find(el=>el.matches?.('.quench-basin:not(:disabled)')):null;
-  clearGesture();if(drop&&state.work?.step===3)completeStage('quench',drop.dataset.method);
-});
-document.addEventListener('pointercancel',()=>{clearGesture();if(uiTask)uiTask.holding=false;if(actor.pose==='heat'){actor.pose='idle';actor.workUntil=0;}});
-document.addEventListener('keydown',e=>{if(dialog.open)return;if(e.code==='Space'&&state.work&&view==='forge'&&!e.repeat&&!busy&&e.target.tagName!=='SELECT'){e.preventDefault();if(state.work.step===1)startHeat();else if(state.work.step===4)finishAction();else if(state.work.step===3)completeStage('quench','water');else markOrHit();}if(e.code.startsWith('Arrow')&&['forge','shop'].includes(view)&&!busy&&!state.work&&e.target===document.body){e.preventDefault();const d={ArrowLeft:[-24,0],ArrowRight:[24,0],ArrowUp:[0,-18],ArrowDown:[0,18]}[e.code];if(d)moveActor(actor,Math.max(45,Math.min(430,actor.x+d[0])),Math.max(264,Math.min(296,actor.y+d[1])),view);}});
-document.addEventListener('keyup',e=>{if(e.code==='Space')releaseHeat();});
-document.addEventListener('change',e=>{if(e.target.id==='metal-select'){metal=e.target.value;render();}if(e.target.id==='rune-select'){rune=e.target.value;render();}});
-let swipeStart=null;
-document.addEventListener('pointerdown',e=>{if(e.target.closest('#showcase')&&!e.target.closest('button,input'))swipeStart={x:e.clientX,y:e.clientY};});
-document.addEventListener('pointerup',e=>{if(!swipeStart)return;const dx=e.clientX-swipeStart.x,dy=e.clientY-swipeStart.y;swipeStart=null;if(Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy)&&state.stock.length){itemIndex=(itemIndex+(dx<0?1:-1)+state.stock.length)%state.stock.length;render();}});
-canvas.addEventListener('click',e=>{if(busy||!['forge','shop'].includes(view)||state.work&&view==='forge')return;const bounds=canvas.getBoundingClientRect(),x=(e.clientX-bounds.left)/bounds.width*480,y=(e.clientY-bounds.top)/bounds.height*320;if(y>263)moveActor(actor,Math.max(44,Math.min(434,x)),Math.max(270,Math.min(295,y)),view);});
-$('#menu-button').addEventListener('click',showSettings);$('#tech-button').addEventListener('click',()=>setView('develop'));$('#end-day').addEventListener('click',finishDay);
-$('#import-file').addEventListener('change',async e=>{const file=e.target.files[0];e.target.value='';if(!file||busy)return;try{if(file.size>250000)throw new G.GameError('Файл слишком большой.');const imported=G.deserialize(await file.text());modal(`<h2 id="dialog-title">Загрузить день ${imported.day}?</h2><p>${imported.gold} монет · уровень ${G.mastery(imported).level} · ${imported.storyIndex} глав. Текущий прогресс будет заменён.</p>${btn('export','Скачать текущий прогресс','secondary','style="width:100%;margin:10px 0"')}<button class="primary" id="confirm-import">Загрузить сохранение</button>${btn('close','Отмена','secondary','style="width:100%;margin-top:10px"')}`);$('#confirm-import').addEventListener('click',()=>{state=imported;state.welcomed=true;loadError=false;uiTask=null;npcActors.clear();save();close();setView(state.trip?'explore':'forge');},{once:true});}catch(e){toast(e instanceof G.GameError?e.message:'Не удалось прочитать сохранение.',true);}});
-function animate(t){
-  const dt=lastTick?Math.min(.05,(t-lastTick)/1000):.016;lastTick=t;
-  if(!document.hidden){
-    updateActor(actor,dt,t);updateEffects(effects,dt);
-    if(actor.pose==='walk'){const step=Math.floor(actor.phase/2);if(step!==lastStep){sound('step');lastStep=step;}}else lastStep=-1;
-    for(const a of ['shop','orders'].includes(view)?npcActors.values():[]){
-      if(t<(a.enterAt||0))continue;
-      updateActor(a,dt,t);
-      if(['shop','orders'].includes(view)&&!a.leaving&&!a.path.length&&a.pose==='idle'&&t>a.idleAt){
-        a.browseIndex++;a.idleAt=t+3100+(a.browseIndex%4)*650;
-        if(a.chosen||a.browseIndex%3===0){a.facing=a.chosen?'down':'right';a.pose=['chat','inspect','browse'][a.browseIndex%3];a.poseStarted=t;a.workUntil=t+(a.pose==='inspect'?1400:850);}
-        else moveActor(a,Math.max(67,Math.min(408,a.homeX+Math.sin(a.browseIndex*2.1)*18)),a.homeY-10+(a.browseIndex%2)*10,'shop');
-      }
-    }
-    const working=view==='forge'&&state.work&&forgeTab==='work';
-    const zoom=working?(actor.path.length?1.14:1.35):1,point=working?WORK_POINTS[state.work.step]:[240,160];
-    const cx=working?Math.max(240/zoom,Math.min(480-240/zoom,(point[0]+actor.x)/2)):240;
-    const cy=working?Math.max(160/zoom,Math.min(320-160/zoom,(point[1]+actor.y-20)/2)):160;
-    const ease=reduced.matches?1:1-Math.exp(-dt*6);camera.x+=(cx-camera.x)*ease;camera.y+=(cy-camera.y)*ease;camera.zoom+=(zoom-camera.zoom)*ease;
-    const sceneControl=$('#scene-work-target');if(sceneControl&&working){
-      const offset=WORK_TARGET_OFFSETS[state.work.step];
-      sceneControl.style.left=`${((point[0]+offset[0]-camera.x)*camera.zoom+240)/480*100}%`;
-      sceneControl.style.top=`${((point[1]+offset[1]-camera.y)*camera.zoom+160)/320*100}%`;
-    }
-    if(working&&uiTask&&!busy&&!dialog.open&&state.work.step<3){
-      if(state.work.step===2){advanceTemperature(uiTask,dt);const cold=uiTask.temperature<.3,warm=uiTask.temperature<.5,fill=$('#thermal-fill'),label=$('#heat-state'),combo=$('#combo-count');if(fill){fill.style.width=`${uiTask.temperature*100}%`;fill.classList.toggle('cold',warm);}if(label)label.textContent=cold?'Подогрей у горна':warm?'Металл остывает':'Металл горячий';if(combo)combo.textContent=uiTask.combo?`×${uiTask.combo}`:uiTask.profile.name;document.querySelector('.reheat-button')?.classList.toggle('required',warm);for(const button of document.querySelectorAll('#work-control,.forge-zone,#scene-work-target'))button.disabled=cold;}
-      if(state.work.step===1){if(uiTask.holding)uiTask.position=Math.min(1,(t-uiTask.started)/2400);else uiTask.position=Math.max(0,uiTask.position-dt*.06);}
-      else uiTask.position=(Math.sin((t-uiTask.started)/620-Math.PI/2)+1)/2;
-      const cursor=$('#meter-cursor'),fill=$('#meter-fill');if(cursor){cursor.style.left=`${Math.min(99,uiTask.position*100)}%`;cursor.parentElement.setAttribute('aria-valuenow',Math.round(uiTask.position*100));}if(fill)fill.style.width=state.work.step===1?`${uiTask.position*100}%`:'0%';
-      if(uiTask.holding&&t-lastAmbient>180){lastAmbient=t;sound('forge');emitEffect(effects,'ember',187,150,t);}
-    }
-    const active=working||actor.path.length||[...npcActors.values()].some(a=>a.path.length)||effects.particles.length;
-    if(t-lastDraw>(reduced.matches?42:active?16:50)&&view!=='develop'){drawScene(canvas,state,view==='orders'?'shop':view,reduced.matches?0:t,runtime());if(working&&state.work.step<3)drawWorkCloseup($('#workpiece'),state,runtime(),reduced.matches?0:t);lastDraw=t;}
-  }requestAnimationFrame(animate);
-}
-window.addEventListener('resize',drawTreeLines);
-window.addEventListener('blur',()=>{clearGesture();if(uiTask)uiTask.holding=false;if(actor.pose==='heat'){actor.pose='idle';actor.workUntil=0;}});
-document.addEventListener('visibilitychange',()=>{if(document.hidden){audio.pause();clearGesture();if(uiTask)uiTask.holding=false;save();}else audio.resume();});
-window.addEventListener('pagehide',()=>{audio.pause();save();});
-window.addEventListener('pageshow',()=>{if(!document.hidden)audio.resume();});
-render();save();requestAnimationFrame(animate);
-if(!state.welcomed&&!loadError){modal(`<p class="modal-eyebrow">${G.SETTING.town} · ${G.SETTING.year} год</p><h2 id="dialog-title">Кузница у старой пристани</h2><p>${G.SETTING.intro}</p><canvas class="welcome-art" width="480" height="320" id="welcome-scene" aria-label="Кузница с детализированным кузнецом"></canvas>${btn('welcome-start','Начать с первого фонаря','primary')}<p class="modal-note">Прогресс старой версии сохраняется. Играй в своём темпе.</p>`,false);drawScene($('#welcome-scene'),state,'forge',0);}
-if(state.work&&!dialog.open)approachStage();
-if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+$('#import-file').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;try{if(file.size>64000000)throw new J.AtelierError('Файл слишком большой.');pendingImport=J.deserialize(await file.text());modal('Загрузить эту мастерскую?',`<p>День ${pendingImport.day} · ${pendingImport.gold} монет · ${pendingImport.stock.length} изделий · ${pendingImport.library.length} моделей.</p><p class="fine-print">Текущий прогресс на устройстве будет заменён. Можно предварительно скачать его через меню.</p>${btn('confirm-import','Загрузить','primary')}`);}catch(error){toast(error.message,true);}e.target.value='';});
+$('#menu-button').addEventListener('click',menu);
+$('#end-day').addEventListener('click',()=>action(()=>J.nextDay(state),'Новый день. Эскиз и история действий сохранены.'));
+dialog.addEventListener('cancel',e=>{if(!state.welcomed&&!loadError)e.preventDefault();});
+document.addEventListener('keydown',e=>{if(!editor||dialog.open||e.target.matches('input,select,textarea'))return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();const b=$(`[data-action="${e.shiftKey?'redo':'undo'}"]`);b?.click();}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){editor?.finish();save();audio.pause();}else{lastFrame=performance.now();audio.resume();if(editor)editor.dirty=true;}});
+window.addEventListener('pagehide',()=>{editor?.finish();save();audio.pause();});
+render();requestAnimationFrame(frame);if(!state.welcomed&&!loadError)welcome();
+if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
