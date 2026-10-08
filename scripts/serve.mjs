@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 const project = fileURLToPath(new URL('../',import.meta.url));
 const root = path.resolve(project,process.argv.includes('--dist') ? 'dist' : '.');
 const port = Number(process.env.PORT || 4173);
-const mime = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.json':'application/json; charset=utf-8', '.webmanifest':'application/manifest+json; charset=utf-8', '.svg':'image/svg+xml', '.png':'image/png' };
+const mime = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.json':'application/json; charset=utf-8', '.webmanifest':'application/manifest+json; charset=utf-8', '.svg':'image/svg+xml', '.png':'image/png', '.woff2':'font/woff2' };
 const server = http.createServer(async (req,res) => {
   try {
     let route = decodeURIComponent(new URL(req.url,'http://localhost').pathname);
@@ -15,7 +15,7 @@ const server = http.createServer(async (req,res) => {
     let file = path.resolve(root,'.'+route);
     if (!file.startsWith(root+path.sep) && file !== root) throw new Error('Invalid path');
     if ((await stat(file)).isDirectory()) file = path.join(file,'index.html');
-    if (!['.html','.js','.css','.json','.webmanifest','.svg','.png'].includes(path.extname(file))) throw new Error('Not a public asset');
+    if (!['.html','.js','.css','.json','.webmanifest','.svg','.png','.woff2'].includes(path.extname(file))) throw new Error('Not a public asset');
     const data = await readFile(file);
     res.writeHead(200,{'Content-Type':mime[path.extname(file)] || 'application/octet-stream','Cache-Control':'no-cache'}); res.end(data);
   } catch { res.writeHead(404,{'Content-Type':'text/plain; charset=utf-8'}); res.end('Not found'); }

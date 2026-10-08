@@ -1,12 +1,15 @@
 <!doctype html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#203f4b">
-<meta name="description" content="Ювелирная мастерская в порту 1740 года. Создавай собственные формы, гравируй узоры, вставляй камни, связывай руны и продавай авторские украшения.">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0d1215"><meta name="color-scheme" content="dark">
+<meta name="description" content="Ювелирная мастерская в порту 1740 года. Создавай собственные формы, накладывай узоры, вставляй камни, связывай руны и продавай авторские украшения.">
+<meta property="og:title" content="Сияние · Ювелирная мастерская"><meta property="og:description" content="Авторские украшения, готовые узоры, огранённые камни и разборчивые покупатели Веленского порта.">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="icon" href="./assets/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="./assets/icon-192.png"><link rel="manifest" href="./manifest.webmanifest"><link rel="stylesheet" href="./styles.css"><title>Сияние · Ювелирная мастерская</title>
+<link rel="icon" href="./assets/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="./assets/icon-192.png"><link rel="manifest" href="./manifest.webmanifest">
+<link rel="preload" href="./assets/fonts/manrope-cyrillic-wght-normal.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="./assets/fonts/cormorant-garamond-cyrillic-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="./styles.css"><title>Сияние · Ювелирная мастерская</title>
 </head>
 <body>
-<div class="app-shell"><header class="topbar"><a class="brand" href="./" aria-label="Сияние — ювелирная мастерская"><img src="./assets/icon.svg" alt=""><span>Сияние<small>ЮВЕЛИРНАЯ МАСТЕРСКАЯ</small></span></a><div class="header-actions"><button id="end-day" class="icon-button" aria-label="Следующий день">☀</button><button id="menu-button" class="icon-button" aria-label="Настройки и сохранение">☰</button></div></header><div id="hud" class="hud"></div><main id="main"><div id="storage-warning" class="storage-warning" hidden></div><section id="panel" class="panel"></section></main><nav id="navigation" class="bottom-nav" aria-label="Разделы мастерской"></nav></div>
+<div class="app-shell"><header class="topbar"><a class="brand" href="./" aria-label="Сияние — ювелирная мастерская"><img src="./assets/icon.svg" alt=""><span>Сияние<small>Ювелирная мастерская · 1740</small></span></a><div class="header-actions"><button type="button" id="end-day" class="icon-button" aria-label="Завершить день"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg></button><button type="button" id="menu-button" class="icon-button" aria-label="Настройки и сохранение"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg></button></div></header><div id="hud" class="hud"></div><main id="main"><div id="storage-warning" class="storage-warning" hidden></div><section id="panel" class="panel"></section></main><nav id="navigation" class="bottom-nav" aria-label="Разделы мастерской"></nav></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div><dialog id="dialog" aria-labelledby="dialog-title"><div id="dialog-body"></div></dialog><input type="file" id="import-file" accept=".json,application/json" hidden><script type="module" src="./src/app.js"></script>
 </body></html>

@@ -206,5 +206,5 @@ export function paintCharacter(c,a,person={},time=0,scale=2){
 }
 export function paintPortrait(c,person,size=64){
   const p=look(person),image=frameImage(p,'down','idle',0);c.imageSmoothingEnabled=false;
-  px(c,0,0,size,size,'#465669');px(c,2,2,size-4,size-4,'#c8b18b');px(c,4,4,size-8,size-8,'#f0dfbb');c.drawImage(image,27,3,27,31,5,4,size-10,size-8);
+  px(c,0,0,size,size,'#2a211c');px(c,2,2,size-4,size-4,'#b08a4f');px(c,4,4,size-8,size-8,'#2f4448');px(c,4,size-22,size-8,18,'#283a3e');c.drawImage(image,27,3,27,31,5,4,size-10,size-8);
 }

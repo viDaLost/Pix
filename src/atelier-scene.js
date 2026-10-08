@@ -4,9 +4,9 @@ import {drawJewel} from './jewel-art.js';
 import {CLIENTS,AREAS,METALS,GEMS} from './jewelry.js';
 import {createActor,moveActor,updateActor} from './motion.js';
 const backgrounds=new Map(),jeweler={id:'smith',outfit:'gentleman',color:'#527f91',hair:'#51382e',skin:'#d9a17b',beard:true};
-function base(shop){const c=canvas(480,260),g=c.getContext('2d');px(g,0,0,480,260,'#28394b');px(g,8,8,464,244,'#816046');
- for(let y=12;y<137;y+=23)for(let x=12;x<468;x+=35){panel(g,x+(y%46?0:-15),y,34,22,'#537e82');texture(g,x,y,33,21,['#95b4a6','#3d686d'],.1,4);}
- for(let y=138;y<250;y+=18){px(g,12,y,456,17,y%36?'#a5764e':'#956542');for(let x=12+(y%36?24:0);x<468;x+=69){pixelLine(g,x,y,x,y+15,'#654a3c');px(g,x+5,y+3,42,1,'#c99867');texture(g,x+2,y+2,65,12,['#78513c','#ba8f61'],.05,7);}}
+function base(shop){const c=canvas(480,260),g=c.getContext('2d');px(g,0,0,480,260,'#1d2a33');px(g,8,8,464,244,'#6d4f3a');
+ for(let y=12;y<137;y+=23)for(let x=12;x<468;x+=35){panel(g,x+(y%46?0:-15),y,34,22,'#40656a');texture(g,x,y,33,21,['#7fa197','#2f5257'],.1,4);}
+ for(let y=138;y<250;y+=18){px(g,12,y,456,17,y%36?'#97693f':'#865b37');for(let x=12+(y%36?24:0);x<468;x+=69){pixelLine(g,x,y,x,y+15,'#654a3c');px(g,x+5,y+3,42,1,'#c99867');texture(g,x+2,y+2,65,12,['#78513c','#ba8f61'],.05,7);}}
  for(const x of[18,160,453]){panel(g,x,10,9,236,'#825b45');px(g,x+2,12,2,230,'#c19569');}
  for(const x of[35,334]){panel(g,x,26,104,91,'#a47b50');px(g,x+7,32,90,77,'#8bd0cf');polygon(g,[[x+7,80],[x+35,59],[x+62,79],[x+91,63],[x+97,108],[x+7,108]],'#679c84');px(g,x+51,31,4,80,'#e5bb76');px(g,x+6,67,91,4,'#e5bb76');px(g,x+14,38,27,3,'#cfefdd');panel(g,x-3,111,110,7,'#c19661');}
  panel(g,181,21,126,109,'#74583f');for(let y=30;y<119;y+=25){px(g,187,y,114,19,'#243a47');px(g,186,y+18,116,3,'#d7b579');for(let i=0;i<6;i++){const color=Object.values(GEMS)[i].color;panel(g,192+i*18,y+7,11,11,'#9b8054');polygon(g,[[198+i*18,y+8],[202+i*18,y+12],[198+i*18,y+16],[194+i*18,y+12]],color);px(g,197+i*18,y+9,2,2,'#f8e6bc');}}
@@ -19,10 +19,19 @@ function base(shop){const c=canvas(480,260),g=c.getContext('2d');px(g,0,0,480,26
  panel(g,40,212,31,24,'#6f7556');polygon(g,[[54,215],[43,196],[52,204],[55,185],[60,208],[66,200],[59,218]],'#92bf78');
  panel(g,12,247,456,6,'#ac8556');return c;
 }
+// Window shafts, a candle and drifting dust give the rooms one consistent light source.
+function light(c,shop,time){
+ c.save();c.globalCompositeOperation='lighter';
+ for(const x of[35,334]){const g=c.createLinearGradient(x,30,x+120,250);g.addColorStop(0,'rgba(255,236,190,.16)');g.addColorStop(1,'rgba(255,236,190,0)');c.fillStyle=g;c.beginPath();c.moveTo(x+7,32);c.lineTo(x+97,32);c.lineTo(x+170,250);c.lineTo(x+60,250);c.closePath();c.fill();}
+ const candle=shop?[291,150]:[398,168],flicker=.85+.15*Math.sin(time*.011)*Math.sin(time*.0037),glow=c.createRadialGradient(candle[0],candle[1],2,candle[0],candle[1],90);glow.addColorStop(0,`rgba(255,184,96,${.3*flicker})`);glow.addColorStop(1,'rgba(255,184,96,0)');c.fillStyle=glow;c.fillRect(0,0,480,260);
+ for(let i=0;i<14;i++){const x=(60+i*29+Math.sin(time*.0004+i)*14)%460+10,y=(40+((time*.008+i*37)%190));c.fillStyle=`rgba(255,240,200,${.25+.2*Math.sin(time*.003+i)})`;c.fillRect(Math.round(x),Math.round(y),1,1);}
+ c.restore();
+ const v=c.createRadialGradient(240,140,90,240,140,300);v.addColorStop(0,'rgba(8,10,16,0)');v.addColorStop(1,'rgba(8,10,16,.55)');c.fillStyle=v;c.fillRect(0,0,480,260);
+}
 export class AtelierScene{
- constructor(){this.actors=new Map();this.time=0;this.main=createActor(236,228);this.lastBuyer=null;this.art=canvas(160,160);this.artKey=null;}
+ constructor(){this.thumbs=new Map();this.actors=new Map();this.time=0;this.main=createActor(236,228);this.lastBuyer=null;this.art=canvas(160,160);this.artKey=null;}
  artwork(design){const key=JSON.stringify(design);if(key!==this.artKey){this.art.getContext('2d').clearRect(0,0,160,160);drawJewel(this.art.getContext('2d'),design,{size:160});this.artKey=key;}return this.art;}
- paint(c,state,{shop=false,design=null,working=false,tool='engrave',buyerId=null,time=0,dt=.03}={}){
+ paint(c,state,{shop=false,design=null,stock=[],working=false,tool='engrave',buyerId=null,time=0,dt=.03}={}){
   if(!backgrounds.has(shop))backgrounds.set(shop,base(shop));c.clearRect(0,0,480,260);c.drawImage(backgrounds.get(shop),0,0);
   if(shop){
    const guests=state.customers.filter(b=>!b.served),chosen=guests.find(b=>b.id===buyerId)||guests[0],ids=new Set(guests.slice(0,3).map(b=>b.id));if(chosen)ids.add(chosen.id);
@@ -30,15 +39,20 @@ export class AtelierScene{
    const visible=[];let slot=0,entry=0;for(const buyer of guests.filter(b=>ids.has(b.id)).slice(0,4)){let a=this.actors.get(buyer.id);if(!a){a=createActor(44,229,'right');a.person=CLIENTS.find(p=>p.id===buyer.client);a.enterAt=time+entry*220;this.actors.set(buyer.id,a);}entry++;const selected=buyer===chosen,pos=selected?[210,240]:[[78,232],[389,234],[130,244]][slot++];if(a.homeX!==pos[0]){moveActor(a,...pos,'atelier-shop');a.homeX=pos[0];}if(time<a.enterAt)continue;updateActor(a,dt,time);if(!a.path.length){a.facing=selected?'right':'down';a.pose=selected?'browse':Math.floor(time/3400)%2?'inspect':'idle';a.poseStarted=Math.floor(time/3400)*3400;}visible.push(a);}
    paintCharacter(c,{x:291,y:168,facing:'down',pose:'idle'},jeweler,time/1000,1.3);
    panel(c,169,144,153,43,'#97754e');panel(c,176,150,139,30,'#bc9362');
-   if(design){c.imageSmoothingEnabled=false;c.drawImage(this.artwork(design),351,177,32,32);}
+   // The glass counter shows the newest pieces; the chosen one rests on the side table.
+   px(c,181,152,129,25,'#1e2c31');px(c,182,153,127,1,'#5f8a8c');c.imageSmoothingEnabled=false;
+   stock.slice(0,5).forEach((d,i)=>{c.drawImage(this.thumb(d),184+i*25,154,22,22);});
+   px(c,182,153,127,3,'rgba(220,245,240,.18)');for(let i=0;i<4;i++)px(c,190+i*32,156,2,18,'rgba(220,245,240,.1)');
+   if(design){panel(c,343,172,48,12,'#5a3a2e');px(c,346,173,42,9,'#2a3a3f');c.drawImage(this.artwork(design),351,150,32,32);sparkle(c,382,153+Math.sin(time*.004)*1.5,'#fff4cf',Math.floor(time/300)%2+1);}
    for(const a of visible.sort((a,b)=>a.y-b.y))paintCharacter(c,a,a.person,time/1000,1.45);
   }else{
    const pose=working?(tool==='polish'?'polish':tool==='stone'?'inspect':'cut'):'idle';paintCharacter(c,{x:236,y:228,facing:'right',pose,poseStarted:Math.floor(time/850)*850},jeweler,time/1000,1.4);
    if(design){c.imageSmoothingEnabled=false;c.drawImage(this.artwork(design),261,178,43,27);}
    if(working){sparkle(c,268+Math.sin(time*.016)*5,186,tool==='rune'?'#a9e9df':'#f8dc8e',Math.floor(time/120)%2+1);}
   }
-  const glow=.12+.06*Math.sin(time*.002);c.fillStyle=`rgba(255,239,166,${glow})`;c.fillRect(30,30,103,78);
+  light(c,shop,time);
  }
+ thumb(design){const key=JSON.stringify(design);let art=this.thumbs.get(key);if(!art){art=canvas(64,64);drawJewel(art.getContext('2d'),design,{size:64,background:false});this.thumbs.set(key,art);if(this.thumbs.size>24)this.thumbs.delete(this.thumbs.keys().next().value);}return art;}
 }
 export function paintMap(c,state,time=0){
  px(c,0,0,480,260,'#8eb9bc');polygon(c,[[0,0],[397,0],[427,53],[423,120],[367,151],[321,174],[278,233],[192,260],[0,260]],'#80a77d');

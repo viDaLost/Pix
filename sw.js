@@ -1,6 +1,6 @@
-const CACHE = 'pix-forge-v8';
+const CACHE = 'pix-forge-v9';
 const BASE = new URL('./', self.location.href);
-const FILES = ['./', './index.html', './styles.css', './src/app.js', './src/jewelry.js', './src/jewel-editor.js', './src/jewel-art.js', './src/atelier-scene.js', './src/atelier-store.js', './src/game.js', './src/content.js', './src/motion.js', './src/audio.js', './src/pixel.js', './src/characters.js', './src/character-rig.js', './manifest.webmanifest', './assets/icon.svg', './assets/icon-192.png', './assets/icon-512.png'].map(path => new URL(path, BASE).href);
+const FILES = ['./', './index.html', './styles.css', './src/app.js', './src/jewelry.js', './src/jewel-editor.js', './src/jewel-art.js', './src/patterns.js', './src/icons.js', './src/atelier-scene.js', './src/atelier-store.js', './src/game.js', './src/content.js', './src/motion.js', './src/audio.js', './src/pixel.js', './src/characters.js', './src/character-rig.js', './manifest.webmanifest', './assets/icon.svg', './assets/icon-192.png', './assets/icon-512.png', './assets/fonts/cormorant-garamond-cyrillic-600-normal.woff2', './assets/fonts/cormorant-garamond-latin-600-normal.woff2', './assets/fonts/cormorant-garamond-cyrillic-700-normal.woff2', './assets/fonts/cormorant-garamond-latin-700-normal.woff2', './assets/fonts/manrope-cyrillic-wght-normal.woff2', './assets/fonts/manrope-latin-wght-normal.woff2'].map(path => new URL(path, BASE).href);
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)).then(() => self.skipWaiting()));
 });
