@@ -29,9 +29,10 @@ function light(c,shop,time){
  const v=c.createRadialGradient(240,140,90,240,140,300);v.addColorStop(0,'rgba(8,10,16,0)');v.addColorStop(1,'rgba(8,10,16,.55)');c.fillStyle=v;c.fillRect(0,0,480,260);
 }
 export class AtelierScene{
- constructor(){this.thumbs=new Map();this.actors=new Map();this.time=0;this.main=createActor(236,228);this.lastBuyer=null;this.art=canvas(160,160);this.artKey=null;}
- artwork(design){const key=JSON.stringify(design);if(key!==this.artKey){this.art.getContext('2d').clearRect(0,0,160,160);drawJewel(this.art.getContext('2d'),design,{size:160});this.artKey=key;}return this.art;}
- paint(c,state,{shop=false,design=null,stock=[],working=false,tool='engrave',buyerId=null,time=0,dt=.03}={}){
+ constructor(){this.thumbs=new Map();this.actors=new Map();this.time=0;this.main=createActor(236,228);this.lastBuyer=null;this.art=canvas(160,160);this.artDesign=null;this.artRev=-1;}
+ // A draft changes in place while it is dragged, so its picture is keyed by the object and the editor revision.
+ artwork(design,rev=0){if(design!==this.artDesign||rev!==this.artRev){this.art.getContext('2d').clearRect(0,0,160,160);drawJewel(this.art.getContext('2d'),design,{size:160});this.artDesign=design;this.artRev=rev;}return this.art;}
+ paint(c,state,{shop=false,design=null,rev=0,stock=[],working=false,tool='engrave',buyerId=null,time=0,dt=.03}={}){
   if(!backgrounds.has(shop))backgrounds.set(shop,base(shop));c.clearRect(0,0,480,260);c.drawImage(backgrounds.get(shop),0,0);
   if(shop){
    const guests=state.customers.filter(b=>!b.served),chosen=guests.find(b=>b.id===buyerId)||guests[0],ids=new Set(guests.slice(0,3).map(b=>b.id));if(chosen)ids.add(chosen.id);
@@ -47,12 +48,12 @@ export class AtelierScene{
    for(const a of visible.sort((a,b)=>a.y-b.y))paintCharacter(c,a,a.person,time/1000,1.45);
   }else{
    const pose=working?(tool==='polish'?'polish':tool==='stone'?'inspect':'cut'):'idle';paintCharacter(c,{x:236,y:228,facing:'right',pose,poseStarted:Math.floor(time/850)*850},jeweler,time/1000,1.4);
-   if(design){c.imageSmoothingEnabled=false;c.drawImage(this.artwork(design),261,178,43,27);}
+   if(design){c.imageSmoothingEnabled=false;c.drawImage(this.artwork(design,rev),261,178,43,27);}
    if(working){sparkle(c,268+Math.sin(time*.016)*5,186,tool==='rune'?'#a9e9df':'#f8dc8e',Math.floor(time/120)%2+1);}
   }
   light(c,shop,time);
  }
- thumb(design){const key=JSON.stringify(design);let art=this.thumbs.get(key);if(!art){art=canvas(64,64);drawJewel(art.getContext('2d'),design,{size:64,background:false});this.thumbs.set(key,art);if(this.thumbs.size>24)this.thumbs.delete(this.thumbs.keys().next().value);}return art;}
+ thumb(design){let art=this.thumbs.get(design);if(!art){art=canvas(64,64);drawJewel(art.getContext('2d'),design,{size:64,background:false});this.thumbs.set(design,art);if(this.thumbs.size>48)this.thumbs.delete(this.thumbs.keys().next().value);}return art;}
 }
 export function paintMap(c,state,time=0){
  px(c,0,0,480,260,'#8eb9bc');polygon(c,[[0,0],[397,0],[427,53],[423,120],[367,151],[321,174],[278,233],[192,260],[0,260]],'#80a77d');

@@ -5,7 +5,7 @@ const clamp=n=>Math.max(2,Math.min(98,n));
 const clean=points=>points.filter((p,i)=>!i||distance(p,points[i-1])>.55).slice(0,300);
 export class JewelEditor{
   constructor(canvas,state,{onChange,onCommit,onError}={}){
-    this.canvas=canvas;this.state=state;this.changed=onChange||(()=>{});this.committed=onCommit||(()=>{});this.error=onError||(()=>{});this.tool='shape';this.width=1;this.symmetry=false;this.gem='garnet';this.cut='round';this.selected=-1;this.zoom=1;this.pan={x:0,y:0};this.pointers=new Map();this.working=null;this.operation=null;this.pinch=null;this.dirty=true;this.metrics=evaluate(state.draft.design);
+    this.canvas=canvas;this.state=state;this.changed=onChange||(()=>{});this.committed=onCommit||(()=>{});this.error=onError||(()=>{});this.tool='shape';this.width=1;this.symmetry=false;this.gem='garnet';this.cut='round';this.selected=-1;this.zoom=1;this.pan={x:0,y:0};this.pointers=new Map();this.working=null;this.operation=null;this.pinch=null;this.dirty=true;this.rev=0;this.metrics=evaluate(state.draft.design);
     this.abort=new AbortController();const options={signal:this.abort.signal};
     for(const type of['pointerdown','pointermove','pointerup','pointercancel'])canvas.addEventListener(type,e=>this[type](e),options);
     canvas.addEventListener('wheel',e=>{e.preventDefault();this.changeZoom(this.zoom*Math.exp(-e.deltaY*.002),this.local(e));},{...options,passive:false});
@@ -65,20 +65,22 @@ export class JewelEditor{
   }
   pointerup(e){this.pointers.delete(e.pointerId);if(this.pinch){if(!this.pointers.size)this.pinch=null;return;}this.finish();}
   pointercancel(e){this.pointerup(e);}
-  refresh(){const preview=this.preview();this.metrics=evaluate(preview);this.dirty=true;this.changed(this.metrics);}
-  preview(){const d=clone(this.design),op=this.operation;if(op?.kind==='ink')d.strokes.push(...op.segments.slice(0,160-d.strokes.length));if(op?.kind==='shape'&&op.points.length>2){d.outline=clean(op.points);d.holes=[];}return d;}
+  refresh(){this.rev++;const preview=this.preview();this.metrics=evaluate(preview);this.dirty=true;this.changed(this.metrics);}
+  // Only a line or contour in progress needs a separate copy; it is rebuilt once per revision. Callers only read it.
+  preview(){const op=this.operation,base=this.design;if(op?.kind!=='ink'&&!(op?.kind==='shape'&&op.points.length>2))return base;if(this.shown?.rev===this.rev&&this.shown.base===base)return this.shown.d;
+    const d=clone(base);if(op.kind==='ink')d.strokes.push(...op.segments.slice(0,160-d.strokes.length));else{d.outline=clean(op.points);d.holes=[];}this.shown={rev:this.rev,base,d};return d;}
   finish(){
     if(!this.operation||!this.working)return;
     const op=this.operation,d=this.working;
     if(op.kind==='ink')d.strokes.push(...op.segments.filter(s=>s.points.length>=2&&s.points.some(p=>distance(p,s.points[0])>.5)).slice(0,160-d.strokes.length));
     if(op.kind==='shape'&&op.points.length>2&&area(op.points)>50){d.outline=clean(op.points);d.holes=[];d.template='free';}
     if(op.kind==='hole'&&op.points.length>2&&area(op.points)>10&&d.holes.length<12){d.holes.push(clean(op.points));}
-    this.operation=null;this.working=null;
+    this.operation=null;this.working=null;this.rev++;
     try{if(op.kind!=='pan'&&edit(this.state,d))this.committed();}catch(e){this.error(e.message);}
     this.metrics=evaluate(this.state.draft.design);this.dirty=true;this.changed(this.metrics);
   }
   paint(time=0){
-    const d=this.preview();if(!this.dirty&&!(time&&(this.metrics.magic||d.gems.length||this.metrics.polish>25)))return;
+    if(!this.dirty&&!(time&&(this.metrics.magic||this.design.gems.length||this.metrics.polish>25)))return;const d=this.preview();
     const {w,h,base}=this.geometry(),ratio=Math.min(2,devicePixelRatio||1),cw=Math.round(w*ratio),ch=Math.round(h*ratio);if(cw<1||ch<1)return;if(this.canvas.width!==cw||this.canvas.height!==ch){this.canvas.width=cw;this.canvas.height=ch;}
     const c=this.canvas.getContext('2d');c.setTransform(ratio,0,0,ratio,0,0);drawVelvet(c,w,h);const size=base*this.zoom,left=(w-size)/2+this.pan.x,top=(h-size)/2+this.pan.y;
     if(this.symmetry){c.save();c.strokeStyle='rgba(243,215,156,.35)';c.setLineDash([4,5]);c.lineWidth=1;c.beginPath();c.moveTo(left+size/2,Math.max(0,top));c.lineTo(left+size/2,Math.min(h,top+size));c.stroke();c.restore();}

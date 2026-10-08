@@ -77,8 +77,12 @@ export function drawJewel(c,d,{size=256,time=0,handles=false,selected=-1,backgro
   if(!d.outline.length){c.fillStyle='rgba(243,215,156,.8)';c.textAlign='center';c.font=`600 ${Math.max(11,size/24)}px Manrope, system-ui, sans-serif`;c.fillText('Нарисуй замкнутый контур',size/2,size/2);}
   c.restore();
 }
-const thumbnails=new Map();
-export function jewelURL(d,size=160,{background=true}={}){const key=size+':'+background+':'+JSON.stringify(d);if(thumbnails.has(key))return thumbnails.get(key);const c=document.createElement('canvas');c.width=c.height=size;drawJewel(c.getContext('2d'),d,{size,background});const url=c.toDataURL();thumbnails.set(key,url);if(thumbnails.size>200)thumbnails.delete(thumbnails.keys().next().value);return url;}
+const thumbnails=new Map(),pictures=new WeakMap();
+function picture(d,size,background){const c=document.createElement('canvas');c.width=c.height=size;drawJewel(c.getContext('2d'),d,{size,background});return c.toDataURL();}
+// Finished designs are frozen, so their pictures are keyed by the object itself instead of its JSON.
+export function jewelURL(d,size=160,{background=true}={}){
+  if(Object.isFrozen(d)){let urls=pictures.get(d);if(!urls)pictures.set(d,urls=new Map());const key=size+':'+background;if(!urls.has(key))urls.set(key,picture(d,size,background));return urls.get(key);}
+  const key=size+':'+background+':'+JSON.stringify(d);if(thumbnails.has(key))return thumbnails.get(key);const url=picture(d,size,background);thumbnails.set(key,url);if(thumbnails.size>200)thumbnails.delete(thumbnails.keys().next().value);return url;}
 export function gemURL(kind,size=64){const key='gem:'+kind+':'+size;if(thumbnails.has(key))return thumbnails.get(key);const c=document.createElement('canvas');c.width=c.height=size;drawGem(c.getContext('2d'),{kind,x:50,y:50,size:30,cut:'round'},size/100,METALS.silver);const url=c.toDataURL();thumbnails.set(key,url);return url;}
 export function metalURL(id,size=64){const key='metal:'+id+':'+size;if(thumbnails.has(key))return thumbnails.get(key);const c=document.createElement('canvas'),g=c.getContext('2d'),s=size/100,m=METALS[id],bar=[{x:24,y:34},{x:76,y:34},{x:90,y:70},{x:10,y:70}];c.width=c.height=size;
   g.save();g.shadowColor='rgba(0,0,0,.45)';g.shadowBlur=4*s;g.shadowOffsetY=3*s;g.beginPath();path(g,bar,s);g.fillStyle=palette(m.color,-50);g.fill();g.restore();

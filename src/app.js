@@ -1,18 +1,26 @@
 import * as J from './jewelry.js';
+import * as P from './progress.js';
+import {showcase,deliverable,orderPieces} from './market.js';
 import {JewelEditor} from './jewel-editor.js';
 import {jewelURL,gemURL,metalURL} from './jewel-art.js';
 import {PATTERNS,LAYOUTS,patternStrokes,layoutGems,patternUnlocked} from './patterns.js';
 import {AtelierScene,paintMap} from './atelier-scene.js';
 import {paintPortrait} from './characters.js';
 import {GameAudio} from './audio.js';
-import {loadAtelier,saveAtelier} from './atelier-store.js';
+import {loadAtelier,saveAtelier,StaleTabError} from './atelier-store.js';
 import {icon,ELEMENT_ICON} from './icons.js';
 const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const btn=(action,text,cls='',attrs='')=>`<button type="button" data-action="${action}" class="${cls}" ${attrs}>${text}</button>`;
-const SAVE='pix-forge-save-v1',portraits=new Map(),scene=new AtelierScene(),audio=new GameAudio();
-let state=J.newGame(Date.now()>>>0),sourceRaw=null,loadError=false,storageOK=true;
-try{let local=null;try{local=localStorage.getItem(SAVE);}catch{}let disk=null;try{disk=await loadAtelier();}catch{}const stamp=raw=>{try{return JSON.parse(raw)?.savedAt||0;}catch{return -1;}};sourceRaw=disk&&(!local||stamp(disk)>=stamp(local))?disk:local;if(sourceRaw)state=J.deserialize(sourceRaw);}catch{loadError=true;storageOK=false;}
-let view='studio',supplyTab='buy',selectedType='pendant',template='oval',selectedMetal=state.materials.silver?'silver':'copper',itemId=null,buyerId=null,policy='fair',sortMode='new',editor=null,toastTimer,lastFrame=0,lastPattern={id:null,n:0};
+const SAVE='pix-forge-save-v1',STAMP=SAVE+':at',TAB=Math.random().toString(36).slice(2),portraits=new Map(),scene=new AtelierScene(),audio=new GameAudio();
+let state=P.newGame(Date.now()>>>0),sourceRaw=null,loadError=false,storageOK=true,diskOK=true,known=0,conflict=false,dirty=false,saveTimer=0,toastTimer=0,lastCrash=0,updateReady=false,persistAsked=false;
+// Any uncaught failure keeps the progress reachable: a toast with the save file, and a recovery card instead of a blank panel.
+addEventListener('error',e=>{if(!e.error&&/ResizeObserver/.test(e.message))return;crash(e.error||new Error(e.message||'Ошибка сценария'));});addEventListener('unhandledrejection',e=>crash(e.reason));
+const readStamp=()=>{try{const v=JSON.parse(localStorage.getItem(STAMP)||'null');return Number.isFinite(v?.at)?v:null;}catch{return null;}};
+try{let local=null;try{local=localStorage.getItem(SAVE);}catch{}let disk=null;try{disk=await loadAtelier();}catch{}const stamp=raw=>{try{return JSON.parse(raw)?.savedAt||0;}catch{return -1;}};sourceRaw=disk?.raw&&(!local||stamp(disk.raw)>=stamp(local))?disk.raw:local;
+ // Writes this tab has already seen are not conflicts, even when one of them never reached the disk.
+ known=Math.max(sourceRaw?stamp(sourceRaw):0,disk?.stamp?.at||0,readStamp()?.at||0);if(sourceRaw)state=P.load(sourceRaw);}catch{loadError=true;storageOK=false;}
+const channel='BroadcastChannel'in globalThis?new BroadcastChannel('pix-forge-save'):null;
+let view='studio',supplyTab='buy',selectedType='pendant',template='oval',selectedMetal=state.materials.silver?'silver':'copper',itemId=null,buyerId=null,policy='fair',sortMode='new',editor=null,lastFrame=0,lastPattern={id:null,n:0};
 let patternMode='lines';
 let editorOptions={tool:'shape',width:1,symmetry:false,gem:'garnet',cut:'round',zoom:1,pan:{x:0,y:0}};
 const dialog=$('#dialog'),reduced=matchMedia('(prefers-reduced-motion: reduce)');
@@ -25,12 +33,29 @@ const SKILL_ICON={eye:'eye',gold:'coin',facets:'stone',alchemy:'rune',mounts:'sw
 const magicOf=e=>Math.round(e.magic*(state.skills.includes('alchemy')?1.25:1));
 function portrait(person){if(portraits.has(person.id))return portraits.get(person.id);const c=document.createElement('canvas');c.width=c.height=64;paintPortrait(c.getContext('2d'),person);const url=c.toDataURL();portraits.set(person.id,url);return url;}
 function notice(){const el=$('#storage-warning');el.hidden=storageOK;el.textContent=loadError?'Сохранение повреждено. Скачай исходный файл в меню или импортируй другой.':'Автосохранение недоступно. Скачай прогресс через меню.';}
-function save(){if(loadError)return;state.savedAt=Date.now();const raw=J.serialize(state);let localOK=false;try{localStorage.setItem(SAVE,raw);localOK=true;}catch{}saveAtelier(raw).then(()=>{storageOK=true;notice();}).catch(()=>{storageOK=localOK;notice();});storageOK=localOK;notice();}
-function toast(text,error=false){const el=$('#toast');el.innerHTML=`${icon(error?'info':'check')}<span>${esc(text)}</span>`;el.className='toast show'+(error?' error':'');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3300);}
-function action(fn,message){try{editor?.finish();const result=fn();save();render();audio.play('good');if(message)toast(typeof message==='function'?message(result):message);return result;}catch(e){toast(e.message||'Действие не выполнено.',true);audio.play('error');if(!(e instanceof J.AtelierError))console.error(e);}}
+// Serializing a large workshop takes a while, so changes are written in one batch after a short pause;
+// leaving the page writes at once.
+function scheduleSave(){dirty=true;clearTimeout(saveTimer);saveTimer=setTimeout(save,400);}
+function save(){clearTimeout(saveTimer);saveTimer=0;if(loadError||conflict)return;const other=readStamp();if(other&&other.tab!==TAB&&other.at>known){lockTab();return;}
+ const since=known;state.savedAt=known=Math.max(Date.now(),known+1);dirty=false;const raw=J.serialize(state);let localOK=false;
+ try{localStorage.setItem(STAMP,JSON.stringify({at:known,tab:TAB}));if(raw.length<1500000||!diskOK){localStorage.setItem(SAVE,raw);localOK=true;}}catch{}channel?.postMessage({at:known,tab:TAB});
+ saveAtelier(raw,{at:state.savedAt,tab:TAB,since}).then(()=>{diskOK=storageOK=true;notice();}).catch(e=>{if(e instanceof StaleTabError){try{localStorage.setItem(STAMP,JSON.stringify(e.stamp));if(localOK)localStorage.removeItem(SAVE);}catch{}lockTab();return;}diskOK=false;if(!localOK)try{localStorage.setItem(SAVE,raw);localOK=true;}catch{}storageOK=localOK;notice();});
+ storageOK=localOK||diskOK;notice();}
+const flushSave=()=>{editor?.finish();if(dirty)save();};
+// A second tab, or an old one left open, never overwrites newer progress: it stops writing and asks for a reload.
+function lockTab(){if(conflict)return;conflict=true;clearTimeout(saveTimer);modal('Игра открыта в другой вкладке',`<p>В другой вкладке или окне мастерская уже сохранила более новый прогресс. Эта вкладка больше ничего не записывает, чтобы его не стереть.</p><p class="fine-print">Перезагрузи страницу, чтобы продолжить с последнего сохранения. Состояние этой вкладки можно скачать файлом.</p><div class="row fill">${btn('export',`${icon('download')}<span>Скачать</span>`)}${btn('reload-app','Перезагрузить','primary')}</div>`,false,'lock-dialog');}
+const otherWrite=v=>{if(v&&v.tab!==TAB&&v.at>known)lockTab();};
+channel?.addEventListener('message',e=>otherWrite(e.data));
+// Storage events come only from other tabs; old versions write the save without a stamp.
+addEventListener('storage',e=>{if(e.key===STAMP){try{otherWrite(JSON.parse(e.newValue));}catch{}}else if(e.key===SAVE&&e.newValue)lockTab();});
+function toast(text,error=false,act=null){const el=$('#toast');el.innerHTML=`${icon(act?.icon||(error?'info':'check'))}<span>${esc(text)}</span>${act?btn(act.action,act.label,'toast-action'):''}`;el.className='toast show'+(error?' error':'')+(act?' actionable':'');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),act?9000:3300);}
+function crash(e){if(e instanceof J.AtelierError){toast(e.message,true);return;}console.error(e);const now=Date.now();if(now-lastCrash<1500)return;lastCrash=now;
+ toast('Что-то пошло не так. Сохранение можно скачать.',true,{action:'export',label:'Скачать'});
+ const panel=$('#panel');if(panel&&(!panel.children.length||panel.querySelector('.splash')))panel.innerHTML=`<div class="card empty recovery">${icon('info','big-icon')}<h2>Раздел не открылся</h2><p class="muted">Скачай сохранение, чтобы ничего не потерять, и перезагрузи страницу.</p>${btn('export',`${icon('download')}<span>Скачать сохранение</span>`,'primary big')}${btn('reload-app','Перезагрузить','big')}</div>`;}
+function action(fn,message){try{editor?.finish();const result=fn();scheduleSave();render();audio.play('good');if(message)toast(typeof message==='function'?message(result):message);return result;}catch(e){audio.play('error');if(e instanceof J.AtelierError)toast(e.message,true);else crash(e);}}
 function modal(title,body,closable=true,cls=''){$('#dialog-body').innerHTML=`<div class="modal-title"><h2 id="dialog-title">${title}</h2>${closable?btn('close',icon('close'),'icon-button ghost','aria-label="Закрыть"'):''}</div><div class="modal-body">${body}</div>`;dialog.className=cls;if(!dialog.open)dialog.showModal();}
 function close(){dialog.close();}
-dialog.addEventListener('click',e=>{if(e.target===dialog&&state.welcomed)close();});
+dialog.addEventListener('click',e=>{if(e.target===dialog&&state.welcomed&&!conflict)close();});
 function currentBuyer(){return state.customers.find(c=>c.id===buyerId&&!c.served)||state.customers.find(c=>!c.served);}
 const currentItem=()=>state.stock.find(i=>i.id===itemId)||state.stock[0];
 const client=id=>J.CLIENTS.find(p=>p.id===id);
@@ -47,11 +72,11 @@ function sceneHTML(shop=false){return `<div class="scene-wrap${shop?'':' studio-
 function render(){
  if(editor){editorOptions={tool:editor.tool,width:editor.width,symmetry:editor.symmetry,gem:editor.gem,cut:editor.cut,zoom:editor.zoom,pan:{...editor.pan}};editor.destroy();editor=null;}
  audio.setOptions(state);audio.setScene(view==='shop'||view==='orders'?'shop':view==='supplies'&&supplyTab==='map'?'explore':'forge');
- const level=Math.floor(state.xp/35)+1,guests=state.customers.filter(c=>!c.served).length,deliverable=state.requests.some(r=>!r.done&&state.stock.some(i=>J.matches(i.design,r)));
+ const level=Math.floor(state.xp/35)+1,guests=state.customers.filter(c=>!c.served).length,ready=deliverable(state);
  $('#hud').innerHTML=`<span class="stat" title="Монеты">${icon('coin')}<b id="hud-gold">${state.gold}</b></span><span class="stat" title="Уровень мастера: опыт ${state.xp}">${icon('spark')}<b>${level}</b><i class="xp" style="--p:${(state.xp%35)/35*100}%"></i></span><span class="stat" title="Изделий на витрине">${icon('box')}<b>${state.stock.length}</b></span><span class="stat day">День <b>${state.day}</b></span>`;
- $('#navigation').innerHTML=[['studio','studio','Мастерская'],['shop','shop','Витрина',guests&&state.stock.length],['supplies','supplies','Материалы'],['orders','orders','Заказы',deliverable],['develop','develop','Развитие',J.TOOLS.some(t=>!state.skills.includes(t.id)&&t.parents.every(p=>state.skills.includes(p))&&state.gold>=t.cost&&state.xp>=t.xp)]].map(([id,ic,text,dot])=>btn('navigate',`${icon(ic)}<span>${text}</span>${dot?'<i class="dot" aria-hidden="true"></i>':''}`,view===id?'active':'',`data-view="${id}" ${view===id?'aria-current="page"':''}`)).join('');
+ $('#navigation').innerHTML=[['studio','studio','Мастерская'],['shop','shop','Витрина',guests&&state.stock.length],['supplies','supplies','Материалы'],['orders','orders','Заказы',ready],['develop','develop','Развитие',J.TOOLS.some(t=>!state.skills.includes(t.id)&&t.parents.every(p=>state.skills.includes(p))&&state.gold>=t.cost&&state.xp>=t.xp)]].map(([id,ic,text,dot])=>btn('navigate',`${icon(ic)}<span>${text}</span>${dot?'<i class="dot" aria-hidden="true"></i>':''}`,view===id?'active':'',`data-view="${id}" ${view===id?'aria-current="page"':''}`)).join('');
  $('#panel').className='panel view-'+view+(view==='studio'&&state.draft?' editor-panel':'');$('#panel').innerHTML=({studio:studioHTML,shop:shopHTML,supplies:suppliesHTML,orders:ordersHTML,develop:developHTML}[view])();
- if(view==='studio'&&state.draft){editor=new JewelEditor($('#jewel-canvas'),state,{onChange:updateEditor,onCommit:()=>{save();audio.play(editor?.tool==='rune'?'magic':editor?.tool==='polish'?'polish':'rivet');updateEditor();},onError:text=>toast(text,true)});Object.assign(editor,editorOptions);editor.setWidth(editor.width);if(!state.skills.includes('facets'))editor.cut='round';if(!J.available(state,editor.gem))editor.gem='garnet';editor.pan={...editorOptions.pan};editor.dirty=true;updateEditor();}
+ if(view==='studio'&&state.draft){editor=new JewelEditor($('#jewel-canvas'),state,{onChange:updateEditor,onCommit:()=>{scheduleSave();audio.play(editor?.tool==='rune'?'magic':editor?.tool==='polish'?'polish':'rivet');updateEditor();},onError:text=>toast(text,true)});Object.assign(editor,editorOptions);editor.setWidth(editor.width);if(!state.skills.includes('facets'))editor.cut='round';if(!J.available(state,editor.gem))editor.gem='garnet';editor.pan={...editorOptions.pan};editor.dirty=true;updateEditor();}
  if(view==='shop'){const a=$('.buyer-card.active');if(a)a.parentElement.scrollLeft=a.offsetLeft-a.parentElement.offsetLeft-8;}
  notice();paint(performance.now(),0);
 }
@@ -102,24 +127,22 @@ function reaction(person,buyer,item,q){
  return bits.slice(0,2).join(' ');
 }
 function shopHTML(){
- const guests=state.customers.filter(c=>!c.served),buyer=currentBuyer(),person=buyer&&client(buyer.client),eye=state.skills.includes('eye');if(buyer)buyerId=buyer.id;
- const fitOf=i=>buyer?J.affinity(i.design,person,buyer.want):0,list=sortMode==='fit'&&buyer?[...state.stock].sort((a,b)=>fitOf(b)-fitOf(a)):state.stock,item=currentItem();if(item)itemId=item.id;
+ const {guests,buyer,person,fits,list,item,quotes,q,demand}=showcase(state,{buyerId,itemId,sort:sortMode,policy}),eye=state.skills.includes('eye');if(buyer)buyerId=buyer.id;if(item)itemId=item.id;
  let html=sceneHTML(true)+`<div class="rail buyers" aria-label="Покупатели">${guests.map(c=>{const p=client(c.client);return btn('buyer',`<img src="${portrait(p)}" alt=""><span><b>${p.name}</b><small>ищет ${TYPE_WANT[c.want]||'украшение'}</small></span>`,`buyer-card${buyer?.id===c.id?' active':''}`,`data-buyer="${c.id}" aria-pressed="${buyer?.id===c.id}"`);}).join('')}${!guests.length?`<div class="closed-note">${icon('sun')}<span>Покупатели на сегодня ушли</span>${btn('next-day','Открыть лавку завтра','primary')}</div>`:''}</div>`;
- const q=buyer&&item?J.quote(state,item,buyer,policy):null;
  if(person)html+=`<section class="buyer-panel"><img class="portrait" src="${portrait(person)}" alt=""><div><div class="buyer-name"><b>${person.name}</b><small>${person.role||''}</small></div><p class="speech">${esc(reaction(person,buyer,item,q||{demand:{},fit:0}))}</p>
   <div class="tags"><span>${icon('heart')}${STYLE[person.style]}</span><span><img src="${metalURL(person.metal,32)}" alt="">${J.METALS[person.metal].name}</span><span>${icon(ELEMENT_ICON[person.element])}${J.ELEMENTS[person.element]}</span><span>${icon('coin')}${eye?buyer.budget:'≈'+Math.round(buyer.budget/50)*50}</span></div></div></section>`;
  if(!item)return html+`<div class="card empty"><img src="${typeIcon('pendant')}" alt=""><h2>Витрина ждёт твою работу</h2><p class="muted">Форма, узор и камни сохранятся точно такими, какими ты их создал.</p>${btn('navigate','Создать украшение','primary big','data-view="studio"')}</div>`;
- const d=item.design,e=J.evaluate(d),demand=J.demandInfo(state,d),position=list.indexOf(item)+1;
+ const d=item.design,e=J.evaluate(d),position=list.indexOf(item)+1;
  html+=`<section class="feature"><div class="tray">${btn('previous',icon('left'),'icon-button ghost','aria-label="Предыдущее изделие"')}<img src="${jewelURL(d,320,{background:false})}" alt="${esc(d.name)}: авторская форма, рисунок и камни">${btn('next',icon('right'),'icon-button ghost','aria-label="Следующее изделие"')}${q?`<span class="fit-badge ${q.fit>=70?'hi':q.fit>=50?'mid':'lo'}" title="Совпадение со вкусом">${icon('heart')}${q.fit}%</span>`:''}</div>
  <div class="feature-title"><h2>${esc(d.name)}</h2><small>${typeName(d.type)} · ${position}/${list.length}</small></div>
  <div class="metrics"><span class="meter" style="--p:${e.craft}%"><em>Мастерство</em><b>${e.craft}</b></span><span><em>Стиль</em><b>${e.label}</b></span><span class="${e.magic?'magic':''}"><em>Магия</em><b>${magicOf(e)}</b></span></div>
  <div class="market-status${demand.remaining?' cool':''}"><span>${demand.remaining?`Спрос −75% · ещё ${demand.remaining} торг. дн.`:'Продажи по полной цене'}</span><span class="demand-dots${demand.remaining?' cool':''}" aria-label="${demand.sales} из 4">${Array.from({length:4},(_,i)=>`<i class="${i<demand.sales?'on':''}"></i>`).join('')}</span>${btn('demand-info',icon('info'),'icon-button ghost small','aria-label="Как работает спрос"')}</div>`;
- if(q){const quotes=Object.fromEntries(['low','fair','high'].map(id=>[id,J.quote(state,item,buyer,id)]));
+ if(q){
   html+=`<div class="price-row" role="radiogroup" aria-label="Цена">${[['low','Скидка'],['fair','Полная'],['high','Дороже']].map(([id,name])=>btn('policy',`<span>${name}</span><b>${quotes[id].price}</b>${eye?`<i>${quotes[id].accepted?'возьмёт':'откажет'}</i>`:''}`,`${id===policy?'active':''}${eye&&!quotes[id].accepted?' refused':''}`,`data-policy="${id}" role="radio" aria-checked="${id===policy}"`)).join('')}</div>`;
   html+=q.accepted?btn('sell',`<span>Продать</span>${coins(q.price)}`,'primary big sell-button',`data-item="${item.id}"`):`<div class="counter"><p>${esc(q.reason)}${q.offer?` Предлагаю <b>${q.offer}</b>.`:''}</p>${q.offer?btn('sell-counter',`<span>Согласиться</span>${coins(q.offer)}`,'primary',`data-item="${item.id}"`):''}</div>`;}
  else html+=btn('next-day',`${icon('sun')}<span>Открыть лавку завтра</span>`,'primary big');
  html+=`<div class="detail-actions">${btn('item-info',`${icon('scale')}<span>Оценка</span>`,'ghost',`data-item="${item.id}"`)}${btn('save-item-model',`${icon('bookmark')}<span>В модели</span>`,'ghost',`data-item="${item.id}"`)}${btn('recycle',`${icon('recycle')}<span>Переплавить</span>`,'ghost danger',`data-item="${item.id}"`)}</div></section>`;
- html+=`<div class="section-line"><h2>Витрина <small>${state.stock.length}/${J.MAX_STOCK}</small></h2>${buyer?btn('sort',sortMode==='fit'?`${icon('heart')}По вкусу`:`${icon('grid')}Новые`,'chip',`aria-label="Порядок: ${sortMode==='fit'?'по вкусу покупателя':'сначала новые'}"`):''}</div><div class="gallery">${list.map(i=>{const fit=buyer?fitOf(i):null;return btn('pick-item',`<img src="${jewelURL(i.design,112,{background:false})}" alt="">${fit!==null?`<span class="fit ${fit>=70?'hi':fit>=50?'mid':'lo'}">${fit}%</span>`:''}`,'gallery-item'+(i.id===item.id?' active':''),`data-item="${i.id}" aria-label="${esc(i.design.name)}${fit!==null?', вкус '+fit+'%':''}" aria-pressed="${i.id===item.id}"`);}).join('')}</div>`;
+ html+=`<div class="section-line"><h2>Витрина <small>${state.stock.length}/${J.MAX_STOCK}</small></h2>${buyer?btn('sort',sortMode==='fit'?`${icon('heart')}По вкусу`:`${icon('grid')}Новые`,'chip',`aria-label="Порядок: ${sortMode==='fit'?'по вкусу покупателя':'сначала новые'}"`):''}</div><div class="gallery">${list.map(i=>{const fit=buyer?fits.get(i.id):null;return btn('pick-item',`<img src="${jewelURL(i.design,112,{background:false})}" alt="">${fit!==null?`<span class="fit ${fit>=70?'hi':fit>=50?'mid':'lo'}">${fit}%</span>`:''}`,'gallery-item'+(i.id===item.id?' active':''),`data-item="${i.id}" aria-label="${esc(i.design.name)}${fit!==null?', вкус '+fit+'%':''}" aria-pressed="${i.id===item.id}"`);}).join('')}</div>`;
  return html;
 }
 function suppliesHTML(){let html=`<div class="section-line"><h1>Материалы</h1>${btn('inventory',icon('grid'),'icon-button ghost','aria-label="Запасы"')}</div><div class="tabs" role="tablist">${btn('supply-tab',`${icon('coin')}Поставщик`,supplyTab==='buy'?'active':'',`data-tab="buy" role="tab" aria-selected="${supplyTab==='buy'}"`)}${btn('supply-tab',`${icon('pin')}Места находок`,supplyTab==='map'?'active':'',`data-tab="map" role="tab" aria-selected="${supplyTab==='map'}"`)}</div>`;
@@ -127,7 +150,7 @@ function suppliesHTML(){let html=`<div class="section-line"><h1>Материал
   <div class="card"><div class="section-line tight"><h2>Находки</h2><span class="energy" aria-label="Силы: ${state.energy} из 4">${Array.from({length:4},(_,i)=>`<i class="${i<state.energy?'on':''}"></i>`).join('')}</span></div><p class="muted">В каждом месте можно искать раз в день. Сад откроется после 3 изделий, кряж — после 8. Находки помогают продолжить даже с пустым кошельком.</p>${btn('next-day',`${icon('sun')}<span>Следующий день</span>`,'big')}</div>`;
  return html+`<div class="supply-grid">${Object.entries({...J.METALS,...J.GEMS}).map(([id,m])=>{const gem=!!J.GEMS[id],count=gem?1:5,open=J.available(state,id);return `<article class="supply${open?'':' locked'}"><img src="${gem?gemURL(id,56):metalURL(id,56)}" alt=""><div class="copy"><b>${m.name}</b><small>В запасе ${state.materials[id]}</small><small>${m.price} за ${gem?'камень':'слиток'}${gem?' · '+J.ELEMENTS[m.element]:''}</small></div>${open?btn('buy',`+${count}<small>${m.price*count}</small>`,'buy',`data-material="${id}" data-count="${count}" aria-label="Купить ${m.name} ×${count} за ${m.price*count} монет" ${state.gold<m.price*count?'disabled':''}`):btn('locked-material',icon('lock'),'icon-button ghost',`data-material="${id}" aria-label="Как открыть: ${m.name}"`)}</article>`;}).join('')}</div>`;
 }
-function ordersHTML(){const list=state.requests.map(r=>{const p=client(r.client),item=state.stock.find(i=>J.matches(i.design,r)&&!J.demandInfo(state,i.design).remaining);
+function ordersHTML(){const pieces=orderPieces(state),list=state.requests.map(r=>{const p=client(r.client),item=pieces.get(r.id);
   return `<article class="card order-card${r.done?' done':''}"><img class="portrait" src="${portrait(p)}" alt="${p.name}"><div class="order-copy"><h2>${esc(r.title)}</h2><p class="meta">${p.name} · ${typeName(r.type)}</p><div class="tags"><span>${icon('heart')}${STYLE[r.style]} ≥ ${r.min}</span><span>${icon('studio')}Ремесло ≥ 50</span>${r.minMagic?`<span>${icon('rune')}Магия ≥ ${r.minMagic}</span>`:''}</div><small>${r.done?`${icon('check')}Заказ выполнен`:`До дня ${r.until} · свежий дизайн · +15% к цене`}</small>${!r.done?(item?btn('deliver',`<img src="${jewelURL(item.design,64)}" alt=""><span>Передать «${esc(item.design.name)}»</span>`,'primary',`data-request="${r.id}" data-item="${item.id}"`):btn('prepare-order',`${icon('studio')}<span>Создать для заказа</span>`,'',`data-type="${r.type}"`)):''}</div></article>`;}).join('');
  return `<div class="section-line"><h1>Личные заказы</h1><small>По вкусу жителей</small></div>${list||`<div class="card empty">${icon('orders','big-icon')}<h2>Заказов пока нет</h2><p class="muted">Жители оставят новые просьбы завтра.</p></div>`}`;}
 function developHTML(){const level=Math.floor(state.xp/35)+1,opened=PATTERNS.filter(p=>patternUnlocked(state,p.id)).length,next=PATTERNS.filter(p=>!patternUnlocked(state,p.id)).sort((a,b)=>a.need-b.need)[0];
@@ -137,7 +160,7 @@ function developHTML(){const level=Math.floor(state.xp/35)+1,opened=PATTERNS.fil
 function paint(time,dt){
  editor?.paint(reduced.matches?0:time);
  const inset=$('#artist-scene'),room=$('#scene'),map=$('#map');
- if(inset&&editor)scene.paint(inset.getContext('2d'),state,{design:editor.preview(),working:!!editor.operation,tool:editor.tool,time:reduced.matches?0:time,dt});
+ if(inset&&editor)scene.paint(inset.getContext('2d'),state,{design:editor.operation?editor.preview():state.draft.design,rev:editor.rev,working:!!editor.operation,tool:editor.tool,time:reduced.matches?0:time,dt});
  if(room)scene.paint(room.getContext('2d'),state,{shop:view==='shop',design:view==='shop'?currentItem()?.design:null,stock:view==='shop'?state.stock.slice(0,5).map(i=>i.design):[],buyerId,time:reduced.matches?0:time,dt});
  if(map)paintMap(map.getContext('2d'),state,reduced.matches?0:time);
 }
@@ -154,22 +177,22 @@ function showAssessment(item,completed=false){const d=item.design,e=J.evaluate(d
 function showDemand(){modal('Спрос любит новые работы',`<p>После <b>4 продаж одного дизайна по полной или высокой цене</b> цена следующих экземпляров падает на <b>75%</b>.</p><p>Спрос восстанавливается через <b>7 торговых дней с продажами</b>. Дни без продаж этот срок не сокращают.</p><p>Название, цвет металла и небольшие правки не делают старый рисунок новым. Меняй форму, узор и расположение камней — готовые узоры на другой форме тоже дают новый дизайн.</p><p class="fine-print">Личные заказы учитываются так же. Заказчики не принимают дизайн, спрос на который уже насыщен.</p>`);}
 function showSkill(id){const t=J.TOOLS.find(t=>t.id===id);if(!t)return;const learned=state.skills.includes(id),parents=t.parents.filter(p=>!state.skills.includes(p));modal(t.name,`<div class="skill-hero">${icon(SKILL_ICON[id],'big-icon')}<p>${t.desc}</p></div>${parents.length?`<p>Сначала: ${parents.map(id=>J.TOOLS.find(t=>t.id===id).name).join(', ')}.</p>`:''}<div class="score-row"><span>Стоимость</span><b>${t.cost} мон.</b></div><div class="score-row"><span>Нужный опыт</span><b>${Math.min(state.xp,t.xp)} / ${t.xp}</b><i class="bar" style="--p:${Math.min(100,state.xp/t.xp*100)}%"></i></div><p class="fine-print">Опыт не тратится при изучении.</p>${btn('learn',learned?'Изучено':'Изучить','primary',`data-skill="${id}" ${learned||parents.length||state.gold<t.cost||state.xp<t.xp?'disabled':''}`)}`);}
 function download(raw,filename){const url=URL.createObjectURL(new Blob([raw],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-function menu(){editor?.finish();modal('Мастерская «Сияние»',`<div class="settings">${btn('toggle-sound',`${icon('sound')}<span>Эффекты</span><em>${state.sound?'вкл':'выкл'}</em>`,state.sound?'on':'')}${btn('toggle-music',`${icon('music')}<span>Музыка</span><em>${state.music?'вкл':'выкл'}</em>`,state.music?'on':'')}<label class="slider">Громкость <input id="volume" aria-label="Громкость" type="range" min="0" max="1" step="0.05" value="${state.volume}"></label>${btn('export',`${icon('download')}<span>Скачать сохранение</span>`)}${btn('import',`${icon('upload')}<span>Загрузить сохранение</span>`)}${state.legacy?btn('legacy-export',`${icon('download')}<span>Архив прежней игры</span>`):''}${loadError?btn('reset-recovery','Начать заново','danger'):''}</div><p class="fine-print">Изделия и история действий сохраняются на этом устройстве. Для переноса на другой телефон скачай файл. Веленский порт, 1740 год.</p>${state.legacy?'<p class="fine-print">Монеты и запасы перенесены. Прежние товары обменены на 65% их стоимости; оригинальное сохранение доступно в архиве.</p>':''}`);}
+function menu(){editor?.finish();modal('Мастерская «Сияние»',`<div class="settings">${btn('toggle-sound',`${icon('sound')}<span>Эффекты</span><em>${state.sound?'вкл':'выкл'}</em>`,state.sound?'on':'')}${btn('toggle-music',`${icon('music')}<span>Музыка</span><em>${state.music?'вкл':'выкл'}</em>`,state.music?'on':'')}<label class="slider">Громкость <input id="volume" aria-label="Громкость" type="range" min="0" max="1" step="0.05" value="${state.volume}"></label>${btn('export',`${icon('download')}<span>Скачать сохранение</span>`)}${btn('import',`${icon('upload')}<span>Загрузить сохранение</span>`)}${state.legacy?btn('legacy-export',`${icon('download')}<span>Архив прежней игры</span>`):''}${updateReady?btn('reload-app',`${icon('download')}<span>Обновить до новой версии</span>`):''}${loadError?btn('reset-recovery','Начать заново','danger'):''}</div><p class="fine-print">Изделия и история действий сохраняются на этом устройстве. Для переноса на другой телефон скачай файл. Веленский порт, 1740 год.</p>${state.legacy?'<p class="fine-print">Монеты и запасы перенесены. Прежние товары обменены на 65% их стоимости; оригинальное сохранение доступно в архиве.</p>':''}`);}
 function welcome(){const d=J.makeDesign('pendant','drop','gold');try{d.gems=layoutGems(d,'halo',{kind:'sapphire',size:3.6});d.strokes=patternStrokes(d,'beads',{});}catch{}
  modal('Добро пожаловать в «Сияние»',`<div class="welcome"><img src="${jewelURL(d,240,{background:false})}" alt="Золотой кулон-капля с сапфирами"><p>Твоя ювелирная мастерская в Веленском порту, 1740 год.</p></div><div class="help-grid"><b>${icon('pattern')}</b><span>Придумай форму, нанеси свой узор или выбери готовый — он ляжет точно по контуру.</span><b>${icon('stone')}</b><span>Поставь камни, пробуди их рунами, отполируй оправу.</span><b>${icon('shop')}</b><span>Выставляй работы и ищи покупателя по вкусу. Повторяющиеся дизайны теряют спрос.</span></div>${state.legacy?'<p class="fine-print">Твой прежний прогресс перенесён, исходное сохранение лежит в архиве.</p>':''}${btn('welcome-start','Открыть мастерскую','primary')}`,false,'welcome-dialog');}
-function nextDay(){editor?.finish();const day=state.day,daily={...state.daily};try{J.nextDay(state);}catch(e){toast(e.message,true);return;}save();render();audio.play('good');
+function nextDay(){editor?.finish();const day=state.day;let daily;try{daily=P.nextDay(state);}catch(e){toast(e.message,true);return;}scheduleSave();render();audio.play('good');
  const guests=state.customers.map(c=>client(c.client));
  modal(`Итоги дня ${day}`,`<div class="summary"><span><b>${daily.made||0}</b><small>создано</small></span><span><b>${daily.sales}</b><small>продано</small></span><span><b>${daily.income||0}</b><small>выручка</small></span></div><h3 class="label">Утро дня ${state.day}: в лавку заглянут</h3><div class="guest-row">${guests.map(p=>`<span><img src="${portrait(p)}" alt="">${p.name}</span>`).join('')}</div><p class="fine-print">Силы восстановлены. Черновик и история действий сохранены.</p>${btn('close','Начать день','primary')}`);}
 function resetEditor(){editorOptions={tool:'shape',width:1,symmetry:false,gem:'garnet',cut:'round',zoom:1,pan:{x:0,y:0}};lastPattern={id:null,n:0};}
-function editAndRefresh(fn){try{editor?.finish();const d=J.clone(state.draft.design);fn(d);J.edit(state,d);save();editor.dirty=true;editor.metrics=J.evaluate(d);updateEditor();}catch(e){toast(e.message,true);}}
-function sell(b,which){const name=currentItem()?.design.name,from=b.getBoundingClientRect();const q=action(()=>J.sell(state,b.dataset.item,currentBuyer()?.id,which),q=>q.saturated?`«${name}» продано за ${q.price}. Спрос на этот дизайн насыщен.`:`«${name}» продано за ${q.price}`);if(q){audio.play('coin');coinBurst(from);itemId=null;render();}}
+function editAndRefresh(fn){try{editor?.finish();const d=J.clone(state.draft.design);fn(d);J.edit(state,d);scheduleSave();editor.dirty=true;editor.metrics=J.evaluate(d);updateEditor();}catch(e){toast(e.message,true);}}
+function sell(b,which){const name=currentItem()?.design.name,from=b.getBoundingClientRect();const q=action(()=>P.sell(state,b.dataset.item,currentBuyer()?.id,which),q=>q.saturated?`«${name}» продано за ${q.price}. Спрос на этот дизайн насыщен.`:`«${name}» продано за ${q.price}`);if(q){audio.play('coin');coinBurst(from);itemId=null;render();}}
 let pendingImport=null;
 document.addEventListener('pointerdown',()=>{audio.unlock();},{passive:true});
 document.addEventListener('click',e=>{
  const b=e.target.closest('[data-action]');if(!b||b.disabled)return;const id=b.dataset.action;
  switch(id){
  case'close':close();break;
- case'welcome-start':state.welcomed=true;save();close();render();break;
+ case'welcome-start':state.welcomed=true;scheduleSave();close();render();break;
  case'navigate':editor?.finish();view=b.dataset.view;render();$('#panel').scrollTop=0;break;
  case'go-supplier':view='supplies';supplyTab='buy';close();render();break;
  case'select-type':if(!J.typeAvailable(state,b.dataset.type)){showSkill('mounts');break;}selectedType=b.dataset.type;template='oval';render();break;
@@ -186,12 +209,12 @@ document.addEventListener('click',e=>{
  case'pattern-mode':patternMode=b.dataset.mode;renderToolOptions();break;
  case'cycle-gem':{const open=Object.keys(J.GEMS).filter(id=>J.available(state,id)),i=open.indexOf(editor.gem);editor.gem=open[(i+1)%open.length];editorOptions.gem=editor.gem;renderToolOptions();break;}
  case'gem-kind':editor.gem=b.dataset.gem;editorOptions.gem=editor.gem;editor.changeStone({kind:editor.gem});renderToolOptions();break;
- case'undo':case'redo':editor.finish();J.undo(state,id==='redo');editor.syncSelection();save();editor.dirty=true;editor.metrics=J.evaluate(state.draft.design);updateEditor();$('#jewel-name').value=state.draft.design.name;break;
+ case'undo':case'redo':editor.finish();J.undo(state,id==='redo');editor.syncSelection();scheduleSave();editor.dirty=true;editor.metrics=J.evaluate(state.draft.design);updateEditor();$('#jewel-name').value=state.draft.design.name;break;
  case'editor-help':editorHelp();break;
  case'material-picker':showMaterials();break;
  case'apply-metal':editAndRefresh(d=>{d.metal=b.dataset.metal;});close();break;
- case'remember':try{editor.finish();J.remember(state);save();toast('Модель сохранена. Можно создать новый экземпляр.');}catch(err){toast(err.message,true);}break;
- case'finish-design':{const item=action(()=>J.complete(state));if(item){itemId=item.id;showAssessment(item,true);audio.play('magic');}break;}
+ case'remember':try{editor.finish();J.remember(state);scheduleSave();toast('Модель сохранена. Можно создать новый экземпляр.');}catch(err){toast(err.message,true);}break;
+ case'finish-design':{const done=action(()=>P.complete(state));if(done){itemId=done.item.id;showAssessment(done.item,true);audio.play('magic');if(!persistAsked){persistAsked=true;navigator.storage?.persist?.().catch(()=>{});}}break;}
  case'completed-shop':view='shop';close();render();break;
  case'completed-studio':view='studio';close();render();break;
  case'discard':modal('Убрать заготовку?',`<p>Рисунок текущей заготовки будет удалён. Материалы ещё не потрачены.</p>${btn('confirm-discard','Убрать заготовку','primary danger')}`);break;
@@ -202,49 +225,52 @@ document.addEventListener('click',e=>{
  case'policy':policy=b.dataset.policy;render();break;
  case'sort':sortMode=sortMode==='fit'?'new':'fit';render();break;
  case'pick-item':itemId=b.dataset.item;render();$('.feature')?.scrollIntoView({block:'nearest',behavior:reduced.matches?'auto':'smooth'});break;
- case'previous':case'next':{const buyer=currentBuyer(),person=buyer&&client(buyer.client),list=sortMode==='fit'&&buyer?[...state.stock].sort((a,b)=>J.affinity(b.design,person,buyer.want)-J.affinity(a.design,person,buyer.want)):state.stock,i=list.indexOf(currentItem());itemId=list[(i+(id==='next'?1:-1)+list.length)%list.length].id;render();break;}
+ case'previous':case'next':{const {list,item}=showcase(state,{buyerId,itemId,sort:sortMode}),i=list.indexOf(item);itemId=list[(i+(id==='next'?1:-1)+list.length)%list.length].id;render();break;}
  case'sell':sell(b,policy);break;
  case'sell-counter':sell(b,'counter');break;
  case'demand-info':showDemand();break;
  case'item-info':{const item=state.stock.find(i=>i.id===b.dataset.item);if(item)showAssessment(item);break;}
  case'save-item-model':action(()=>J.rememberItem(state,b.dataset.item),'Модель сохранена.');break;
  case'recycle':modal('Разобрать изделие?',`<p>Все камни и 70% металла вернутся в запасы. Готовая оправа и работа будут разобраны.</p>${btn('confirm-recycle','Разобрать','primary danger',`data-item="${b.dataset.item}"`)}`);break;
- case'confirm-recycle':action(()=>J.recycle(state,b.dataset.item),'Материалы возвращены.');itemId=null;close();break;
+ case'confirm-recycle':action(()=>P.recycle(state,b.dataset.item),'Материалы возвращены.');itemId=null;close();break;
  case'supply-tab':supplyTab=b.dataset.tab;render();break;
- case'buy':action(()=>J.buy(state,b.dataset.material,Number(b.dataset.count)),'Материалы в запасе.');break;
+ case'buy':action(()=>P.buy(state,b.dataset.material,Number(b.dataset.count)),'Материалы в запасе.');break;
  case'locked-material':showSkill(['gold','diamond'].includes(b.dataset.material)?'gold':'alchemy');break;
- case'gather':action(()=>J.gather(state,b.dataset.area),r=>`Найдено: ${J.GEMS[r.gem].name} и ${J.METALS[r.metal].name} ×3`);break;
+ case'gather':action(()=>P.gather(state,b.dataset.area),r=>`Найдено: ${J.GEMS[r.gem].name} и ${J.METALS[r.metal].name} ×3`);break;
  case'next-day':nextDay();break;
  case'prepare-order':if(state.draft){view='studio';render();toast('Сначала закончи или убери текущую заготовку.');}else{selectedType=b.dataset.type;resetEditor();action(()=>{J.startDesign(state,selectedType,'oval','copper');view='studio';});}break;
- case'deliver':{const from=b.getBoundingClientRect();if(action(()=>J.deliver(state,b.dataset.request,b.dataset.item),n=>`Заказ выполнен · ${n} монет · +16 опыта`)){audio.play('coin');coinBurst(from);}break;}
+ case'deliver':{const from=b.getBoundingClientRect();if(action(()=>P.deliver(state,b.dataset.request,b.dataset.item),r=>`Заказ выполнен · ${r.reward} монет · +16 опыта`)){audio.play('coin');coinBurst(from);}break;}
  case'skill':showSkill(b.dataset.skill);break;
- case'learn':action(()=>J.learn(state,b.dataset.skill),'Новая техника изучена.');close();break;
- case'toggle-sound':state.sound=!state.sound;audio.setOptions(state);save();menu();break;
- case'toggle-music':state.music=!state.music;audio.setOptions(state);save();menu();break;
+ case'learn':action(()=>P.learn(state,b.dataset.skill),'Новая техника изучена.');close();break;
+ case'toggle-sound':state.sound=!state.sound;audio.setOptions(state);scheduleSave();menu();break;
+ case'toggle-music':state.music=!state.music;audio.setOptions(state);scheduleSave();menu();break;
  case'export':editor?.finish();download(loadError?sourceRaw:J.serialize(state),`siyanie-day-${state.day}.json`);break;
  case'legacy-export':download(JSON.stringify(state.legacy),'pix-original-archive.json');break;
  case'import':$('#import-file').click();break;
- case'confirm-import':if(pendingImport){editor?.destroy();editor=null;state=pendingImport;pendingImport=null;loadError=false;state.welcomed=true;view='studio';buyerId=null;itemId=null;resetEditor();save();close();render();toast('Сохранение загружено.');}break;
+ case'confirm-import':if(pendingImport){editor?.destroy();editor=null;state=pendingImport;pendingImport=null;loadError=false;state.welcomed=true;view='studio';buyerId=null;itemId=null;resetEditor();scheduleSave();close();render();toast('Сохранение загружено.');}break;
+ case'reload-app':if(!conflict)flushSave();location.reload();break;
  case'reset-recovery':modal('Новое сохранение',`<p>Сначала скачай повреждённый исходный файл через меню. Новый прогресс заменит его на этом устройстве.</p>${btn('confirm-reset','Создать новое сохранение','primary danger')}`);break;
- case'confirm-reset':state=J.newGame(Date.now()>>>0);loadError=false;sourceRaw=null;save();close();render();welcome();break;
+ case'confirm-reset':state=P.newGame(Date.now()>>>0);loadError=false;sourceRaw=null;scheduleSave();close();render();welcome();break;
  }
 });
 document.addEventListener('input',e=>{
  if(e.target.id==='brush-width'&&editor)editor.setWidth(e.target.value);
- if(e.target.id==='volume'){state.volume=Number(e.target.value);audio.setOptions(state);save();}
+ if(e.target.id==='volume'){state.volume=Number(e.target.value);audio.setOptions(state);scheduleSave();}
 });
 document.addEventListener('change',e=>{
  if(e.target.id==='brush-width'&&editor&&editor.tool==='stone')editor.changeStone({size:editor.stoneSize()});
  if(e.target.id==='gem-cut'&&editor){editor.cut=e.target.value;editor.changeStone({cut:editor.cut});}
  if(e.target.id==='jewel-name'&&editor)editAndRefresh(d=>{d.name=e.target.value.trim().slice(0,48)||typeName(d.type);});
 });
-$('#import-file').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;try{if(file.size>64000000)throw new J.AtelierError('Файл слишком большой.');pendingImport=J.deserialize(await file.text());modal('Загрузить эту мастерскую?',`<p>День ${pendingImport.day} · ${pendingImport.gold} монет · ${pendingImport.stock.length} изделий · ${pendingImport.library.length} моделей.</p><p class="fine-print">Текущий прогресс на устройстве будет заменён. Можно предварительно скачать его через меню.</p>${btn('confirm-import','Загрузить','primary')}`);}catch(error){toast(error.message,true);}e.target.value='';});
+$('#import-file').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;try{if(file.size>64000000)throw new J.AtelierError('Файл слишком большой.');pendingImport=P.load(await file.text());modal('Загрузить эту мастерскую?',`<p>День ${pendingImport.day} · ${pendingImport.gold} монет · ${pendingImport.stock.length} изделий · ${pendingImport.library.length} моделей.</p><p class="fine-print">Текущий прогресс на устройстве будет заменён. Можно предварительно скачать его через меню.</p>${btn('confirm-import','Загрузить','primary')}`);}catch(error){toast(error.message,true);}e.target.value='';});
 $('#menu-button').addEventListener('click',menu);
 $('#end-day').addEventListener('click',nextDay);
-dialog.addEventListener('cancel',e=>{if(!state.welcomed&&!loadError)e.preventDefault();});
+dialog.addEventListener('cancel',e=>{if(conflict||(!state.welcomed&&!loadError))e.preventDefault();});
 document.addEventListener('keydown',e=>{if(!editor||dialog.open||e.target.matches('input,select,textarea'))return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();const b=$(`[data-action="${e.shiftKey?'redo':'undo'}"]`);b?.click();}});
-document.addEventListener('visibilitychange',()=>{if(document.hidden){editor?.finish();save();audio.pause();}else{lastFrame=performance.now();audio.resume();if(editor)editor.dirty=true;}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){flushSave();audio.pause();}else{lastFrame=performance.now();audio.resume();if(editor)editor.dirty=true;otherWrite(readStamp());}});
 document.addEventListener('animationend',e=>e.target.classList?.remove('pulse'));
-window.addEventListener('pagehide',()=>{editor?.finish();save();audio.pause();});
+window.addEventListener('pagehide',()=>{flushSave();audio.pause();});
+window.addEventListener('pageshow',e=>{if(e.persisted)otherWrite(readStamp());});
 render();requestAnimationFrame(frame);if(!state.welcomed&&!loadError)welcome();
-if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
+// The first install also fires controllerchange; only a page that already had a worker is out of date.
+if('serviceWorker'in navigator){const controlled=!!navigator.serviceWorker.controller;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!controlled||updateReady)return;updateReady=true;toast('Доступна новая версия',false,{action:'reload-app',label:'Обновить',icon:'download'});});navigator.serviceWorker.register('./sw.js').catch(()=>{});}

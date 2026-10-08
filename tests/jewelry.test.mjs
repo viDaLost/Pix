@@ -101,3 +101,63 @@ test('an otherwise suitable amulet cannot complete a magical order without an aw
 test('hidden engraving outside the current metal shape cannot inflate artistic style or craftsmanship',()=>{
  const s=J.newGame();J.startDesign(s);const d=s.draft.design,before=J.evaluate(d);d.strokes=[{kind:'engrave',width:3,points:[pt(1,2),pt(3,90),pt(8,1)]}];assert.equal(J.evaluate(d).style.ornate,before.style.ornate);assert.equal(J.evaluate(d).craft,before.craft);assert.equal(J.hasHandwork(d),false);assert.throws(()=>J.complete(s),/заготовка/);
 });
+test('finished designs are frozen; assessment and fingerprint match an unfrozen copy',()=>{
+ const s=rich(J.newGame(31)),item=stock(s);assert.ok(Object.isFrozen(item.design)&&Object.isFrozen(item.design.outline[0])&&Object.isFrozen(item.design.strokes[0].points)&&Object.isFrozen(item.design.gems[0])&&Object.isFrozen(item.design.polish));
+ assert.throws(()=>{item.design.outline[0].x=1;},TypeError);assert.throws(()=>{item.design.gems.push(gem());},TypeError);
+ const copy=J.clone(item.design);assert.equal(Object.isFrozen(copy),false);assert.deepEqual(J.evaluate(item.design),J.evaluate(copy));assert.deepEqual(J.fingerprint(item.design),J.fingerprint(copy));
+ assert.equal(J.evaluate(item.design),J.evaluate(item.design),'cached by identity');assert.ok(Object.isFrozen(J.evaluate(item.design).style));
+ const model=J.rememberItem(s,item.id);assert.ok(Object.isFrozen(model.design));J.restoreModel(s,model.id);assert.equal(Object.isFrozen(s.draft.design),false,'drafts stay editable');
+ const before=J.tally.evaluate;for(let i=0;i<20;i++){J.evaluate(item.design);J.affinity(item.design,J.CLIENTS[i%8]);}assert.equal(J.tally.evaluate,before);
+});
+test('loading freezes showcase and library designs but not the draft and its history',()=>{
+ const s=rich(J.newGame(32));const item=stock(s);J.rememberItem(s,item.id);J.startDesign(s);J.edit(s,design());const back=J.deserialize(J.serialize(s));
+ assert.ok(Object.isFrozen(back.stock[0].design)&&Object.isFrozen(back.library[0].design));assert.equal(Object.isFrozen(back.draft.design),false);assert.equal(Object.isFrozen(back.draft.undo[0]),false);
+ assert.doesNotThrow(()=>{back.draft.design.outline[0].x+=1;});
+});
+test('a design is fresh until its family is first sold; the first sale reports a new family',()=>{
+ const s=rich(J.newGame(33)),d=design(),a=stock(s,d),b=stock(s,d),other=design('pendant','diamond');other.gems=[gem('garnet',50,23),gem('garnet',50,72)];other.strokes[0].points=[pt(50,34),pt(63,49),pt(50,64)];const c=stock(s,other);
+ assert.equal(J.isFresh(s,a.design),true);const buyer=()=>{if(!s.customers.some(c=>!c.served))J.nextDay(s);return s.customers.find(c=>!c.served).id;};
+ assert.equal(J.sell(s,a.id,buyer()).freshFamily,true);assert.equal(J.isFresh(s,b.design),false);assert.equal(J.isFresh(s,c.design),true,'a different shape is still fresh');
+ assert.equal(J.sell(s,b.id,buyer()).freshFamily,false);assert.equal(J.sell(s,c.id,buyer()).freshFamily,true);
+});
+test('all price policies from one appraisal equal separate quotes',()=>{
+ const s=rich(J.newGame(34));s.skills.push('eye');const item=stock(s);for(const c of s.customers){const all=J.quotes(s,item,c);for(const p of J.POLICIES)assert.deepEqual(all[p],J.quote(s,item,c,p));}
+ s.demand.push({signature:J.fingerprint(item.design),sales:4,until:s.tradeDay+7});const c=s.customers[0];assert.deepEqual(J.quotes(s,item,c).fair,J.quote(s,item,c,'fair'));assert.equal(J.quotes(s,item,c).low.demand.factor,.25);
+});
+test('the demand family of a finished design is cached and compares only new ledger entries',()=>{
+ const s=rich(J.newGame(35)),item=stock(s),fp=J.fingerprint(item.design);const filler=n=>Array.from({length:n},(_,i)=>({signature:{...fp,shape:fp.shape.map((v,k)=>(k*7+i)%3?v:1-v)},sales:0,until:0}));
+ s.demand.push(...filler(50));let n=J.tally.similarity;J.demandInfo(s,item.design);assert.equal(J.tally.similarity-n,50);
+ n=J.tally.similarity;J.demandInfo(s,item.design);J.isFresh(s,item.design);assert.equal(J.tally.similarity,n,'nothing new to compare');
+ s.demand.push(...filler(3));n=J.tally.similarity;J.demandInfo(s,item.design);assert.equal(J.tally.similarity-n,3,'only the new entries');
+ s.demand.push({signature:J.clone(fp),sales:4,until:s.tradeDay+7});assert.equal(J.demandInfo(s,item.design).factor,.25);
+ s.demand=s.demand.filter(f=>f.until===0);assert.equal(J.demandInfo(s,item.design).factor,1,'a removed family is noticed');
+ s.demand.push({signature:{...fp,type:'ring'},sales:0,until:0});n=J.tally.similarity;J.demandInfo(s,item.design);assert.equal(J.tally.similarity,n,'other kinds are skipped without comparison');
+});
+test('cached demand answers match a full scan through a long random game',()=>{
+ const s=rich(J.newGame(36));let seed=5;const rnd=()=>{seed=(Math.imul(seed,1103515245)+12345)>>>0;return seed/4294967296;};
+ const shapes=['oval','leaf','heart','diamond','drop','shield'].map((t,i)=>{const d=J.makeDesign(['pendant','brooch','amulet'][i%3],t,'copper');d.gems=[gem('garnet',50,48)];d.strokes=[{kind:'engrave',width:1,points:[pt(42,40+i),pt(50,52),pt(58,40+i)]}];return d;});
+ for(let step=0;step<160;step++){
+  const roll=rnd();if(roll<.55){const d=J.clone(shapes[Math.floor(rnd()*shapes.length)]);if(!s.customers.some(c=>!c.served))J.nextDay(s);const item=stock(s,d);J.sell(s,item.id,s.customers.find(c=>!c.served).id,rnd()<.8?'fair':'low');}
+  else if(roll<.8)J.nextDay(s);else stock(s,J.clone(shapes[Math.floor(rnd()*shapes.length)]));
+  for(const i of s.stock.slice(0,6))assert.deepEqual(J.demandInfo(s,i.design),J.demandInfo(s,J.clone(i.design)),'step '+step);
+ }
+});
+// The design-family comparison as originally written; the packed version must give the very same numbers.
+function referenceSimilarity(a,b){
+ if(a.type!==b.type)return 0;let best=0;
+ for(const [flipX,flipY]of[[false,false],[true,false],[false,true],[true,true]]){let score=1;for(const [key,weight,floor]of[['shape',.45,20],['ink',.25,20],['gems',.25,4],['runes',.05,15]]){
+  let diff=0,union=0;const size=Math.sqrt(a[key].length),left=a[key],right=b[key].map((_,i)=>{const x=i%size,y=Math.floor(i/size);return b[key][(flipY?size-1-y:y)*size+(flipX?size-1-x:x)];});
+  const near=(cells,i)=>{const x=i%size,y=Math.floor(i/size);for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)if(x+dx>=0&&x+dx<size&&y+dy>=0&&y+dy<size&&cells[(y+dy)*size+x+dx])return true;return false;};
+  for(let i=0;i<left.length;i++){union+=left[i]||right[i]?1:0;if(key==='shape')diff+=left[i]!==right[i]?1:0;else diff+=(left[i]&&!near(right,i)?1:0)+(right[i]&&!near(left,i)?1:0);}
+  score-=weight*diff/Math.max(floor,union);}best=Math.max(best,score);}return best;
+}
+test('the packed design comparison equals the original one exactly',async()=>{
+ const {readFileSync}=await import('node:fs'),{gunzipSync}=await import('node:zlib');
+ const s=J.deserialize(gunzipSync(readFileSync(new URL('./fixtures/v3-dense.json.gz',import.meta.url))).toString());let same=0;
+ for(const i of s.stock.slice(0,24)){const fp=J.fingerprint(i.design);for(const f of s.demand){if(f.signature.type===fp.type)same++;assert.equal(J.similarity(fp,f.signature),referenceSimilarity(fp,f.signature));}}assert.ok(same>500);
+ let seed=17;const rnd=()=>{seed=(Math.imul(seed,1103515245)+12345)>>>0;return seed/4294967296;};
+ const random=()=>{const density=[.02,.1,.3,.6,.95][Math.floor(rnd()*5)],cells=n=>Array.from({length:n},(_,i)=>rnd()<density||(i%17===0&&rnd()<.5)?1:0);return {type:'ring',shape:cells(256),ink:cells(144),runes:cells(144),gems:cells(144)};};
+ const mirror=f=>{const m=(cells,size)=>cells.map((_,i)=>cells[Math.floor(i/size)*size+size-1-i%size]);return {...f,shape:m(f.shape,16),ink:m(f.ink,12),runes:m(f.runes,12),gems:m(f.gems,12)};};
+ for(let i=0;i<400;i++){const a=random(),b=rnd()<.2?mirror(a):random();assert.equal(J.similarity(a,b),referenceSimilarity(a,b));assert.equal(J.similarity(b,a),referenceSimilarity(b,a));}
+ const a=random();assert.equal(J.similarity(a,mirror(a)),1);assert.equal(J.similarity(a,{...a,type:'pendant'}),0);
+});
