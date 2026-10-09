@@ -114,6 +114,9 @@ test('normalize keeps friendship, letters and orders sound and never hands a rew
  const back=P.load(JSON.stringify(raw));
  assert.deepEqual(back.bonds,{mira:{p:16,lv:3,last:{type:'ring',name:'Кольцо',day:3}},bren:{p:0,lv:0,last:null},elin:{p:30,lv:4,last:null,pending:true},sera:{p:26,lv:2,last:null}});
  assert.deepEqual(back.mail,[{id:'rowan-2',day:4,read:true},{id:'elin-epilogue',day:0,read:false}]);assert.deepEqual(P.normalize(J.clone(back)),back,'repair is idempotent');
+ // A named order already on the list is not waited for a second time.
+ const w=JSON.parse(J.serialize(P.newGame(16)));w.bonds={nora:{p:30,lv:4,last:null,pending:true},ada:{p:30,lv:4,last:null,pending:true}};w.requests=[{client:'nora',...P.NAMED.nora,id:'request-950',keep:true,bond:'nora',reward:1.6,until:w.day,done:false}];
+ const wb=P.load(JSON.stringify(w));assert.equal('pending'in wb.bonds.nora,false);assert.equal(wb.bonds.ada.pending,true);
  // A file with too many orders: finished ones go first, a resident keeps one ordinary and one named order.
  const o=P.newGame(13),base={client:'mira',type:'pendant',style:'minimal',min:10,minMagic:0,title:'Заказ',until:o.day+3,done:false};let n=900;const req=extra=>({...base,id:'request-'+n++,...extra});
  o.requests=[req({client:'mira'}),req({client:'mira'}),req({client:'mira',keep:true,bond:'mira',reward:1.6}),req({client:'mira',keep:true,bond:'mira',reward:1.6}),req({client:'bren',done:true}),req({client:'ada'}),req({client:'elin',keep:'x',reward:1000}),req({client:'rowan',keep:false,bond:'rowan',reward:1.6}),
@@ -127,6 +130,8 @@ test('twenty-four letters, Даро\'s first and Элин\'s epilogue: two to fo
  assert.equal(P.LETTER_IDS.length,26);for(const p of J.CLIENTS)for(const l of[2,3,5])assert.ok(P.letter(`${p.id}-${l}`),`${p.id}-${l}`);assert.ok(P.letter('daro-0')&&P.letter('elin-epilogue'));assert.equal(P.letter('nope-2'),null);
  for(const id of P.LETTER_IDS){const {text,sign}=P.letter(id),n=text.split(/(?<=[.?…])\s+/).length;assert.ok(n>=2&&n<=4,`${id}: ${n} sentences`);assert.ok(sign.length>1&&sign.length<=40);assert.doesNotMatch(text,/!|окей|проблем|ресурс|бонус|шанс/i,id);}
  assert.equal(P.letter('rowan-2').text,'Не смейся, мастер. Третий год хожу мимо мельницы и не решаюсь. Лида любит, когда металл тёплый. Если однажды сделаешь простое кольцо — я пойму, что пора.');
+ // The help of a search names its place as the map does, with a capital letter.
+ for(const [id,place]of[['bren','Лунном кряже'],['elin','Берегу'],['rowan','Саду аббатства']])assert.ok(P.PRIVILEGES[id].includes(place),id);
  for(const p of J.CLIENTS){assert.ok(P.PRIVILEGES[p.id]&&P.NAMED[p.id]&&P.MEMORY[p.id].length===2,p.id);const t=P.NAMED[p.id];assert.ok(J.TYPES.some(x=>x.id===t.type)&&t.title.length<=80&&t.min>=0&&t.min<=100);}
 });
 test('residents remember a piece with the right gender and speak of themselves only from the second step',()=>{

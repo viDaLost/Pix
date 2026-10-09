@@ -43,8 +43,8 @@ export function normalize(s){
   s.cosmetics={velvet:owned.has(c.velvet)?c.velvet:'teal',owned:VELVET_IDS.filter(id=>owned.has(id)),decor:DECOR_IDS.filter(id=>list(c.decor,v=>DECOR_IDS.includes(v),DECOR_IDS.length).includes(id))};});
  guard(()=>{if(Array.isArray(s.customers))for(const c of s.customers)if(obj(c)&&'novel'in c&&typeof c.novel!=='boolean')delete c.novel;});
  // Friendship of known residents only. The step already rewarded never exceeds the step of the points, and a file
- // without it owes no rewards: nothing is handed out twice.
- guard(()=>{const old=obj(s.bonds)?s.bonds:{},bonds={};for(const id of CLIENT_IDS){const b=old[id];if(!obj(b))continue;const p=count(b.p),top=J.levelFor(p),v={p,lv:Number.isInteger(b.lv)&&b.lv>=0?Math.min(b.lv,top):top,last:lastOf(b.last)};if(b.pending===true&&v.lv>=4)v.pending=true;bonds[id]=v;}s.bonds=bonds;});
+ // without it owes no rewards: nothing is handed out twice. A named order already on the list waits for no room.
+ guard(()=>{const old=obj(s.bonds)?s.bonds:{},bonds={},named=new Set((Array.isArray(s.requests)?s.requests:[]).filter(r=>obj(r)&&r.keep===true).map(r=>r.client));for(const id of CLIENT_IDS){const b=old[id];if(!obj(b))continue;const p=count(b.p),top=J.levelFor(p),v={p,lv:Number.isInteger(b.lv)&&b.lv>=0?Math.min(b.lv,top):top,last:lastOf(b.last)};if(b.pending===true&&v.lv>=4&&!named.has(id))v.pending=true;bonds[id]=v;}s.bonds=bonds;});
  guard(()=>{const seen=new Set();s.mail=(Array.isArray(s.mail)?s.mail:[]).filter(m=>obj(m)&&H.LETTER_IDS.includes(m.id)&&!seen.has(m.id)&&seen.add(m.id)).slice(0,MAIL_LIMIT).map(m=>({id:m.id,day:day(m.day)?m.day:0,read:m.read===true}));});
  // Orders: the flags of named orders, one ordinary and one named order per resident, never more than eight (finished
  // ones go first, then ordinary ones), so the core check of a save always passes.
@@ -146,10 +146,12 @@ export function enterContest(s,itemId){ready(s);rollWeek(s);const g=s.guild,item
  g.tried.push(itemId);if(score>g.score||!g.name){g.score=score;g.name=item.design.name.slice(0,48);}
  if(medal>prev){gain(s,G.MEDAL_REP[medal]-G.MEDAL_REP[prev]);const gem=G.prizeGem(s,theme),k=J.rankOf(s)>=4?2:1;for(let m=prev+1;m<=medal;m++){s.materials[gem]+=m*k;gems.push({id:gem,n:m*k});}g.best=medal;befriend(s,theme.host,medal-prev,news);}
  const ribbon=medal>J.ribbonOf(item);if(ribbon)item.ribbon={w:g.week,medal};
- J.note(s,`Смотр «${theme.name}»: «${item.design.name}» — ${medal?G.MEDALS[medal].toLowerCase():'похвальный отзыв'}, ${score}`,'guild');
+ J.note(s,`Тема цеха «${theme.name}»: «${item.design.name}» — ${medal?G.MEDALS[medal].toLowerCase():'похвальный отзыв'}, ${score}`,'guild');
  return settle(s,before,{...news,score,parts,medal,prev,improved:medal>prev,gems,theme,item,ribbon,marks:checkMarks(s,'contest',{medal,item})});}
 // A reason to think twice before ending the day: the theme closes tonight and nothing has been entered yet.
 export const themeEnding=s=>s.day%7===0&&!s.guild?.tried?.length&&s.stock.length>0?G.themeOf(s.day):null;
+// The nav dot of the week's review goes out once «Цех» has been looked at; true when this look put it out.
+export function seeGuild(s){ready(s);if(s.guild.seen)return false;s.guild.seen=true;return true;}
 // A letter is read once it has been opened.
 export function readLetter(s,id){ready(s);const m=s.mail.find(m=>m.id===id);if(m)m.read=true;return H.letter(id);}
 export const unread=s=>Array.isArray(s.mail)?s.mail.filter(m=>!m.read).length:0;
