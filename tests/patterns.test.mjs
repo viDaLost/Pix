@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as J from '../src/jewelry.js';
 import {PATTERNS,LAYOUTS,patternStrokes,layoutGems,patternUnlocked} from '../src/patterns.js';
 
-const shapes=[['pendant','oval'],['ring','oval'],['ring','flower'],['brooch','crescent'],['pendant','star'],['amulet','drop'],['pendant','shield'],['sword','oval'],['staff','oval']];
+const shapes=[['pendant','oval'],['pendant','sun'],['brooch','shell'],['amulet','lens'],['pendant','arch'],['ring','oval'],['ring','flower'],['brooch','crescent'],['pendant','star'],['amulet','drop'],['pendant','shield'],['sword','oval'],['staff','oval']];
 test('every template is a valid closed blank for the jewelry types that offer it',()=>{
  for(const type of J.TYPES.map(t=>t.id))for(const id of J.templatesFor(type)){if(id==='free')continue;const d=J.makeDesign(type,id,'silver');d.polish=[0];assert.doesNotThrow(()=>J.validateDesign(d,true),`${type}/${id}`);}
 });

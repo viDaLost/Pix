@@ -49,7 +49,7 @@ test('the wrappers keep statistics, the types sold today and the chronicle of or
  const cheap=make(s),d=guest(s),before=s.stats.clients[d.client]||0;assert.equal(P.sell(s,cheap.id,d.id,'low').full,false);assert.equal(s.stats.clients[d.client]||0,before,'a discount does not count as a full sale');
  P.gather(s,'shore');assert.equal(s.stats.gathers,1);
  const r={id:'request-'+s.nextId++,client:'nora',type:'ring',style:'symmetry',min:0,minMagic:0,title:'Простое кольцо',until:s.day+3,done:false};s.requests=[r];const ring=make(s,design('ring','oval','silver'));
- const done=P.deliver(s,r.id,ring.id);assert.ok(done.reward>0);assert.equal(s.stats.orders,1);assert.deepEqual(s.daily.types,['pendant','ring']);assert.deepEqual(s.log[0],{d:s.day,t:`Заказ «Простое кольцо» выполнен: ${done.reward} монет`,k:'order'});
+ const done=P.deliver(s,r.id,ring.id);assert.ok(done.reward>0);assert.equal(s.stats.orders,1);assert.deepEqual(s.daily.types,['pendant','ring']);assert.deepEqual(s.log[0],{d:s.day,t:`Заказ «Простое кольцо» выполнен: ${done.reward} мон.`,k:'order'});
  const prev=P.nextDay(s);assert.deepEqual(prev.types,['pendant','ring']);assert.ok(prev.sales>=2);assert.deepEqual([s.daily.rep,s.daily.firsts,s.daily.types,s.daily.sales],[0,[],[],0]);valid(s);
  assert.doesNotThrow(()=>J.deserialize(J.serialize(s)));
 });

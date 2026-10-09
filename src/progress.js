@@ -63,7 +63,7 @@ export function complete(s){ready(s);const before=snap(s),item=J.complete(s),d=i
 export function sell(s,id,buyerId,policy='fair'){ready(s);const before=snap(s),gold=s.gold,item=s.stock.find(i=>i.id===id),buyer=s.customers.find(c=>c.id===buyerId),q=J.sell(s,id,buyerId,policy),full=q.demand.factor===1&&q.price>=q.fair*.95;soldType(s,item.design.type);
  if(full){const first=!s.stats.clients[buyer.client];s.stats.clients[buyer.client]=(s.stats.clients[buyer.client]||0)+1;gain(s,1+(q.fit>=70?1:0)+(q.freshFamily?2:0)+(first?2:0)+(buyer.novel===true?2:0));}
  return {...q,...settle(s,before,{marks:checkMarks(s,'sell',{item,q,buyer,before:gold})}),full,client:buyer.client,novel:buyer.novel===true};}
-export function deliver(s,id,itemId){ready(s);const before=snap(s),r=s.requests.find(r=>r.id===id),item=s.stock.find(i=>i.id===itemId),reward=J.deliver(s,id,itemId);s.stats.orders++;soldType(s,item.design.type);J.note(s,`Заказ «${r.title}» выполнен: ${reward} монет`,'order');gain(s,4);
+export function deliver(s,id,itemId){ready(s);const before=snap(s),r=s.requests.find(r=>r.id===id),item=s.stock.find(i=>i.id===itemId),reward=J.deliver(s,id,itemId);s.stats.orders++;soldType(s,item.design.type);J.note(s,`Заказ «${r.title}» выполнен: ${reward} мон.`,'order');gain(s,4);
  return settle(s,before,{reward,request:r,marks:checkMarks(s,'deliver',{item,request:r})});}
 export function gather(s,id){ready(s);const found=J.gather(s,id);s.stats.gathers++;return found;}
 // The core day reset knows only the original counters; the extras start afresh here.

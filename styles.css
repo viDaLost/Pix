@@ -29,7 +29,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;opacity:.5;bac
 *{scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
 ::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:6px}
 h1,h2,h3,p{margin:0}
-h1,h2,.summary b,.xp-card b,.buyer-name b,.speech,.welcome p,.note h3{font-variant-numeric:lining-nums}
+h1,h2,.summary b,.rank-card b,.buyer-name b,.speech,.welcome p,.note h3{font-variant-numeric:lining-nums}
 h1,h2{font-family:var(--display);font-weight:700;letter-spacing:-.01em;line-height:1.05;text-wrap:balance}
 h1{font-size:calc(32px*var(--fs))}h2{font-size:calc(24px*var(--fs))}h3{font-size:calc(14px*var(--fs));font-weight:700}
 h2 small{font-family:var(--ui);font-size:calc(12px*var(--fs));font-weight:600;color:var(--text-3);letter-spacing:0;margin-left:4px}
@@ -155,7 +155,6 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;overflow:hidden}
 .editor-metrics span,.metrics span{position:relative;display:flex;flex-direction:column;padding:5px 8px 6px;border-radius:var(--r-sm);background:var(--surface);border:1px solid var(--line);overflow:hidden;min-width:0}
 .editor-metrics em,.metrics em{font-style:normal;font-size:calc(11px*var(--fs));font-weight:600;color:var(--text-3);letter-spacing:.02em}
 .editor-metrics b,.metrics b{font-size:calc(15px*var(--fs));color:var(--brass-hi);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.editor-metrics .craft small{font-size:calc(11px*var(--fs));font-weight:600;color:var(--text-2);margin-left:4px}
 .meter::after{content:'';position:absolute;left:0;bottom:0;height:2px;width:var(--p);background:var(--brass);opacity:.8}
 span.magic b{color:var(--magic);text-shadow:0 0 10px rgba(166,238,221,.5)}
 .editor-stage{position:relative;flex:1;min-height:150px;border-radius:var(--r-lg);overflow:hidden;background:var(--velvet);touch-action:none;box-shadow:0 0 0 1px var(--line-2),inset 0 0 40px rgba(0,0,0,.5)}
@@ -206,7 +205,8 @@ span.magic b{color:var(--magic);text-shadow:0 0 10px rgba(166,238,221,.5)}
 .editor-bottom .primary.short small{color:var(--text-2)}
 .editor-bottom .secondary{min-height:50px;width:50px;padding:0}
 .editor-bottom .primary{position:relative}
-.novel-badge{position:absolute;top:4px;right:6px;font-style:normal;font-size:calc(11px*var(--fs));font-weight:800;line-height:1;padding:3px 6px;border-radius:999px;background:rgba(34,24,11,.82);color:var(--brass-hi);box-shadow:0 0 0 1px rgba(242,214,154,.45)}
+/* The book badge sits on the corner of «Готово», clear of its two lines of text at any text size. */
+.novel-badge{position:absolute;top:-7px;right:-4px;z-index:1;font-style:normal;font-size:calc(11px*var(--fs));font-weight:800;line-height:1;padding:3px 6px;border-radius:999px;background:#2a2114;color:var(--brass-hi);box-shadow:0 0 0 1px rgba(242,214,154,.55),0 2px 6px rgba(0,0,0,.5)}
 .editor-bottom .secondary img{width:34px;height:34px}
 
 /* Shop */
@@ -263,6 +263,8 @@ span.magic b{color:var(--magic);text-shadow:0 0 10px rgba(166,238,221,.5)}
 .detail-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:10px}
 .detail-actions button{font-size:calc(12px*var(--fs));padding:6px 4px;gap:5px}
 .detail-actions .icon{width:17px;height:17px}
+/* On the narrowest phones a label sits under its icon, so «Переплавить» keeps inside its button. */
+@media(max-width:380px){.detail-actions button{flex-direction:column;gap:2px;padding:6px 2px}.metrics{grid-template-columns:minmax(0,1.25fr) minmax(0,1.35fr) minmax(0,.8fr)}}
 .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(82px,1fr));gap:8px}
 .gallery-item{position:relative;padding:0;aspect-ratio:1;border-radius:var(--r-md);overflow:hidden;background:radial-gradient(75% 70% at 50% 40%,var(--velvet-hi),var(--velvet-lo))}
 .gallery-item img{width:100%;height:100%;object-fit:cover}
@@ -307,10 +309,6 @@ span.magic b{color:var(--magic);text-shadow:0 0 10px rgba(166,238,221,.5)}
 .order-copy button img{width:34px;height:34px;margin:-4px 0}
 
 /* Development */
-.xp-card{display:flex;gap:14px;align-items:center}
-.xp-card>div{flex:1;display:flex;flex-direction:column;gap:3px}
-.xp-card b{font-family:var(--display);font-size:calc(22px*var(--fs))}
-.xp-card .bar{margin-top:6px}
 .tree{position:relative;padding:4px 0 6px}
 .tree-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:28px;position:relative}
 .tree-row:last-child{margin-bottom:12px}
@@ -365,6 +363,7 @@ span.magic b{color:var(--magic);text-shadow:0 0 10px rgba(166,238,221,.5)}
 .chapter-tabs .chip small{color:inherit;opacity:.75;font-variant-numeric:tabular-nums}
 .chapter-tabs .chip.done .icon{width:14px;height:14px;color:var(--sage)}
 .book-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.book-grid~.fine-print{margin-top:12px}
 .book-tile{flex-direction:column;justify-content:flex-start;gap:2px;padding:6px 3px 7px;min-height:0;border-radius:var(--r-md);font-weight:600;background:var(--surface);box-shadow:none;min-width:0}
 .book-tile .thumb{position:relative;width:48px;height:48px;display:grid;place-items:center;color:var(--brass)}
 .book-tile .thumb img{width:48px;height:48px;object-fit:contain}
@@ -438,7 +437,7 @@ dialog::backdrop{background:rgba(5,8,10,.72);backdrop-filter:blur(3px)}
 .modal-body .row .primary{margin-top:0}
 .modal-body .tags{margin:10px 0}
 .hero-jewel{border-radius:var(--r-lg);overflow:hidden;margin-bottom:12px;box-shadow:inset 0 0 0 1px var(--line);background:radial-gradient(70% 60% at 50% 40%,var(--velvet-hi),var(--velvet) 55%,var(--velvet-lo))}
-.hero-jewel img{width:100%;max-height:280px;object-fit:contain;aspect-ratio:1}
+.hero-jewel img{width:100%;max-height:min(280px,38dvh);object-fit:contain;aspect-ratio:1}
 .hero-jewel.reveal img{animation:reveal 1s var(--ease)}
 @keyframes reveal{from{opacity:0;transform:scale(.9) rotate(-3deg);filter:brightness(2.2) blur(6px)}}
 .score-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;font-size:calc(14px*var(--fs));margin:10px 0}
@@ -516,8 +515,9 @@ dialog.celebrate .modal-title h2{color:var(--brass-hi)}
   .type-card{min-height:88px}.type-card img{width:50px;height:50px}
   .welcome img{width:150px;height:150px}
 }
+/* The shortest phones keep the four readings in a thinner strip instead of hiding them. */
 @media(max-height:600px){
-  .editor-metrics{display:none}
+  .editor-metrics{gap:4px}.editor-metrics span{padding:1px 6px 2px}.editor-metrics em{line-height:1.15}.editor-metrics b{font-size:calc(12px*var(--fs));line-height:1.2}
   .gem-chip{min-height:40px}.gem-chip img{width:28px;height:28px}
 }
 @media(orientation:landscape) and (max-height:500px){

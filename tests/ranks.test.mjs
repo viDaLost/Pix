@@ -20,12 +20,19 @@ test('each source of reputation on its own, and nothing for saturated or discoun
  const s=rich(P.newGame(1)),d=piece(),fit=J.affinity(J.freezeDesign(J.clone(d)),J.CLIENTS.find(p=>p.id==='ada'),'ring');assert.ok(fit<70,'ada does not love this piece');
  let item=make(s,d),c=buyer(s,'ada'),r=s.rep;const first=P.sell(s,item.id,c.id,'fair');assert.ok(first.full&&first.freshFamily);assert.equal(s.rep-r,1+2+2,'full sale, design new to the port, first full sale to ada');assert.equal(first.rep,5);
  item=make(s,d);c=buyer(s,'ada');r=s.rep;P.sell(s,item.id,c.id,'fair');assert.equal(s.rep-r,1,'a plain full sale');
+ const star=make(s,piece('star'));c=buyer(s,'ada');r=s.rep;const novel=P.sell(s,star.id,c.id,'fair');assert.ok(novel.freshFamily&&novel.fit<70);assert.equal(s.rep-r,1+2,'a design new to the port, sold to a known client');
+ item=make(s,d);c=buyer(s,'rowan');r=s.rep;const known=P.sell(s,item.id,c.id,'fair');assert.ok(!known.freshFamily&&known.full);assert.equal(s.rep-r-(known.fit>=70?1:0),1+2,'the first full sale to a new client');
  item=make(s,d);c=buyer(s,'ada');r=s.rep;const low=P.sell(s,item.id,c.id,'low');assert.equal(low.full,false);assert.equal(s.rep-r,0,'a discount earns nothing');
  for(let i=0;i<3;i++){item=make(s,d);c=buyer(s,'ada');P.sell(s,item.id,c.id,'fair');}assert.ok(J.demandInfo(s,d).factor<1,'the design is saturated');
  item=make(s,d);c=buyer(s,'ada');r=s.rep;assert.equal(P.sell(s,item.id,c.id,'fair').demand.factor,.25);assert.equal(s.rep-r,0,'a saturated sale earns nothing');
- // A fit of 70 adds one: Ада loves a rich golden brooch.
+ // A fit of 70 adds one: Ада loves a rich golden brooch. Her perfect fit would also earn the mark «В самое сердце»,
+ // so the mark is set aside as already earned and the sale shows only its own reputation.
  const rich2=rich(P.newGame(2)),b=J.makeDesign('brooch','oval','gold');rich2.skills.push('gold');b.gems=layoutGems(b,'halo',{kind:'garnet',size:3});b.strokes=patternStrokes(b,'filigree');
- const ada=buyer(rich2,'ada',{want:'brooch'}),gold=make(rich2,b);assert.ok(J.affinity(gold.design,J.CLIENTS.find(p=>p.id==='ada'),'brooch')>=70);r=rich2.rep;P.sell(rich2,gold.id,ada.id,'fair');assert.equal(rich2.rep-r,1+1+2+2);
+ const ada=buyer(rich2,'ada',{want:'brooch'}),gold=make(rich2,b);assert.ok(J.affinity(gold.design,J.CLIENTS.find(p=>p.id==='ada'),'brooch')>=70);rich2.book.m['heart-fit']=1;r=rich2.rep;
+ const loved=P.sell(rich2,gold.id,ada.id,'fair');assert.deepEqual(loved.marks,[]);assert.equal(rich2.rep-r,1+1+2+2);assert.equal(loved.rep,6);
+ // The same sale without the mark set aside: the mark adds its own three.
+ const rich3=rich(P.newGame(2));rich3.skills.push('gold');const ada3=buyer(rich3,'ada',{want:'brooch'}),gold3=make(rich3,b);r=rich3.rep;const q3=P.sell(rich3,gold3.id,ada3.id,'fair');
+ assert.equal(rich3.rep-r,6+3*q3.marks.length);assert.ok(q3.fit<100||q3.marks.some(m=>m.id==='heart-fit'));
  // An order: four.
  const o=rich(P.newGame(3)),req={id:'request-'+o.nextId++,client:'nora',type:'pendant',style:'symmetry',min:0,minMagic:0,title:'Подвеска',until:o.day+3,done:false};o.requests=[req];const done=make(o,d);r=o.rep;assert.equal(P.deliver(o,req.id,done.id).rep,4);assert.equal(o.rep-r,4);
 });
