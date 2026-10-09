@@ -42,6 +42,15 @@ test('a stale undo offer is withdrawn, from the screen or from the line',()=>{
  q.add(undo);assert.equal(q.drop(isUndo),true);assert.equal(q.now,null);
  q.add(t('Клеймо','mark'));q.add(undo);assert.equal(q.drop(isUndo),false);assert.deepEqual(texts(q),['Клеймо']);
 });
+test('a one-off hint steps out of the line while a dialog is open and the rest keep their order',()=>{
+ const q=new ToastQueue(),hint=t('Открылись узоры','hint',{action:'hint-ok',label:'Понятно'}),isHint=v=>v.action?.action==='hint-ok';
+ q.add(hint);q.add(t('Клеймо','mark'));q.add(t('Цех ждёт работу','hint',{action:'hint-ok'}));
+ assert.deepEqual(q.take(isHint).map(v=>v.text),['Открылись узоры','Цех ждёт работу'],'the one on screen first');assert.deepEqual(texts(q),['Клеймо']);
+ assert.deepEqual(q.take(isHint),[]);assert.deepEqual(texts(q),['Клеймо'],'nothing else is touched');
+ // The interface holds them when a dialog opens and gives them back when the last one closes.
+ const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
+ assert.match(app,/if\(!dialog\.open\)\{holdHints\(\);dialog\.showModal\(\)/);assert.match(app,/modals\.next\(\)\?\.\(\);if\(!dialog\.open\)releaseHints\(\);/);
+});
 test('dialogs that wait open in the fixed order: welcome, update, ceremony, rank, letters, morning',()=>{
  assert.deepEqual(MODAL_ORDER,['welcome','update','ceremony','rank','letter','morning']);
  const q=new ModalQueue(),seen=[],add=kind=>q.add(()=>seen.push(kind),kind);

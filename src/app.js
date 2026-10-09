@@ -58,8 +58,13 @@ channel?.addEventListener('message',e=>otherWrite(e.data));
 // Storage events come only from other tabs; old versions write the save without a stamp.
 addEventListener('storage',e=>{if(e.key===STAMP){try{otherWrite(JSON.parse(e.newValue));}catch{}}else if(e.key===SAVE&&e.newValue)lockTab();});
 // Toasts live in the top layer, so a reward or an error is seen above an open dialog; the queue rules are in notices.js.
-const toasts=new ToastQueue();let toastTimer=0;
+const toasts=new ToastQueue();let toastTimer=0,heldHints=[];
 function toast(text,opt=false,act=null){if(toasts.add(toastSpec(text,opt,act)))showToast();}
+// A one-off hint steps aside while a dialog is open (the morning opens right after the render that brought it) and
+// comes back once the last dialog has closed.
+const isHint=t=>t.action?.action==='hint-ok';
+function holdHints(){const now=toasts.now,held=toasts.take(isHint);if(!held.length)return;heldHints.push(...held);if(toasts.now!==now)showToast();}
+function releaseHints(){const held=heldHints;heldHints=[];for(const t of held)toast(t.text,t);}
 const nextToast=()=>{toasts.next();showToast();};
 // An undo offer is withdrawn as soon as the next action makes it stale.
 const withdrawToast=action=>{if(toasts.drop(t=>t.action?.action===action))showToast();};
@@ -83,7 +88,7 @@ function action(fn,message){try{editor?.finish();const result=fn();forgetRecycle
 const modals=new ModalQueue();let modalClosable=true,ignorePop=false;
 function modal(title,body,closable=true,cls=''){$('#dialog-body').innerHTML=`<div class="modal-title"><h2 id="dialog-title">${title}</h2>${closable?btn('close',icon('close'),'icon-button ghost','aria-label="Закрыть"'):''}</div><div class="modal-body">${body}</div>`;dialog.className=cls;modalClosable=closable;
 // The dialog itself takes the focus, so a long one opens at its title rather than scrolled to its first button.
- if(!dialog.open){dialog.showModal();dialog.focus({preventScroll:true});if(!ignorePop&&!history.state?.modal)history.pushState({modal:1},'');}dialog.scrollTop=0;raiseToast();}
+ if(!dialog.open){holdHints();dialog.showModal();dialog.focus({preventScroll:true});if(!ignorePop&&!history.state?.modal)history.pushState({modal:1},'');}dialog.scrollTop=0;raiseToast();}
 function queueModal(fn,kind){modals.add(fn,kind);if(!dialog.open)modals.next()();}
 function close(){dialog.close();}
 // Only a tap on the dimmed backdrop closes a dialog; its own padding belongs to the dialog.
@@ -91,7 +96,7 @@ dialog.addEventListener('click',e=>{if(e.target!==dialog||!modalClosable||confli
 // The close event comes after close() has returned. History follows the dialog: the entry added on open is taken back
 // whatever closed it (a button, Escape, the system back gesture), unless another dialog has opened in the meantime.
 // A welcome closed by the browser itself (Escape twice, the system back gesture) is a quiet start, the default choice.
-dialog.addEventListener('close',()=>{if(dialog.open)return;if(conflict){lockTab();return;}if(history.state?.modal){ignorePop=true;history.back();}if(dialog.classList.contains('welcome-dialog')&&!state.welcomed){state.welcomed=true;scheduleSave();render();}raiseToast();modals.next()?.();queueHint();});
+dialog.addEventListener('close',()=>{if(dialog.open)return;if(conflict){lockTab();return;}if(history.state?.modal){ignorePop=true;history.back();}if(dialog.classList.contains('welcome-dialog')&&!state.welcomed){state.welcomed=true;scheduleSave();render();}raiseToast();modals.next()?.();if(!dialog.open)releaseHints();queueHint();});
 // «Назад» closes an open dialog instead of leaving the game; a dialog that must be answered keeps its entry.
 addEventListener('popstate',()=>{if(ignorePop){ignorePop=false;if(dialog.open)history.pushState({modal:1},'');return;}if(!dialog.open)return;if(modalClosable&&!conflict)close();else history.pushState({modal:1},'');});
 function currentBuyer(){return state.customers.find(c=>c.id===buyerId&&!c.served)||state.customers.find(c=>!c.served);}
@@ -347,7 +352,10 @@ function nextDay(confirmed=false){editor?.finish();const reasons=confirmed?[]:da
 // The morning between two days: yesterday in one line, then sections that fold one by one (the guild first, the guests
 // last) until the report fits the screen. No reproach and no count of days: only what is here today.
 // One quiet note at most: the copy of the save when it is due, otherwise once the offer of the home screen.
-function showMorning(daily){const r=P.morningReport(state,daily,{view}),y=r.yesterday,backup=r.backup,offer=!backup&&installable()&&state.day>=3&&!state.hintsSeen.includes('install');
+let morningOf=null;
+// A letter or the way to the home screen opened from the morning leads back to it when closed.
+const backToMorning=()=>{if(dialog.open&&dialog.classList.contains('morning-dialog')){const daily=morningOf;queueModal(()=>showMorning(daily),'morning');}};
+function showMorning(daily){morningOf=daily;const r=P.morningReport(state,daily,{view}),y=r.yesterday,backup=r.backup,offer=!backup&&installable()&&state.day>=3&&!state.hintsSeen.includes('install');
  if(backup)P.markBackup(state);if(offer)P.seeHint(state,'install');if(backup||offer)scheduleSave();
  const part=(id,ic,title,body)=>`<details class="morning-part" data-part="${id}" open><summary>${icon(ic)}<span>${title}</span>${icon('right','chev')}</summary><div class="morning-body">${body}</div></details>`;
  const line=(ic,t)=>`<p class="morning-line">${icon(ic)}<span>${t}</span></p>`,gift=r.news.gift,giver=gift&&client(gift.by),week=r.news.week;
@@ -377,7 +385,7 @@ function coach(ctx={}){if(loadError||!P.coaching(state))return;const r=P.tutor(s
  queueMicrotask(()=>{toast(r.gift?`Уроки Даро пройдены · ${Object.entries(r.gift.materials).map(([id,n])=>`${matName(id).toLowerCase()}${n>1?' ×'+n:''}`).join(', ')}, репутация +${r.gift.rep}`:'Уроки Даро пройдены.',{kind:'mark'});rewards(r);});}
 // Outside the editor Даро's step stands in a strip above the panel; a tap unfolds all nine.
 function coachHTML(){const i=P.tutorialStep(state);if(i<0||view==='studio'&&state.draft)return '';const step=P.TUTORIAL[i],n=P.TUTORIAL.length;
- return `<div class="coach-bar">${btn('coach-toggle',`<span class="coach-face"><img src="${portrait(client('daro'))}" alt=""><i>${i+1}/${n}</i></span><b>${step.text}</b>${icon('right','chev')}`,'coach-main',`aria-expanded="${coachOpen}" aria-label="Даро, шаг ${i+1} из ${n}: ${step.text}. ${coachOpen?'Свернуть':'Все шаги'}"`)}${btn('coach-show','Показать','chip')}</div>
+ return `<div class="coach-bar">${btn('coach-toggle',`<span class="coach-face"><img src="${portrait(client('daro'))}" alt=""><i>${i+1}/${n}</i></span><b>${step.text}</b>${icon('right','chev')}`,'coach-main',`aria-expanded="${coachOpen}" aria-label="Даро, шаг ${i+1} из ${n}: ${step.text}. ${coachOpen?'Свернуть':'Все шаги'}"`)}${btn('coach-show','Показать','chip',`aria-label="Показать шаг ${i+1}"`)}</div>
  ${coachOpen?`<div class="coach-panel"><ol>${P.TUTORIAL.map((x,j)=>{const st=P.stepState(state,j);return `<li class="${st}">${st==='done'?icon('check'):`<i>${st==='skip'?'–':j+1}</i>`}<span>${x.text}</span></li>`;}).join('')}</ol><p class="fine-print">Подарок Даро — за первое изделие, продажу, находку и новый день. Узоры, камни, руны и блеск можно освоить и позже.</p><div class="row fill">${btn('coach-skip','Без наставника','ghost')}${btn('coach-toggle','Свернуть')}</div></div>`:''}`;}
 // «Показать»: Даро leads to the place of the step and rings the button to press there.
 const COACH_RING={start:'[data-action="start-design"]',finish:'#finish-design',sell:'.sell-button,[data-action="sell-counter"],.price-row,.closed-note button,.card.empty button',gather:'[data-area="shore"]',day:'#end-day'};
@@ -385,8 +393,9 @@ function coachShow(){const i=P.tutorialStep(state);if(i<0)return;const step=P.TU
  if(step.tool&&draft){if(view!=='studio'){view='studio';render();}editor.setTool(step.tool);editorOptions.tool=step.tool;if(step.tool==='pattern'){patternMode='lines';$('#tool-options').dataset.key='';}updateEditor();ring(step.tool==='pattern'?'[data-pattern="beads"]':`[data-tool="${step.tool}"]`);return;}
  const to=step.tool?'studio':step.view;if(to&&(view!==to||step.tab&&supplyTab!==step.tab)){view=to;if(step.tab)supplyTab=step.tab;render();$('#panel').scrollTop=0;}else render();
  ring(step.tool||step.id==='finish'&&!draft?COACH_RING.start:COACH_RING[step.id]);}
-// The ring stays until the next touch; with less motion it does not pulse.
-function ring(sel){clearRing();const el=sel&&document.querySelector(sel);if(!el)return;ringEl=el;el.classList.add('coach-ring');el.scrollIntoView({block:'nearest',inline:'nearest',behavior:still()?'auto':'smooth'});}
+// The ring stays until the next touch; with less motion it does not pulse. The places of a step are tried in order,
+// so «Продать» is ringed rather than the price row above it.
+function ring(sel){clearRing();const el=sel&&sel.split(',').map(s=>document.querySelector(s)).find(Boolean);if(!el)return;ringEl=el;el.classList.add('coach-ring');el.scrollIntoView({block:'nearest',inline:'nearest',behavior:still()?'auto':'smooth'});}
 function clearRing(){ringEl?.classList.remove('coach-ring');ringEl=null;}
 // At most one hint per render, after the message of the action that brought it. A hint never covers an open dialog:
 // it waits until the dialog closes.
@@ -483,7 +492,7 @@ document.addEventListener('click',e=>{
  case'chronicle-tab':showChronicle(b.dataset.tab);break;
  case'reference':showReference();break;
  case'ref-jump':document.getElementById(b.dataset.id)?.scrollIntoView({block:'start',behavior:still()?'auto':'smooth'});break;
- case'install':install();break;
+ case'install':backToMorning();install();break;
  case'navigate':editor?.finish();view=b.dataset.view;render();$('#panel').scrollTop=0;break;
  case'go-supplier':view='supplies';supplyTab='buy';close();render();break;
  case'select-type':if(!J.typeAvailable(state,b.dataset.type)){showSkill('mounts');break;}selectedType=b.dataset.type;template='oval';render();break;
@@ -541,7 +550,7 @@ document.addEventListener('click',e=>{
  case'skill':showSkill(b.dataset.skill);break;
  case'orders-tab':ordersTab=b.dataset.tab;render();$('#panel').scrollTop=0;break;
  case'resident':showResident(b.dataset.id);break;
- case'letter':showLetter(b.dataset.id);break;
+ case'letter':backToMorning();showLetter(b.dataset.id);break;
  case'contest-open':showContest();break;
  case'contest-pick':pickContest(b);break;
  case'contest-enter':{const id=contestPick;if(!id)break;close();const r=action(()=>P.enterContest(state,id));if(r){showVerdict(r);rewards({...r,marks:[],chapters:[]});}break;}

@@ -68,6 +68,7 @@ export function demandWarning(d){if(!d||d.remaining||d.sales!==J.PREMIUM_LIMIT-1
 export const BACKUP_EVERY=14;
 export const backupDue=s=>Number.isInteger(s?.backup)&&s.day-s.backup>=BACKUP_EVERY;
 
+const AT={shore:'на Берегу',garden:'в Саду аббатства',ridge:'на Лунном кряже'};
 // The best piece of the showcase for a guest: the connoisseur looks only at what is new to the port, and a saturated
 // design is no advice. Taste is cheap and asked of every piece; the port's ledger only from the best fit down, so a long
 // game does not compare its whole showcase with the ledger to give one advice.
@@ -86,8 +87,9 @@ export function nextSteps(s,{view='studio'}={}){const out=[],add=(p,v)=>out.push
  if(s.stock.length&&!s.guild?.tried?.length){const theme=G.themeOf(s.day);if(!s.skills.includes('eye'))add(70,{icon:'ribbon',text:`Тема недели «${theme.name}»: попробуй подать работу`,view:'orders',tab:'guild'});else{const item=s.stock.find(i=>G.medalWithin(s,i.design)),score=item&&G.judge(s,item.design,theme).score;if(score>=62)add(70,{icon:'ribbon',text:`На смотр «${theme.name}»: «${item.design.name}», прогноз ${score}`,view:'orders',tab:'guild'});}}
  const skill=J.TOOLS.find(t=>!s.skills.includes(t.id)&&t.parents.every(p=>s.skills.includes(p))&&s.gold>=t.cost&&s.xp>=t.xp);if(skill)add(60,{icon:'develop',text:`Можно изучить «${skill.name}»`,view:'develop',tab:'skills'});
  const poor=broke(s),area=s.energy>0&&J.AREAS.find(a=>s.crafted>=a.need&&!s.daily.areas.includes(a.id));
- if(poor)add(40,area?.id==='shore'?{icon:'pin',text:'Кошелёк пуст — на Берегу медь даром',view:'supplies',tab:'map'}:{icon:'sun',text:'Кошелёк пуст — завтра на Берегу снова медь',end:true});
- if(area&&!(poor&&area.id==='shore'))add(50,{icon:'pin',text:`Поискать находки: ${area.name}`,view:'supplies',tab:'map'});
+ // Every place of the map gives three bars of metal, so an empty purse is sent to the first one not searched today.
+ if(poor)add(40,area?{icon:'pin',text:`Кошелёк пуст — ${AT[area.id]} ${area.id==='ridge'?'серебро':'медь'} даром`,view:'supplies',tab:'map'}:{icon:'sun',text:'Кошелёк пуст — завтра на Берегу снова медь',end:true});
+ else if(area)add(50,{icon:'pin',text:`Поискать находки: ${area.name}`,view:'supplies',tab:'map'});
  const next=Math.min(...[...PATTERNS,...J.AREAS].map(v=>v.need).filter(n=>n>s.crafted)),left=next-s.crafted;
  if(Number.isFinite(next)){const what=[...PATTERNS.filter(p=>p.need===next),...J.AREAS.filter(a=>a.need===next)].map(v=>v.name);add(30,{icon:'spark',text:`Ещё ${left} ${plural(left,'изделие','изделия','изделий')} → ${what.slice(0,2).join(', ')}${what.length>2?'…':''}`,view:'studio'});}
  else{const r=J.rankOf(s),rank=J.RANKS[r+1];if(rank)add(30,{icon:'crest',text:`Ещё ${rank.rep-s.rep} репутации → «${rank.name}»`,view:'develop',tab:'skills'});}

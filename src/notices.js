@@ -21,6 +21,8 @@ export class ToastQueue{
  next(){this.now=this.waiting.shift()||null;return this.now;}
  // Takes back toasts that no longer make sense; true when the one on screen was among them.
  drop(test){this.waiting=this.waiting.filter(v=>!test(v));if(this.now&&test(this.now)){this.next();return true;}return false;}
+ // Takes out toasts that must wait for later (a hint while a dialog is open), the one on screen first, to be added again.
+ take(test){const out=[...this.now&&test(this.now)?[this.now]:[],...this.waiting.filter(test)];if(out.length)this.drop(test);return out;}
 }
 // Dialogs that wait for the open one to close come in this order, whatever order they were asked for in.
 export const MODAL_ORDER=['welcome','update','ceremony','rank','letter','morning'];

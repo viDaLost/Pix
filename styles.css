@@ -602,7 +602,8 @@ button.coach-main{flex:1;min-width:0;min-height:42px;justify-content:flex-start;
 button.coach-hint-button{display:block;pointer-events:auto;min-height:32px;padding:6px 11px;border-radius:14px;background:rgba(13,18,21,.8);backdrop-filter:blur(6px);border:1px solid var(--line-3);box-shadow:none;font-size:calc(12px*var(--fs));font-weight:600;line-height:1.3;text-align:left;color:var(--text)}
 .coach-hint-button b{color:var(--brass-hi);font-weight:800;margin-right:2px}
 .coach-hint-button em{font-style:normal;color:var(--brass-hi);text-decoration:underline;text-underline-offset:2px;margin-left:3px;white-space:nowrap}
-.coach-ring{outline:2px solid var(--brass-hi);outline-offset:2px;animation:coach-ring 1.5s ease-in-out infinite;position:relative;z-index:2}
+/* The ring lifts its button above the neighbours; a map pin keeps its own absolute place on the map. */
+.coach-ring{outline:2px solid var(--brass-hi);outline-offset:2px;animation:coach-ring 1.5s ease-in-out infinite;z-index:2}.coach-ring:not(.map-pin){position:relative}
 @keyframes coach-ring{50%{outline-offset:5px;box-shadow:0 0 0 7px rgba(242,214,154,.16)}}
 /* Inside a scrolled row the ring is drawn within the button, so the edge of the row never cuts it. */
 .rail .coach-ring,.tools .coach-ring{outline-offset:-3px;animation-name:coach-ring-in}
@@ -656,7 +657,7 @@ button.morning-guest{width:100%;justify-content:flex-start;gap:10px;min-height:4
 .chronicle li{display:grid;grid-template-columns:18px minmax(0,1fr);gap:8px;align-items:start;font-size:calc(14px*var(--fs));color:var(--text-2);line-height:1.35}
 .chronicle .icon{width:17px;height:17px;color:var(--brass);margin-top:1px}
 .marks-list .icon{width:20px;height:20px;color:var(--brass-hi);flex:none}
-.menu-top{margin-bottom:8px}.menu-top button{gap:8px}
+.menu-top{margin-bottom:8px}.menu-top button{gap:6px;padding-left:10px;padding-right:10px}
 .ref-index{display:flex;flex-wrap:wrap;gap:6px}
 .ref p:not(.fine-print){font-size:calc(14px*var(--fs));margin:8px 0;color:var(--text-2);line-height:1.45}
 .ref p b{color:var(--text)}

@@ -108,6 +108,9 @@ test('the advice of the day puts first what moves the workshop on, three at most
  const t=P.newGame(18);P.skipTutorial(t);for(const c of t.customers)c.served=true;assert.ok(P.nextSteps(t).some(x=>x.end));
  for(const m of Object.keys(J.METALS))t.materials[m]=0;t.gold=0;const poor=P.nextSteps(t).find(x=>x.p===40);assert.match(poor.text,/Берег/);assert.equal(poor.tab,'map');
  P.gather(t,'shore');assert.ok(P.nextSteps(t).find(x=>x.p===40).end,'the shore searched today: tomorrow');assert.ok(item);
+ // Every open place gives metal: with the garden open and not searched, the empty purse is sent there today.
+ const u=P.newGame(18);P.skipTutorial(u);u.crafted=3;for(const m of Object.keys(J.METALS))u.materials[m]=0;u.gold=0;P.gather(u,'shore');
+ const advice=P.nextSteps(u),garden=advice.find(x=>x.p===40);assert.match(garden.text,/^Кошелёк пуст — в Саду аббатства медь даром$/);assert.equal(garden.tab,'map');assert.ok(!advice.some(x=>x.end||x.p===50),'no «tomorrow» while a place is open today');
 });
 test('the morning report: six book chips and three letters at most, every guest of the day with the best piece',()=>{
  const s=rich(P.newGame(19));make(s,piece('heart'));make(s,piece('leaf'));const firsts=[...Object.keys(s.book.e),'form:ring.oval','form:brooch.oval','stone:garnet.round'];assert.ok(firsts.length>6);
@@ -134,3 +137,11 @@ test('the advice of a long game stays within the comparison budget',()=>{
  assert.ok(steps<=(guests+2)*kind,`advice ${steps} > ${(guests+2)*kind}`);assert.equal(count(()=>{P.nextSteps(s);P.morningReport(s,{});}),0,'the morning reuses every comparison');
 });
 
+// The ring of «Показать» must not move what it points at: a map pin keeps its absolute place, and the sale step rings
+// «Продать» (or the counter offer) before the price row above it.
+test('the coach ring keeps a map pin in its place and rings the sale button first',()=>{
+ const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8'),app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
+ for(const [,sel,body] of css.matchAll(/([^{}]*coach-ring[^{}]*)\{([^{}]*)\}/g))if(/position\s*:/.test(body))assert.match(sel,/:not\(\.map-pin\)/,`${sel.trim()} moves the shore pin off the map`);
+ assert.match(css,/\.map-pin\{position:absolute/);
+ assert.match(app,/sell:'\.sell-button,\[data-action="sell-counter"\],\.price-row/);assert.match(app,/function ring\(sel\)\{clearRing\(\);const el=sel&&sel\.split\(','\)\.map\(s=>document\.querySelector\(s\)\)\.find\(Boolean\)/);
+});
