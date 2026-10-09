@@ -263,7 +263,7 @@ span.magic b{color:var(--magic);text-shadow:0 0 10px rgba(166,238,221,.5)}
 .empty .muted{max-width:34ch}
 
 /* Supplies */
-.tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:4px 0 12px;padding:4px;border-radius:999px;background:var(--surface);border:1px solid var(--line)}
+.tabs{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px;margin:4px 0 12px;padding:4px;border-radius:999px;background:var(--surface);border:1px solid var(--line)}
 .tabs button{border:0;border-radius:999px;background:transparent;box-shadow:none;min-height:40px;font-size:calc(13px*var(--fs));color:var(--text-2)}
 .tabs button .icon{width:18px;height:18px}
 .tabs button.active{background:var(--surface-3);color:var(--brass-hi)}
@@ -331,6 +331,10 @@ span.magic b{color:var(--magic);text-shadow:0 0 10px rgba(166,238,221,.5)}
 .toast.mark{border-color:var(--line-3)}.toast.mark .icon{color:var(--brass-hi)}
 .toast.hint .icon{color:var(--magic)}
 .toast .toast-action{min-height:34px;padding:4px 12px;border-radius:999px;font-size:calc(13px*var(--fs));margin-left:2px;flex:none}
+/* Over an open dialog the toast docks at the bottom edge: at the top it would cover the dialog's title and close
+   button on a narrow phone, and a tap meant for «×» would land on «Вернуть» or «Обновить». */
+dialog>.toast{top:auto;bottom:calc(env(safe-area-inset-bottom) + 8px);transform:translate(-50%,14px) scale(.97)}
+dialog>.toast.show{transform:translate(-50%,0) scale(1)}
 .flying-coin{position:fixed;left:0;top:0;z-index:var(--z-fly);pointer-events:none;color:var(--brass-hi);margin:-10px 0 0 -10px}
 .flying-coin .icon{width:20px;height:20px;fill:rgba(214,173,102,.4);filter:drop-shadow(0 0 6px rgba(242,214,154,.8))}
 dialog{border:1px solid var(--line-2);border-radius:var(--r-xl);background:linear-gradient(180deg,#1f2b30,#151d21);color:var(--text);width:min(94vw,520px);padding:18px;max-height:88dvh;overflow:auto;box-shadow:0 30px 60px -20px rgba(0,0,0,.9)}
@@ -351,7 +355,7 @@ dialog::backdrop{background:rgba(5,8,10,.72);backdrop-filter:blur(3px)}
 .hero-jewel img{width:100%;max-height:280px;object-fit:contain;aspect-ratio:1}
 .hero-jewel.reveal img{animation:reveal 1s var(--ease)}
 @keyframes reveal{from{opacity:0;transform:scale(.9) rotate(-3deg);filter:brightness(2.2) blur(6px)}}
-.score-row{display:grid;grid-template-columns:1fr auto;gap:4px 10px;font-size:calc(14px*var(--fs));margin:10px 0}
+.score-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;font-size:calc(14px*var(--fs));margin:10px 0}
 .score-row b{font-variant-numeric:tabular-nums;color:var(--brass-hi)}
 .score-row .bar{grid-column:1/-1}
 .settings{display:flex;flex-direction:column;gap:6px}
@@ -359,7 +363,7 @@ dialog::backdrop{background:rgba(5,8,10,.72);backdrop-filter:blur(3px)}
 .settings button em{margin-left:auto;font-style:normal;font-size:calc(12px*var(--fs));color:var(--text-3)}
 .settings button.on em{color:var(--sage)}
 .settings .slider{padding:8px 4px;font-size:calc(14px*var(--fs))}
-.help-grid{display:grid;grid-template-columns:30px 1fr;gap:12px;font-size:calc(14px*var(--fs));margin:14px 0;color:var(--text-2);line-height:1.45}
+.help-grid{display:grid;grid-template-columns:30px minmax(0,1fr);gap:12px;font-size:calc(14px*var(--fs));margin:14px 0;color:var(--text-2);line-height:1.45}
 .help-grid b{color:var(--brass)}
 .welcome{text-align:center}
 .welcome img{width:200px;height:200px;margin:-6px auto 4px;filter:drop-shadow(0 18px 24px rgba(0,0,0,.6));animation:float 6s ease-in-out infinite}
@@ -369,7 +373,7 @@ dialog::backdrop{background:rgba(5,8,10,.72);backdrop-filter:blur(3px)}
 .inventory-grid>span{display:flex;align-items:center;gap:8px;font-size:calc(13px*var(--fs));padding:6px 10px 6px 6px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md)}
 .inventory-grid>span b{margin-left:auto;color:var(--brass-hi)}
 .inventory-grid img{width:30px;height:30px}
-.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:2px 0 6px}
+.summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:2px 0 6px}
 .summary span{display:flex;flex-direction:column;align-items:center;padding:12px 6px;border-radius:var(--r-md);background:var(--surface);border:1px solid var(--line)}
 .summary b{font-family:var(--display);font-size:calc(32px*var(--fs));color:var(--brass-hi);line-height:1}
 .summary small{font-size:calc(12px*var(--fs));margin-top:4px}
@@ -437,8 +441,8 @@ dialog.celebrate .modal-title h2{color:var(--brass-hi)}
   .editor-stage{grid-column:1;grid-row:1/6;min-height:0}
   .editor-heading{grid-column:2;grid-row:1}
   .editor-metrics{grid-column:2;grid-row:2;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) minmax(0,.8fr) minmax(0,.8fr)}.editor-metrics span{padding:3px 6px 4px}
-  .tools{grid-column:2;grid-row:3;display:grid;grid-template-columns:repeat(5,1fr);overflow:auto;align-content:start}
-  .tools button{min-height:40px;flex-basis:auto}
+  .tools{grid-column:2;grid-row:3;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));overflow:auto;align-content:start;-webkit-mask-image:none;mask-image:none}
+  .tools button{min-height:40px;flex-basis:auto;min-width:0}.tools button:last-child{margin-right:0}
   .tool-options{grid-column:2;grid-row:4}
   .editor-bottom{grid-column:2;grid-row:5}
   .artist-inset{width:84px;height:46px}

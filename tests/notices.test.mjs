@@ -55,3 +55,12 @@ test('the interface closes dialogs at once and keeps the history in step on thei
  assert.doesNotMatch(app,/getElementById\('toast'\)\.style\.zIndex|z-index:9999/,'the toast is not raised by z-index');
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');assert.match(html,/id="toast"[^>]*popover="manual"/,'the toast is a manual popover in the top layer');
 });
+test('over an open dialog the toast docks at the bottom, clear of the title and the close button, and errors are urgent',()=>{
+ const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8'),app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
+ assert.match(css,/dialog>\.toast\{top:auto;bottom:/,'at the top a tap meant for «×» landed on «Вернуть» at 320 and 360 px');
+ assert.match(app,/setAttribute\('aria-live',t\.kind==='error'\?'assertive':'polite'\)/,'the polite live region of index.html would outrank role=alert');
+});
+test('every fixed grid shares its width with minmax(0,…), so a long label cannot push a column off a narrow screen',()=>{
+ const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8'),bad=[...css.matchAll(/grid-template-columns:([^;}]*)/g)].map(m=>m[1]).filter(v=>/(^|[\s(,])[\d.]+fr/.test(v.replace(/minmax\([^)]*\)/g,'')));
+ assert.deepEqual(bad,[]);
+});
