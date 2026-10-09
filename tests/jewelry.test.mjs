@@ -161,3 +161,33 @@ test('the packed design comparison equals the original one exactly',async()=>{
  for(let i=0;i<400;i++){const a=random(),b=rnd()<.2?mirror(a):random();assert.equal(J.similarity(a,b),referenceSimilarity(a,b));assert.equal(J.similarity(b,a),referenceSimilarity(b,a));}
  const a=random();assert.equal(J.similarity(a,mirror(a)),1);assert.equal(J.similarity(a,{...a,type:'pendant'}),0);
 });
+test('craftsmanship multiplies the price: polishing a gold pendant with a diamond from craft 62 to 90 adds at least a fifth',()=>{
+ const s=J.newGame(40);s.skills.push('gold','signature');const rough=J.makeDesign('pendant','oval','gold');rough.gems.push(gem('diamond'));const fine=J.clone(rough);addPolish(fine,Array.from({length:144},(_,i)=>pt((i%12+.5)*100/12,(Math.floor(i/12)+.5)*100/12)),.1);
+ assert.equal(J.evaluate(rough).craft,62);assert.equal(J.evaluate(fine).craft,90);assert.ok(J.value(s,fine)>=J.value(s,rough)*1.2,`${J.value(s,rough)} → ${J.value(s,fine)}`);
+ assert.equal(J.craftMultiplier({craft:0}),.7);assert.equal(J.craftMultiplier({craft:50}),1);assert.ok(Math.abs(J.craftMultiplier({craft:75})-1.15)<1e-9);
+});
+test('two sales below 95% of the fair price count as one full sale and the half survives a reload',()=>{
+ const s=rich(J.newGame(41)),d=design();sellOne(s,d,'low');assert.deepEqual([J.demandInfo(s,d).sales,J.demandInfo(s,d).soft],[0,1]);
+ const back=J.deserialize(J.serialize(s));assert.equal(J.demandInfo(back,d).soft,1);
+ sellOne(back,d,'low');assert.deepEqual([J.demandInfo(back,d).sales,J.demandInfo(back,d).soft],[1,0]);
+ for(let i=0;i<6;i++)sellOne(back,d,'low');assert.equal(J.demandInfo(back,d).factor,.25,'eight discounted sales saturate like four full ones');
+});
+test('a design stays new to the port until its first full sale',()=>{
+ const s=rich(J.newGame(42)),d=design();const cheap=sellOne(s,d,'low');assert.equal(cheap.freshFamily,false);assert.equal(J.isFresh(s,d),true,'a discount keeps the novelty');
+ const full=sellOne(s,d,'fair');assert.equal(full.freshFamily,true);assert.equal(J.isFresh(s,d),false);assert.equal(sellOne(s,d,'fair').freshFamily,false);
+ const old=rich(J.newGame(43)),fp=J.fingerprint(d);old.demand.push({signature:fp,sales:1,until:0});assert.equal(J.isFresh(old,d),false,'an old entry with a counted sale was a full sale');
+ old.demand[0]={signature:fp,sales:0,until:0};assert.equal(J.isFresh(old,d),true,'an old entry without counted sales was a discount');
+});
+test('the shortfall lists missing metal and stones at the supplier price, without the coins of a weapon base',()=>{
+ const s=J.newGame(44);s.skills.push('gold','mounts');const d=design('pendant','oval','silver');d.gems.push(gem('garnet',50,30),gem('garnet',50,68));const c=J.costs(d);
+ for(const id of Object.keys(s.materials))s.materials[id]=1000;assert.deepEqual(J.shortfall(s,d),[]);
+ s.materials.silver=2;s.materials.garnet=0;s.materials.amethyst=1;assert.deepEqual(J.shortfall(s,d),[{id:'silver',need:c.resources.silver,have:2,price:(c.resources.silver-2)*5},{id:'garnet',need:2,have:0,price:14}]);
+ const sword=J.makeDesign('sword','oval','gold');sword.gems.push(gem('garnet',50,75));s.materials.gold=0;const list=J.shortfall(s,sword);assert.equal(J.costs(sword).coins,25);
+ assert.deepEqual(list.map(v=>v.id),['gold','garnet']);assert.equal(list.reduce((n,v)=>n+v.price,0),J.costs(sword).resources.gold*11+7,'coins of the base are not in the sum');
+});
+test('buying the shortfall is all or nothing and then covers the costs exactly',()=>{
+ const s=J.newGame(45),d=design('pendant','oval','silver');d.gems.push(gem('garnet',50,30));s.materials.silver=1;s.materials.garnet=0;s.materials.amethyst=0;
+ const sum=J.shortfall(s,d).reduce((n,v)=>n+v.price,0);s.gold=sum-1;const raw=J.serialize(s);assert.throws(()=>J.buyShortfall(s,d),J.AtelierError);assert.equal(J.serialize(s),raw);
+ s.gold=sum+3;const r=J.buyShortfall(s,d);assert.equal(r.sum,sum);assert.equal(s.gold,3);for(const[id,n]of Object.entries(J.costs(d).resources))assert.equal(s.materials[id],n);assert.deepEqual(J.shortfall(s,d),[]);
+ const gold=J.makeDesign('pendant','oval','gold');s.materials.gold=0;s.gold=1000;const before=J.serialize(s);assert.throws(()=>J.buyShortfall(s,gold),/ремесло/);assert.equal(J.serialize(s),before,'locked materials are not bought');
+});

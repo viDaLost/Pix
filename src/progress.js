@@ -13,6 +13,9 @@ export function normalize(s){
  guard(()=>{if(!obj(s.daily))s.daily={sales:0,areas:[],income:0,made:0};const d=s.daily;for(const key of['sales','income','made','rep'])d[key]=count(d[key]);d.areas=list(d.areas,id=>J.AREAS.some(a=>a.id===id),3);d.firsts=list(d.firsts,k=>typeof k==='string'&&BOOK_KEY.test(k),40);d.types=list(d.types,id=>TYPE_IDS.includes(id),6);});
  guard(()=>{const old=obj(s.stats)?s.stats:{},clients={};if(obj(old.clients))for(const id of CLIENT_IDS)if(count(old.clients[id]))clients[id]=count(old.clients[id]);s.stats={...old,clients,orders:count(old.orders),gathers:count(old.gathers)};});
  guard(()=>{s.log=Array.isArray(s.log)?s.log.map(J.logEntry).filter(Boolean).slice(0,J.LOG_LIMIT):[];});
+ // Half sales and the first full sale of a design family; a missing flag keeps the meaning it had in older saves.
+ guard(()=>{if(Array.isArray(s.demand))for(const f of s.demand)if(obj(f)){if('soft'in f&&f.soft!==0&&f.soft!==1)delete f.soft;if('full'in f&&typeof f.full!=='boolean')delete f.full;}});
+ guard(()=>{const p=obj(s.prefs)?s.prefs:{};s.prefs={...p,large:p.large===true,calm:p.calm===true};});
  return s;
 }
 const ready=s=>{if(!obj(s.stats)||!obj(s.daily)||!Array.isArray(s.daily.types))normalize(s);return s;};
@@ -29,4 +32,11 @@ export function gather(s,id){ready(s);const found=J.gather(s,id);s.stats.gathers
 export function nextDay(s){ready(s);const prev={...s.daily,areas:[...s.daily.areas],firsts:[...s.daily.firsts],types:[...s.daily.types]};J.nextDay(s);Object.assign(s.daily,{rep:0,firsts:[],types:[]});return prev;}
 export function buy(s,id,n=1){ready(s);return J.buy(s,id,n);}
 export function learn(s,id){ready(s);return J.learn(s,id);}
-export function recycle(s,id){ready(s);return J.recycle(s,id);}
+// What was taken apart and what it gave back: the interface keeps it until the next action to offer «Вернуть».
+export function recycle(s,id){ready(s);const at=s.stock.findIndex(i=>i.id===id),item=s.stock[at],before={...s.materials};J.recycle(s,id);return {item,at,returned:Object.fromEntries(Object.keys(s.materials).filter(k=>s.materials[k]!==before[k]).map(k=>[k,s.materials[k]-before[k]]))};}
+export function unrecycle(s,undo){ready(s);const ok=undo?.item&&!s.stock.some(i=>i.id===undo.item.id)&&s.stock.length<J.MAX_STOCK&&Object.entries(undo.returned||{}).every(([k,n])=>s.materials[k]>=n);if(!ok)throw new J.AtelierError('Это изделие уже не вернуть.');for(const[k,n]of Object.entries(undo.returned))s.materials[k]-=n;s.stock.splice(Math.min(undo.at,s.stock.length),0,undo.item);return undo.item;}
+const needDraft=s=>{if(!s.draft)throw new J.AtelierError('Нет текущего изделия.');return s.draft.design;};
+export function buyShortfall(s){ready(s);return J.buyShortfall(s,needDraft(s));}
+// Buying what the draft lacks and finishing it is one step: if the piece cannot be finished, coins and stocks come back.
+export function buyAndComplete(s){ready(s);const d=needDraft(s),need=J.shortfall(s,d).reduce((n,v)=>n+v.price,0)+J.costs(d).coins;if(s.gold<need)throw new J.AtelierError(`Не хватает монет: нужно ${need}, в кошельке ${s.gold}.`);
+ const gold=s.gold,materials={...s.materials};try{const bought=J.buyShortfall(s,d);return {...complete(s),bought};}catch(e){s.gold=gold;s.materials=materials;throw e;}}

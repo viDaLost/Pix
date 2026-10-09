@@ -33,3 +33,10 @@ test('a tab that loaded before another tab saved cannot overwrite the newer save
 test('a save written by an older version without a stamp is overwritten normally',async()=>{
  idb.data.clear();idb.data.set('main','old');await saveAtelier('new',{at:5,tab:'c',since:0});assert.deepEqual(await loadAtelier(),{raw:'new',stamp:{at:5,tab:'c'}});
 });
+test('the workshop replaced by an import is kept apart from the main save and can be swapped back',async()=>{
+ idb.data.clear();const {saveBackup,loadBackup}=await import('../src/atelier-store.js');assert.equal(await loadBackup(),null);
+ await saveAtelier('current',{at:1,tab:'a',since:0});await saveBackup('before',{day:4,gold:120,at:7});
+ assert.deepEqual(await loadBackup(),{meta:{day:4,gold:120,at:7},raw:'before'});assert.deepEqual(await loadBackup(false),{meta:{day:4,gold:120,at:7},raw:null},'the menu reads only the summary');
+ assert.equal((await loadAtelier()).raw,'current','the main save is untouched');
+ await saveBackup('imported',{day:9,gold:5,at:8});assert.equal((await loadBackup()).raw,'imported','a later replacement keeps the latest previous workshop');
+});

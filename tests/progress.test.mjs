@@ -19,6 +19,7 @@ function valid(s){
  assert.ok(Array.isArray(d.types)&&d.types.length<=6&&d.types.every(t=>J.TYPES.some(x=>x.id===t))&&new Set(d.types).size===d.types.length);
  assert.ok(s.stats&&typeof s.stats.clients==='object'&&!Array.isArray(s.stats.clients));for(const[id,n]of Object.entries(s.stats.clients))assert.ok(J.CLIENTS.some(p=>p.id===id)&&Number.isInteger(n)&&n>0);
  for(const k of['orders','gathers'])assert.ok(Number.isInteger(s.stats[k])&&s.stats[k]>=0);
+ assert.ok(s.prefs&&typeof s.prefs.large==='boolean'&&typeof s.prefs.calm==='boolean','prefs');
  assert.ok(Array.isArray(s.log)&&s.log.length<=J.LOG_LIMIT&&s.log.every(e=>typeof e.t==='string'&&(e.d===null||Number.isInteger(e.d))&&typeof e.k==='string'));
 }
 
@@ -32,7 +33,7 @@ test('normalize adds the defaults of the new version to a version 3 save, which 
 test('two hundred corruptions of optional fields never throw and always repair to valid values',()=>{
  const junk=[null,undefined,'x','',-1,-7.5,1.5,1e12,NaN,Infinity,[],[1,2],[null],{}, {a:1},true,['pendant','pendant','ring','nope'],['form:pendant.oval','BAD KEY',7,'form:pendant.oval'],{mira:3,ghost:9,bren:-1,ada:'2'}];
  let seed=7;const rnd=()=>{seed=(Math.imul(seed,1103515245)+12345)>>>0;return seed/4294967296;},pick=a=>a[Math.floor(rnd()*a.length)];
- const paths=[s=>s.worldSeed=pick(junk),s=>s.stats=pick(junk),s=>s.stats={...s.stats,clients:pick(junk)},s=>s.stats={clients:{},orders:pick(junk),gathers:pick(junk)},s=>s.daily.rep=pick(junk),s=>s.daily.firsts=pick(junk),s=>s.daily.types=pick(junk),s=>s.daily.income=pick(junk),s=>s.daily.made=pick(junk),s=>s.log=pick(junk),s=>s.log=[pick(junk),'строка',{d:pick(junk),t:pick(junk),k:pick(junk)},{d:3,t:'Создано',k:'make'}],s=>s.daily=pick(junk)];
+ const paths=[s=>s.worldSeed=pick(junk),s=>s.stats=pick(junk),s=>s.stats={...s.stats,clients:pick(junk)},s=>s.stats={clients:{},orders:pick(junk),gathers:pick(junk)},s=>s.daily.rep=pick(junk),s=>s.daily.firsts=pick(junk),s=>s.daily.types=pick(junk),s=>s.daily.income=pick(junk),s=>s.daily.made=pick(junk),s=>s.log=pick(junk),s=>s.log=[pick(junk),'строка',{d:pick(junk),t:pick(junk),k:pick(junk)},{d:3,t:'Создано',k:'make'}],s=>s.daily=pick(junk),s=>s.prefs=pick(junk),s=>s.prefs={large:pick(junk),calm:pick(junk)}];
  const base=P.normalize(v3(11));
  for(let i=0;i<200;i++){const s=J.clone(base);for(let k=0;k<1+Math.floor(rnd()*4);k++)try{pick(paths)(s);}catch{/* a field of a replaced primitive cannot be set */}assert.doesNotThrow(()=>P.normalize(s));valid(s);assert.deepEqual(P.normalize(J.clone(s)),s,'repair is idempotent');}
  assert.doesNotThrow(()=>P.normalize(null));assert.doesNotThrow(()=>P.normalize('save'));
@@ -57,7 +58,7 @@ test('a failed action through a wrapper changes nothing',()=>{
 });
 test('the interface changes the game only through the progress wrappers',()=>{
  const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
- assert.doesNotMatch(app,/J\.(sell|deliver|gather|complete|nextDay|buy|learn|recycle)\(/,'use P.* so progress is never skipped');
+ assert.doesNotMatch(app,/J\.(sell|deliver|gather|complete|nextDay|buy|buyShortfall|learn|recycle)\(/,'use P.* so progress is never skipped');
  assert.doesNotMatch(app,/J\.(deserialize|newGame)\(/,'loaded and new games must pass through normalize');
 });
 test('the chronicle keeps sixty dated entries and reads older string entries',()=>{
@@ -71,4 +72,25 @@ test('a file with an odd structure is reported as damaged, never as a script err
  const base=JSON.parse(J.serialize(P.newGame(4)));
  for(const [key,value]of[['stock',[null]],['customers',[null]],['requests',[7]],['demand',[null]],['library',[null]]])assert.throws(()=>P.load(JSON.stringify({...base,[key]:value})),e=>e instanceof J.AtelierError&&/повреж/i.test(e.message),key);
  assert.throws(()=>P.load('{'),J.AtelierError);assert.equal(P.load(JSON.stringify(base)).gold,base.gold);
+});
+test('normalize repairs the half-sale and full-sale marks of the ledger and the interface options',()=>{
+ const s=rich(P.newGame(30)),item=make(s);P.sell(s,item.id,guest(s).id,'low');const raw=JSON.parse(J.serialize(s));
+ raw.demand[0].soft=2;raw.demand.push({...raw.demand[0],soft:'x',full:'yes'},{...raw.demand[0],soft:1,full:true});raw.prefs={large:'yes',calm:true,extra:1};
+ const back=P.load(JSON.stringify(raw));assert.equal('soft'in back.demand[0],false);assert.equal('soft'in back.demand[1],false);assert.equal('full'in back.demand[1],false);assert.deepEqual([back.demand[2].soft,back.demand[2].full],[1,true]);
+ assert.deepEqual(back.prefs,{large:false,calm:true,extra:1});assert.deepEqual(P.newGame(1).prefs,{large:false,calm:false});
+ assert.deepEqual(P.normalize(J.clone(back)),back,'repair is idempotent');assert.doesNotThrow(()=>J.deserialize(J.serialize(back)));
+});
+test('buying the shortfall and finishing is one step that returns coins and stocks when the piece cannot be finished',()=>{
+ const s=P.newGame(31);s.skills.push('gold','mounts');s.draft={design:design('sword','oval','gold'),undo:[],redo:[]};s.draft.design.gems=[{kind:'garnet',x:50,y:75,size:3,cut:'round'}];s.draft.design.strokes=[];s.materials.gold=0;s.materials.garnet=0;
+ const d=s.draft.design,sum=J.shortfall(s,d).reduce((n,v)=>n+v.price,0),coins=J.costs(d).coins;
+ s.gold=sum+coins-1;let raw=J.serialize(s);assert.throws(()=>P.buyAndComplete(s),/нужно/);assert.equal(J.serialize(s),raw,'the coins for the base are counted before buying');
+ s.gold=sum+coins+10;s.stock=Array.from({length:J.MAX_STOCK},(_,i)=>({id:'jewel-'+(1000+i),design:J.freezeDesign(design()),made:1}));raw=J.serialize(s);assert.throws(()=>P.buyAndComplete(s),/Витрина/);assert.equal(J.serialize(s),raw,'a failed completion buys nothing');
+ s.stock=[];const done=P.buyAndComplete(s);assert.equal(s.gold,10);assert.equal(s.stock[0],done.item);assert.equal(s.draft,null);assert.deepEqual([s.materials.gold,s.materials.garnet],[0,0]);assert.deepEqual(done.bought.list.map(v=>v.id),['gold','garnet']);
+ assert.throws(()=>P.buyShortfall(s),/Нет текущего/);
+});
+test('a piece taken apart comes back with its place on the showcase while nothing else has changed',()=>{
+ const s=rich(P.newGame(32));make(s);const second=make(s);make(s);const raw=J.serialize(s),undo=P.recycle(s,second.id);
+ assert.equal(s.stock.length,2);assert.ok(Object.values(undo.returned).every(n=>n>0));P.unrecycle(s,undo);assert.equal(J.serialize(s),raw);assert.equal(s.stock[1],second);
+ assert.throws(()=>P.unrecycle(s,undo),J.AtelierError,'the same piece cannot come back twice');
+ const again=P.recycle(s,second.id);for(const k of Object.keys(again.returned))s.materials[k]=0;const spent=J.serialize(s);assert.throws(()=>P.unrecycle(s,again),J.AtelierError);assert.equal(J.serialize(s),spent);
 });
