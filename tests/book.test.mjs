@@ -108,3 +108,20 @@ test('velvets and furnishings: bought once for coins, opened by chapters and ran
  const back=P.load(JSON.stringify(raw));assert.deepEqual(back.cosmetics,{velvet:'emerald',owned:['teal','emerald','brass','cobalt'],decor:['lamp']});assert.deepEqual(P.normalize(J.clone(back)),back);
  raw.cosmetics='x';assert.deepEqual(P.load(JSON.stringify(raw)).cosmetics.velvet,'teal');
 });
+test('normalize repairs any shape of the book, reputation and velvets, and the wrappers keep working on the result',()=>{
+ const known=new Set(P.CHAPTERS.filter(c=>c.id!=='marks').flatMap(c=>P.chapterKeys(c.id)));
+ const books=[null,7,'x',[],{},{e:null,m:[],pages:'forms'},{e:{'form:pendant.oval':-1,'bad key':3,'rune:ember':2.5,'metal:silver.pendant':4,'motif:ghost':2},m:{'first-piece':'x',awakened:2,ghost:1},pages:['layouts','nope','layouts']}];
+ const looks=[null,'x',{velvet:5,owned:'teal',decor:{}},{velvet:'cobalt',owned:['cobalt'],decor:['lamp','lamp','throne']}];
+ for(const book of books)for(const cosmetics of looks)for(const rep of[undefined,-1,'7',1.5,12]){
+  const raw=JSON.parse(J.serialize(rich(P.newGame(21))));raw.book=book;raw.cosmetics=cosmetics;raw.rankSeen='x';if(rep===undefined)delete raw.rep;else raw.rep=rep;
+  const s=P.load(JSON.stringify(raw)),label=JSON.stringify({book,cosmetics,rep});
+  assert.ok(Number.isInteger(s.rep)&&s.rep>=0,label);assert.equal(s.rankSeen,J.rankOf(s),label);assert.equal('upgraded'in s,false,'nothing was crafted, nothing to announce');
+  assert.ok(Object.keys(s.book.e).every(k=>known.has(k)),label);assert.ok(Object.keys(s.book.m).every(k=>P.MARKS.some(m=>m.id===k)),label);assert.ok(s.cosmetics.owned.includes(s.cosmetics.velvet),label);
+  const d=J.makeDesign('pendant','oval','silver');d.gems=layoutGems(d,'solo',{kind:'garnet',size:3});assert.ok(make(s,d).item,label);assert.doesNotThrow(()=>P.load(J.serialize(s)),label);
+ }
+ const junk=P.load(JSON.stringify({...JSON.parse(J.serialize(P.newGame(21))),book:books.at(-1)}));assert.deepEqual([junk.book.e,junk.book.m,junk.book.pages],[{'metal:silver.pendant':4},{awakened:2},['layouts']]);
+ // A file stuffed with made-up entries cannot fill the book and make every piece look new forever.
+ const forged=JSON.parse(J.serialize(P.newGame(22)));forged.book={e:Object.fromEntries(Array.from({length:500},(_,i)=>['form:fake'+i,1])),m:{},pages:[]};
+ const s=rich(P.load(JSON.stringify(forged))),d=J.makeDesign('pendant','oval','silver');d.gems=layoutGems(d,'solo',{kind:'garnet',size:3});assert.deepEqual(s.book.e,{});
+ assert.ok(make(s,d).fresh.length>0);assert.equal(make(s,d).rep,0,'a copy earns nothing');
+});

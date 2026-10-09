@@ -9,6 +9,8 @@ const day=v=>Number.isInteger(v)&&v>=0&&v<=1e9;
 const list=(v,ok,max)=>Array.isArray(v)?[...new Set(v.filter(ok))].slice(0,max):[];
 const BOOK_KEY=/^[a-z]+:[a-z0-9.+]{1,40}$/,TYPE_IDS=J.TYPES.map(t=>t.id),CLIENT_IDS=J.CLIENTS.map(p=>p.id),MARK_IDS=B.MARKS.map(m=>m.id),CHAPTER_IDS=B.CHAPTERS.map(c=>c.id),VELVET_IDS=B.VELVETS.map(v=>v.id),DECOR_IDS=B.DECOR.map(v=>v.id);
 const guard=fn=>{try{fn();}catch{}};
+// Every entry the book can hold; anything else in a file is dropped, so a forged key can never block real ones.
+const ENTRIES=new Set(B.CHAPTERS.filter(c=>c.id!=='marks').flatMap(c=>B.chapterKeys(c.id)));
 // A workshop from before the book: what is on the showcase and in the models is written in with day 0 («до книги»),
 // without rewards. Old pieces have no pattern marks, so their patterns count as own engraving.
 function bookFrom(s){const e={};for(const i of[...(Array.isArray(s.stock)?s.stock:[]),...(Array.isArray(s.library)?s.library:[])])guard(()=>{for(const k of B.catalogKeys(i.design))if(!(k in e))e[k]=0;});
@@ -24,7 +26,7 @@ export function normalize(s){
  guard(()=>{if(Array.isArray(s.demand))for(const f of s.demand)if(obj(f)){if('soft'in f&&f.soft!==0&&f.soft!==1)delete f.soft;if('full'in f&&typeof f.full!=='boolean')delete f.full;}});
  guard(()=>{const p=obj(s.prefs)?s.prefs:{};s.prefs={...p,large:p.large===true,calm:p.calm===true};});
  guard(()=>{if(!obj(s.book)){s.book=bookFrom(s);return;}const old=s.book,e={},m={};
-  if(obj(old.e))for(const k of Object.keys(old.e))if(BOOK_KEY.test(k)&&day(old.e[k])&&Object.keys(e).length<400)e[k]=old.e[k];
+  if(obj(old.e))for(const k of Object.keys(old.e))if(ENTRIES.has(k)&&day(old.e[k])&&Object.keys(e).length<400)e[k]=old.e[k];
   if(obj(old.m))for(const k of Object.keys(old.m))if(MARK_IDS.includes(k)&&day(old.m[k]))m[k]=old.m[k];
   s.book={e,m,pages:list(old.pages,id=>CHAPTER_IDS.includes(id),CHAPTER_IDS.length)};});
  // A workshop that predates reputation is credited with its work, up to the step below «Старшина цеха», and is

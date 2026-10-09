@@ -520,6 +520,14 @@ dialog.celebrate .modal-title h2{color:var(--brass-hi)}
   .editor-metrics{gap:4px}.editor-metrics span{padding:1px 6px 2px}.editor-metrics em{line-height:1.15}.editor-metrics b{font-size:calc(12px*var(--fs));line-height:1.2}
   .gem-chip{min-height:40px}.gem-chip img{width:28px;height:28px}
 }
+/* That strip costs a short portrait phone about 30px, taken back from the tool rows and the canvas floor, so «Готово»
+   stays above the navigation even with the pattern rail open and larger text. */
+@media(max-height:600px) and (orientation:portrait){
+  .editor-panel{gap:3px}.editor-stage{min-height:120px}
+  .tools button{min-height:42px;padding:3px 2px}.tools button .icon{width:18px;height:18px}
+  .tool-options .segmented button{min-height:28px;padding:2px 10px}.tool-options .option-row{min-height:30px}
+  .pattern-card{min-height:54px;width:56px;padding:3px 2px 4px}.pattern-card img{width:30px;height:30px}
+}
 @media(orientation:landscape) and (max-height:500px){
   .topbar{position:absolute;top:env(safe-area-inset-top);left:0;right:52%;height:44px;padding:4px 12px;z-index:var(--z-nav)}
   .brand small{display:none}.brand{font-size:calc(21px*var(--fs))}

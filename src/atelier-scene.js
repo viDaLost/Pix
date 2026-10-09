@@ -20,12 +20,13 @@ function base(shop,{sign=false,decor=[]}={}){const c=canvas(480,260),g=c.getCont
  panel(g,12,247,456,6,'#ac8556');
  if(shop)furnish(g,sign,decor);return c;
 }
-// The rank sign over the shelves and the furnishings bought for the shop.
+// The rank sign hangs over the right window, clear of the scene caption at the top left even on a 320px phone;
+// the furnishings are bought for the shop.
 function furnish(g,sign,decor){
  if(decor.includes('map')){panel(g,309,40,24,30,'#7a5a3c');px(g,312,43,18,24,'#e6d3a3');polygon(g,[[312,52],[318,47],[323,50],[329,45],[329,66],[312,66]],'#9fbf95');pixelLine(g,313,60,328,55,'#6e9aa0');px(g,320,49,2,2,'#b4553f');px(g,326,61,1,1,'#3e3428');px(g,314,44,4,1,'#c9b083');}
  if(decor.includes('flowers')){for(const[x,y,k]of[[108,104,'#e08d7d'],[115,98,'#f2d69a'],[122,101,'#c792aa'],[127,107,'#e08d7d'],[112,110,'#c792aa'],[119,107,'#f2d69a'],[104,112,'#f2d69a']]){pixelLine(g,x,y+2,116,118,'#5f8a5a');px(g,x-2,y-1,5,5,k);px(g,x-1,y,3,3,shade(k,30));px(g,x,y+1,1,1,'#fff4d6');}px(g,103,116,4,2,'#78a46c');px(g,127,114,4,2,'#78a46c');panel(g,108,116,17,16,'#6f8fa0');px(g,111,119,11,2,'#a9c7d2');px(g,112,124,2,5,'#a9c7d2');}
  if(decor.includes('lamp')){px(g,169,62,8,2,'#3a2a20');px(g,175,62,2,4,'#c9a35e');panel(g,171,66,10,14,'#b08a4a');px(g,174,69,4,8,'#ffd58a');px(g,175,70,2,5,'#fff4c5');px(g,172,80,8,2,'#7a5a34');}
- if(sign){panel(g,198,8,92,15,'#6a4630');px(g,201,11,86,9,'#2a1c15');g.save();g.fillStyle='#e9c47a';g.font='bold 7px Georgia, serif';g.textAlign='center';g.textBaseline='middle';g.fillText('ПОСТАВЩИК ДВОРА',244,16);g.restore();px(g,195,13,3,3,'#d7b072');px(g,290,13,3,3,'#d7b072');}
+ if(sign){panel(g,356,8,92,15,'#6a4630');px(g,359,11,86,9,'#2a1c15');g.save();g.fillStyle='#e9c47a';g.font='bold 7px Georgia, serif';g.textAlign='center';g.textBaseline='middle';g.fillText('ПОСТАВЩИК ДВОРА',402,16);g.restore();px(g,353,13,3,3,'#d7b072');px(g,448,13,3,3,'#d7b072');}
 }
 // Window shafts, a candle and drifting dust give the rooms one consistent light source.
 function light(c,shop,time,lamp=false){
