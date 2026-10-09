@@ -9,6 +9,7 @@ import {paintPortrait} from './characters.js';
 import {GameAudio} from './audio.js';
 import {loadAtelier,saveAtelier,StaleTabError,saveBackup,loadBackup} from './atelier-store.js';
 import {icon,ELEMENT_ICON} from './icons.js';
+import {ToastQueue,ModalQueue,toastSpec,toastDuration} from './notices.js';
 const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const btn=(action,text,cls='',attrs='')=>`<button type="button" data-action="${action}" class="${cls}" ${attrs}>${text}</button>`;
 const SAVE='pix-forge-save-v1',STAMP=SAVE+':at',TAB=Math.random().toString(36).slice(2),portraits=new Map(),scene=new AtelierScene(),audio=new GameAudio();
@@ -54,40 +55,40 @@ const otherWrite=v=>{if(v&&v.tab!==TAB&&v.at>known)lockTab();};
 channel?.addEventListener('message',e=>otherWrite(e.data));
 // Storage events come only from other tabs; old versions write the save without a stamp.
 addEventListener('storage',e=>{if(e.key===STAMP){try{otherWrite(JSON.parse(e.newValue));}catch{}}else if(e.key===SAVE&&e.newValue)lockTab();});
-// One toast on screen and at most four waiting. A plain message replaces a plain one at once; rewards, hints and
-// messages with a button wait their turn; an error goes first and sends a waiting reward back to the queue.
-// toast(text,true) and toast(text,false,{action,label,icon}) keep working as {kind:'error'} and {action}.
-const toastQueue=[];let toastNow=null,toastTimer=0;
-const plainToast=t=>t?.kind==='info'&&!t.action;
-function toast(text,opt=false,act=null){const o=opt&&typeof opt==='object'?opt:{kind:opt?'error':'info',action:act},t={text:String(text),kind:['info','mark','hint','error'].includes(o.kind)?o.kind:'info',action:o.action||null};
- if([toastNow,...toastQueue].some(v=>v&&v.text===t.text&&v.kind===t.kind))return;
- if(plainToast(t))for(let i=toastQueue.length-1;i>=0;i--)if(plainToast(toastQueue[i]))toastQueue.splice(i,1);
- if(t.kind==='error'||plainToast(t)&&(!toastNow||plainToast(toastNow))){if(toastNow&&!plainToast(toastNow)&&toastNow.kind!=='error')toastQueue.unshift(toastNow);toastQueue.unshift(t);showNextToast();return;}
- toastQueue.push(t);if(toastQueue.length>4)toastQueue.splice(Math.max(0,toastQueue.findIndex(v=>v.kind!=='error')),1);if(!toastNow)showNextToast();}
-function showNextToast(){clearTimeout(toastTimer);const t=toastNow=toastQueue.shift()||null,el=toastEl;
+// Toasts live in the top layer, so a reward or an error is seen above an open dialog; the queue rules are in notices.js.
+const toasts=new ToastQueue();let toastTimer=0;
+function toast(text,opt=false,act=null){if(toasts.add(toastSpec(text,opt,act)))showToast();}
+const nextToast=()=>{toasts.next();showToast();};
+// An undo offer is withdrawn as soon as the next action makes it stale.
+const withdrawToast=action=>{if(toasts.drop(t=>t.action?.action===action))showToast();};
+function showToast(){clearTimeout(toastTimer);const t=toasts.now,el=toastEl;
  if(!t){el.classList.remove('show');toastTimer=setTimeout(()=>{try{el.hidePopover?.();}catch{}},320);return;}
  el.innerHTML=`${icon(t.action?.icon||(t.kind==='error'?'info':t.kind==='mark'?'sign':t.kind==='hint'?'help':'check'))}<span>${esc(t.text)}</span>${t.action?btn(t.action.action,t.action.label,'toast-action'):''}`;
  el.setAttribute('role',t.kind==='error'?'alert':'status');el.className='toast '+t.kind+(t.action?' actionable':'');raiseToast();void el.offsetWidth;el.classList.add('show');
- toastTimer=setTimeout(showNextToast,t.action?9000:Math.min(8000,Math.max(3300,2500+45*t.text.length)));}
-// A toast belongs to the top layer, above an open dialog. A modal dialog makes the rest of the page inert, so the toast
-// moves into it; as a popover it is drawn above the dialog, and without popover support it is a fixed layer inside it.
-function raiseToast(){if(!toastNow)return;const el=toastEl,host=dialog.open?dialog:document.body;if(el.parentElement!==host)host.append(el);try{if(el.matches(':popover-open'))el.hidePopover();el.showPopover?.();}catch{}}
+ toastTimer=setTimeout(nextToast,toastDuration(t));}
+// A modal dialog makes the rest of the page inert, so the toast moves into it; as a popover it is drawn above the
+// dialog, and a browser without popovers still shows it as a fixed layer inside the dialog.
+function raiseToast(){if(!toasts.now)return;const el=toastEl,host=dialog.open?dialog:document.body;if(el.parentElement!==host)host.append(el);try{if(el.matches(':popover-open'))el.hidePopover();el.showPopover?.();}catch{}}
 function crash(e){if(e instanceof J.AtelierError){toast(e.message,true);return;}console.error(e);const now=Date.now();if(now-lastCrash<1500)return;lastCrash=now;
  toast('Что-то пошло не так. Сохранение можно скачать.',true,{action:'export',label:'Скачать'});
  const panel=$('#panel');if(panel&&(!panel.children.length||panel.querySelector('.splash')))panel.innerHTML=`<div class="card empty recovery">${icon('info','big-icon')}<h2>Раздел не открылся</h2><p class="muted">Скачай сохранение, чтобы ничего не потерять, и перезагрузи страницу.</p>${btn('export',`${icon('download')}<span>Скачать сохранение</span>`,'primary big')}${btn('reload-app','Перезагрузить','big')}</div>`;}
-function action(fn,message){try{editor?.finish();recycled=null;const result=fn();scheduleSave();render();audio.play('good');if(message)toast(typeof message==='function'?message(result):message);return result;}catch(e){audio.play('error');if(e instanceof J.AtelierError)toast(e.message,true);else crash(e);}}
+// The piece taken apart can come back only until the next action.
+const forgetRecycled=()=>{recycled=null;withdrawToast('unrecycle');};
+function action(fn,message){try{editor?.finish();const result=fn();forgetRecycled();scheduleSave();render();audio.play('good');if(message)toast(typeof message==='function'?message(result):message);return result;}catch(e){audio.play('error');if(e instanceof J.AtelierError)toast(e.message,true);else crash(e);}}
 // One dialog at a time. modal() shows at once, replacing what is open; queueModal() waits until the open one closes,
 // and dialogs that wait together open in a fixed order. close() is immediate.
-const MODAL_ORDER=['welcome','update','ceremony','rank','letter','morning'],modalQueue=[];let modalClosable=true,ignorePop=false;
-function modal(title,body,closable=true,cls=''){$('#dialog-body').innerHTML=`<div class="modal-title"><h2 id="dialog-title">${title}</h2>${closable?btn('close',icon('close'),'icon-button ghost','aria-label="Закрыть"'):''}</div><div class="modal-body">${body}</div>`;dialog.className=cls;modalClosable=closable;dialog.scrollTop=0;
- if(!dialog.open){dialog.showModal();if(!ignorePop&&!history.state?.modal)history.pushState({modal:1},'');}raiseToast();}
-function queueModal(fn,kind){const rank=MODAL_ORDER.indexOf(kind);let i=modalQueue.findIndex(m=>m.rank>rank);if(i<0)i=modalQueue.length;modalQueue.splice(i,0,{fn,rank});if(!dialog.open)modalQueue.shift().fn();}
+const modals=new ModalQueue();let modalClosable=true,ignorePop=false;
+function modal(title,body,closable=true,cls=''){$('#dialog-body').innerHTML=`<div class="modal-title"><h2 id="dialog-title">${title}</h2>${closable?btn('close',icon('close'),'icon-button ghost','aria-label="Закрыть"'):''}</div><div class="modal-body">${body}</div>`;dialog.className=cls;modalClosable=closable;
+// The dialog itself takes the focus, so a long one opens at its title rather than scrolled to its first button.
+ if(!dialog.open){dialog.showModal();dialog.focus({preventScroll:true});if(!ignorePop&&!history.state?.modal)history.pushState({modal:1},'');}dialog.scrollTop=0;raiseToast();}
+function queueModal(fn,kind){modals.add(fn,kind);if(!dialog.open)modals.next()();}
 function close(){dialog.close();}
 // Only a tap on the dimmed backdrop closes a dialog; its own padding belongs to the dialog.
 dialog.addEventListener('click',e=>{if(e.target!==dialog||!modalClosable||conflict)return;const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)close();});
 // The close event comes after close() has returned. History follows the dialog: the entry added on open is taken back
 // whatever closed it (a button, Escape, the system back gesture), unless another dialog has opened in the meantime.
-dialog.addEventListener('close',()=>{if(dialog.open)return;if(conflict){lockTab();return;}if(history.state?.modal){ignorePop=true;history.back();}raiseToast();modalQueue.shift()?.fn();});
+// A welcome closed by the browser itself (Escape twice, the system back gesture) is a quiet start, the default choice.
+dialog.addEventListener('close',()=>{if(dialog.open)return;if(conflict){lockTab();return;}if(history.state?.modal){ignorePop=true;history.back();}if(dialog.classList.contains('welcome-dialog')&&!state.welcomed){state.welcomed=true;scheduleSave();render();}raiseToast();modals.next()?.();});
 // «Назад» closes an open dialog instead of leaving the game; a dialog that must be answered keeps its entry.
 addEventListener('popstate',()=>{if(ignorePop){ignorePop=false;if(dialog.open)history.pushState({modal:1},'');return;}if(!dialog.open)return;if(modalClosable&&!conflict)close();else history.pushState({modal:1},'');});
 function currentBuyer(){return state.customers.find(c=>c.id===buyerId&&!c.served)||state.customers.find(c=>!c.served);}
@@ -135,7 +136,7 @@ function editorHTML(){const d=state.draft.design;
  <div class="editor-bottom">${btn('material-picker',`<img id="metal-badge" src="${metalURL(d.metal,40)}" alt="">`,'secondary','aria-label="Сменить металл и посмотреть расход"')}${btn('finish-design','Готово','primary','id="finish-design"')}${btn('remember',icon('bookmark'),'secondary','aria-label="Сохранить модель"')}${btn('discard',icon('close'),'secondary danger','aria-label="Убрать заготовку"')}</div>`;
 }
 function updateEditor(metrics){if(!state.draft||!$('#editor-metrics'))return;const d=editor?.design||state.draft.design,e=metrics||J.evaluate(d);
- $('#editor-metrics').innerHTML=`<span class="meter" style="--p:${e.craft}%"><em>Ремесло</em><b>${e.craft}</b></span><span><em>Стиль</em><b>${e.label}</b></span><span class="${e.magic?'magic':''}"><em>Магия</em><b>${magicOf(e)}</b></span><span class="meter" style="--p:${e.polish}%"><em>Блеск</em><b>${e.polish}%</b></span>`;
+ $('#editor-metrics').innerHTML=`<span class="meter craft" style="--p:${e.craft}%" title="Мастерство умножает цену: ×${mult(e)}"><em>Ремесло</em><b>${e.craft}<small aria-label="к цене ×${mult(e)}">×${mult(e)}</small></b></span><span><em>Стиль</em><b>${e.label}</b></span><span class="${e.magic?'magic':''}"><em>Магия</em><b>${magicOf(e)}</b></span><span class="meter" style="--p:${e.polish}%"><em>Блеск</em><b>${e.polish}%</b></span>`;
  const tool=editor?.tool||editorOptions.tool,hints={shape:'Потяни точку или нарисуй новый контур',pattern:'Выбери узор: он ляжет по форме. Нажми ещё раз — другой вариант',engrave:'Нанеси свой узор по металлу',stone:'Поставь камень; потяни, чтобы переместить',rune:'Проведи руну к камню: он пробудится',polish:`Полируй: мастерство ×${mult(e)} к цене`,hole:'Обведи вырез внутри металлической основы',move:'Перемещай поле; два пальца — масштаб',erase:'Коснись камня, линии или выреза'};$('#editor-hint').textContent=hints[tool];
  $('#zoom-level').textContent=Math.round((editor?.zoom||1)*100)+'%';
  const a=$('[data-action="undo"]'),b=$('[data-action="redo"]');a.disabled=!state.draft.undo.length;b.disabled=!state.draft.redo.length;
@@ -211,10 +212,10 @@ function editorHelp(){modal('Твоя работа — твой рисунок',
 function showInventory(){modal('Мои материалы',`<div class="inventory-grid">${Object.entries({...J.METALS,...J.GEMS}).map(([id,m])=>`<span><img src="${J.GEMS[id]?gemURL(id,40):metalURL(id,40)}" alt="">${m.name}<b>×${state.materials[id]}</b></span>`).join('')}</div>${btn('go-supplier','К поставщику','primary')}`);}
 function showMaterials(){editor?.finish();const d=state.draft.design;modal('Металл и расход',`<p>${esc(costText(d))}${J.costs(d).coins?' (готовая основа оружия)':''}</p><div class="inventory-grid">${Object.entries(J.METALS).map(([id,m])=>btn('apply-metal',`<img src="${metalURL(id,40)}" alt=""><span>${m.name}<small>Запас ${state.materials[id]}</small></span>`,'metal-chip'+(d.metal===id?' active':''),`data-metal="${id}" ${J.available(state,id)?'':'disabled'}`)).join('')}</div><p class="fine-print">Расход зависит от площади контура. Можно вернуться к рисунку и уменьшить оправу.</p>`);}
 // Coins of a weapon base are paid at completion, so «Докупить и завершить» needs them on top of the materials.
-function showShortfall(){editor?.finish();const d=state.draft.design,list=J.shortfall(state,d),base=J.costs(d).coins,sum=list.reduce((n,v)=>n+v.price,0),locked=list.filter(v=>!J.available(state,v.id)),row=(name,value)=>`<div class="score-row"><span>${name}</span><b>${value}</b></div>`;
- modal('Не хватает материалов',`<div class="shortfall">${list.map(v=>`<div class="score-row"><span><img src="${J.GEMS[v.id]?gemURL(v.id,40):metalURL(v.id,40)}" alt="">${matName(v.id)}: нужно ${v.need}, есть ${v.have}</span><b>${J.available(state,v.id)?v.price+' мон.':'закрыто'}</b></div>`).join('')}${base?row(`Готовая основа ${d.type==='sword'?'клинка':'посоха'}`,base+' мон.'):''}${row('Всего',(sum+base)+' мон.')}${row('В кошельке',state.gold+' мон.')}</div>
- ${locked.length?`<p class="fine-print">${locked.map(v=>matName(v.id)).join(', ')} у поставщика пока закрыто: нужна техника из «Развития».</p>`:''}${btn('buy-finish',`<span>Докупить и завершить</span>${coins(sum+base)}`,'primary big',state.gold<sum+base||locked.length?'disabled':'')}
- <div class="row fill">${btn('buy-shortfall',`Только докупить · ${sum}`,'',state.gold<sum||locked.length||!list.length?'disabled':'')}${btn('material-picker','Сменить металл')}</div>${btn('shortfall-gather',`${icon('pin')}<span>Искать находки</span>`,'ghost big')}<p class="fine-print">Цены поставщика на сегодня. Находки на берегу бесплатны, но тратят силы.</p>`);}
+function showShortfall(){editor?.finish();const d=state.draft.design,list=J.shortfall(state,d),base=J.costs(d).coins,sum=list.reduce((n,v)=>n+v.price,0),locked=list.filter(v=>!J.available(state,v.id)),row=(name,value,cls='')=>`<div class="score-row ${cls}"><span>${name}</span><b>${value}</b></div>`;
+ modal(list.length?'Не хватает материалов':'Не хватает монет',`<div class="shortfall">${list.map(v=>row(`<img src="${J.GEMS[v.id]?gemURL(v.id,40):metalURL(v.id,40)}" alt="">${matName(v.id)}: нужно ${v.need}, есть ${v.have}`,J.available(state,v.id)?v.price+' мон.':'закрыто')).join('')}${base?row(`Готовая основа ${d.type==='sword'?'меча':'посоха'}`,base+' мон.'):''}${row('Всего',(sum+base)+' мон.','sum')}${row('В кошельке',state.gold+' мон.')}</div>
+ ${locked.length?`<p class="fine-print">${locked.map(v=>matName(v.id)).join(', ')} у поставщика пока закрыто: нужна техника из «Развития».</p>`:''}${btn('buy-finish',`<span>${list.length?'Докупить и завершить':'Завершить'}</span>${coins(sum+base)}`,'primary big',state.gold<sum+base||locked.length?'disabled':'')}
+ <div class="row fill">${btn('buy-shortfall',`Только докупить · ${sum}`,'',state.gold<sum||locked.length||!list.length?'disabled':'')}${btn('material-picker','Сменить металл')}</div>${btn('shortfall-gather',`${icon('pin')}<span>Искать находки</span>`,'ghost big')}<p class="fine-print">Цены поставщика. Находки на берегу ничего не стоят, но отнимают силы.</p>`);}
 const bar=(name,value,max=100)=>`<div class="score-row"><span>${name}</span><b>${value}</b><i class="bar" style="--p:${Math.min(100,value/max*100)}%"></i></div>`;
 function showAssessment(item,completed=false){const d=item.design,e=J.evaluate(d),effects=Object.entries(e.effects).map(([id,power])=>`<span>${icon(ELEMENT_ICON[id])}${J.ELEMENTS[id]} +${Math.round(power*(state.skills.includes('alchemy')?1.25:1))}</span>`).join('');
  modal(completed?'Украшение готово':'Оценка работы',`<div class="hero-jewel${completed?' reveal':''}"><img src="${jewelURL(d,320,{background:false})}" alt="${esc(d.name)}"></div><h2 class="center">${esc(d.name)}</h2><p class="center muted">${typeName(d.type)} · ${J.METALS[d.metal].name} · стиль «${e.label}»</p>${bar(`Мастерство · ×${mult(e)} к цене`,e.craft)}${bar('Магия',magicOf(e),60)}${effects?`<div class="tags">${effects}</div>`:''}
@@ -224,12 +225,12 @@ function showSkill(id){const t=J.TOOLS.find(t=>t.id===id);if(!t)return;const lea
 function download(raw,filename){const url=URL.createObjectURL(new Blob([raw],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function menu(){editor?.finish();modal('Мастерская «Сияние»',`<div class="settings">${btn('toggle-sound',`${icon('sound')}<span>Эффекты</span><em>${state.sound?'вкл':'выкл'}</em>`,state.sound?'on':'')}${btn('toggle-music',`${icon('music')}<span>Музыка</span><em>${state.music?'вкл':'выкл'}</em>`,state.music?'on':'')}<label class="slider">Громкость <input id="volume" aria-label="Громкость" type="range" min="0" max="1" step="0.05" value="${state.volume}"></label>${btn('toggle-large',`${icon('text')}<span>Крупный текст</span><em>${state.prefs?.large?'вкл':'выкл'}</em>`,state.prefs?.large?'on':'',`aria-pressed="${!!state.prefs?.large}"`)}${btn('toggle-calm',`${icon('calm')}<span>Меньше анимаций</span><em>${state.prefs?.calm||reduced.matches?'вкл':'выкл'}</em>`,state.prefs?.calm||reduced.matches?'on':'',`aria-pressed="${!!state.prefs?.calm}"`)}${btn('export',`${icon('download')}<span>Скачать сохранение</span>`)}${btn('import',`${icon('upload')}<span>Загрузить сохранение</span>`)}${backupMeta?btn('restore-backup',`${icon('undo')}<span>Вернуть прежнюю мастерскую</span><em>день ${backupMeta.day}</em>`):''}${state.legacy?btn('legacy-export',`${icon('download')}<span>Архив прежней игры</span>`):''}${updateReady?btn('reload-app',`${icon('download')}<span>Обновить до новой версии</span>`):''}${loadError?btn('reset-recovery','Начать заново','danger'):''}</div><p class="fine-print">Изделия и история действий сохраняются на этом устройстве. Для переноса на другой телефон скачай файл. ${reduced.matches?'Анимации уменьшены настройкой системы. ':''}Веленский порт, 1740 год.</p>${state.legacy?'<p class="fine-print">Монеты и запасы перенесены. Прежние товары обменены на 65% их стоимости; оригинальное сохранение доступно в архиве.</p>':''}`);}
 function welcome(){const d=J.makeDesign('pendant','drop','gold');try{d.gems=layoutGems(d,'halo',{kind:'sapphire',size:3.6});d.strokes=patternStrokes(d,'beads',{});}catch{}
- modal('Добро пожаловать в «Сияние»',`<div class="welcome"><img src="${jewelURL(d,240,{background:false})}" alt="Золотой кулон-капля с сапфирами"><p>Твоя ювелирная мастерская в Веленском порту, 1740 год.</p></div><div class="help-grid"><b>${icon('pattern')}</b><span>Придумай форму, нанеси свой узор или выбери готовый — он ляжет точно по контуру.</span><b>${icon('stone')}</b><span>Поставь камни, пробуди их рунами, отполируй оправу.</span><b>${icon('shop')}</b><span>Выставляй работы и ищи покупателя по вкусу. Повторяющиеся дизайны теряют спрос.</span></div>${state.legacy?'<p class="fine-print">Твой прежний прогресс перенесён, исходное сохранение лежит в архиве.</p>':''}<h3 class="label center">Открыть мастерскую</h3><div class="row fill welcome-start">${btn('welcome-start',`${icon('close')}<span>Тихо</span>`,'','data-sound="0"')}${btn('welcome-start',`${icon('sound')}<span>Со звуком</span>`,'primary','data-sound="1"')}</div><p class="fine-print center">Музыку и эффекты можно сменить в меню.</p>`,false,'welcome-dialog');}
+ modal('Добро пожаловать в «Сияние»',`<div class="welcome"><img src="${jewelURL(d,240,{background:false})}" alt="Золотой кулон-капля с сапфирами"><p>Твоя ювелирная мастерская в Веленском порту, 1740 год.</p></div><div class="help-grid"><b>${icon('pattern')}</b><span>Придумай форму, нанеси свой узор или выбери готовый — он ляжет точно по контуру.</span><b>${icon('stone')}</b><span>Поставь камни, пробуди их рунами, отполируй оправу.</span><b>${icon('shop')}</b><span>Выставляй работы и ищи покупателя по вкусу. Повторяющиеся дизайны теряют спрос.</span></div>${state.legacy?'<p class="fine-print">Твой прежний прогресс перенесён, исходное сохранение лежит в архиве.</p>':''}<h3 class="label center">Открыть мастерскую</h3><div class="row fill welcome-start">${btn('welcome-start',`${icon('mute')}<span>Тихо</span>`,'','data-sound="0"')}${btn('welcome-start',`${icon('sound')}<span>Со звуком</span>`,'primary','data-sound="1"')}</div><p class="fine-print center">Музыку и эффекты можно сменить в меню.</p>`,false,'welcome-dialog');}
 // Ending the day sends the waiting guests away, so it asks first while one of them could still buy.
 function dayReasons(){const guests=state.customers.filter(c=>!c.served),n=guests.length;return n&&state.stock.length?[`${n} ${plural(n,'покупатель','покупателя','покупателей')} ещё в лавке и ${n===1?'уйдёт':'уйдут'}: ${guests.map(c=>client(c.client).name).join(', ')}.`]:[];}
 function nextDay(confirmed=false){editor?.finish();const reasons=confirmed?[]:dayReasons();
  if(reasons.length){modal('Закончить день?',`<ul class="reasons">${reasons.map(r=>`<li>${esc(r)}</li>`).join('')}</ul><p class="fine-print">Черновик, запасы и витрина останутся до завтра.</p><div class="row fill">${btn('stay-in-shop','Остаться в лавке')}${btn('confirm-next-day','Закончить день','primary')}</div>`);return;}
- const day=state.day;let daily;try{recycled=null;daily=P.nextDay(state);}catch(e){toast(e.message,true);return;}scheduleSave();render();audio.play('good');
+ const day=state.day;let daily;try{forgetRecycled();daily=P.nextDay(state);}catch(e){toast(e.message,true);return;}scheduleSave();render();audio.play('good');
  const guests=state.customers.map(c=>client(c.client));
  queueModal(()=>modal(`Итоги дня ${day}`,`<div class="summary"><span><b>${daily.made||0}</b><small>создано</small></span><span><b>${daily.sales}</b><small>продано</small></span><span><b>${daily.income||0}</b><small>выручка</small></span></div><h3 class="label">Утро дня ${state.day}: в лавку заглянут</h3><div class="guest-row">${guests.map(p=>`<span><img src="${portrait(p)}" alt="">${p.name}</span>`).join('')}</div><p class="fine-print">Силы восстановлены. Черновик и история действий сохранены.</p>${btn('close','Начать день','primary')}`),'morning');}
 function resetEditor(){editorOptions={tool:'shape',width:1,symmetry:false,gem:'garnet',cut:'round',zoom:1,pan:{x:0,y:0}};lastPattern={id:null,n:0};}
@@ -238,14 +239,14 @@ function sell(b,which){const name=currentItem()?.design.name,from=b.getBoundingC
 // The workshop being replaced by an import or a fresh start is put aside first, so the menu can bring it back.
 async function putAside(){editor?.finish();const raw=loadError?sourceRaw:J.serialize(state);if(!raw)return false;const meta={day:loadError?0:state.day,gold:loadError?0:state.gold,stock:loadError?0:state.stock.length,damaged:loadError,at:Date.now()};
  try{await Promise.race([saveBackup(raw,meta),new Promise((_,no)=>setTimeout(()=>no(new Error('timeout')),4000))]);backupMeta=meta;return true;}catch{return false;}}
-function replaceWorkshop(next,welcomed=true){editor?.destroy();editor=null;state=next;loadError=false;sourceRaw=null;if(welcomed)state.welcomed=true;view='studio';buyerId=null;itemId=null;recycled=null;resetEditor();scheduleSave();render();warmShowcase();}
+function replaceWorkshop(next,welcomed=true){editor?.destroy();editor=null;state=next;loadError=false;sourceRaw=null;if(welcomed)state.welcomed=true;view='studio';buyerId=null;itemId=null;forgetRecycled();resetEditor();scheduleSave();render();warmShowcase();}
 function showBackup(){const m=backupMeta;if(!m)return;modal('Прежняя мастерская',m.damaged?`<p>Перед загрузкой здесь было повреждённое сохранение. Его можно скачать файлом и попробовать восстановить.</p>${btn('download-backup',`${icon('download')}<span>Скачать файл</span>`,'primary big')}`:`<p>День ${m.day} · ${m.gold} мон. · изделий на витрине: ${m.stock}.</p><p class="fine-print">Текущая мастерская встанет на её место, и её тоже можно будет вернуть отсюда.</p><div class="row fill">${btn('download-backup',`${icon('download')}<span>Скачать</span>`)}${btn('confirm-restore','Вернуть','primary')}</div>`);}
 // A finished piece opens its assessment; the first one also asks the browser to keep the save.
 function finish(fn){const done=action(fn);if(done){itemId=done.item.id;showAssessment(done.item,true);audio.play('magic');if(!persistAsked){persistAsked=true;navigator.storage?.persist?.().catch(()=>{});}}}
 let pendingImport=null;
 document.addEventListener('pointerdown',()=>{audio.unlock();},{passive:true});
 document.addEventListener('click',e=>{
- const b=e.target.closest('[data-action]');if(e.target.closest('#toast'))showNextToast();if(!b||b.disabled)return;const id=b.dataset.action;
+ const b=e.target.closest('[data-action]');if(e.target.closest('#toast'))nextToast();if(!b||b.disabled)return;const id=b.dataset.action;
  switch(id){
  case'close':close();break;
  case'welcome-start':state.welcomed=true;state.sound=state.music=b.dataset.sound==='1';audio.setOptions(state);scheduleSave();close();render();if(state.sound)audio.unlock().then(()=>audio.play('magic'));break;
@@ -314,7 +315,7 @@ document.addEventListener('click',e=>{
  case'import':$('#import-file').click();break;
  case'confirm-import':{const next=pendingImport;pendingImport=null;if(!next)break;close();putAside().then(kept=>{replaceWorkshop(next);toast(kept?'Сохранение загружено. Прежнюю мастерскую можно вернуть в меню.':'Сохранение загружено.');});break;}
  case'restore-backup':showBackup();break;
- case'confirm-restore':close();loadBackup().then(async v=>{if(!v?.raw)throw new J.AtelierError('Прежняя мастерская не найдена.');const next=P.load(v.raw);await putAside();replaceWorkshop(next);toast(`Мастерская дня ${next.day} возвращена. Сменённую можно вернуть так же.`);}).catch(err=>toast(err instanceof J.AtelierError?err.message:'Прежнюю мастерскую не удалось прочитать.',true));break;
+ case'confirm-restore':close();loadBackup().then(async v=>{if(!v?.raw)throw new J.AtelierError('Прежняя мастерская не найдена.');const next=P.load(v.raw);await putAside();replaceWorkshop(next);toast(`Возвращена мастерская дня ${next.day}. Прежнюю можно вернуть из меню.`);}).catch(err=>toast(err instanceof J.AtelierError?err.message:'Прежнюю мастерскую не удалось прочитать.',true));break;
  case'download-backup':loadBackup().then(v=>{if(v?.raw)download(v.raw,`siyanie-before-import-day-${v.meta.day}.json`);}).catch(()=>toast('Файл не удалось прочитать.',true));break;
  case'reload-app':reload();break;
  case'reset-recovery':modal('Новое сохранение',`<p>Сначала скачай повреждённый исходный файл через меню. Новый прогресс заменит его на этом устройстве.</p>${btn('confirm-reset','Создать новое сохранение','primary danger')}`);break;
