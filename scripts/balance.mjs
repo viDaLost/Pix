@@ -43,7 +43,7 @@ function play(seed,finish){
  }
  assert.equal(s.crafted,60);assert.equal(s.sold,60);assert.equal(s.skills.length,J.TOOLS.length,'every atelier skill reachable without grants');assert.ok(s.gold>180);
  assert.ok(s.rep>=100,`reputation after 60 varied pieces is ${s.rep}`);assert.ok(rankDay&&rankDay<=3,`the first rank came on day ${rankDay}`);assert.ok(early,'the second rank is reached');
- return {seed,finish,day:s.day,gold:s.gold,lowestGold,buys,saturation,rep:s.rep,rank:J.rankOf(s),rankDay,book:Object.keys(s.book.e).length,marks:Object.keys(s.book.m).length,early,late:luxury(s,'pendant','lunar','trio')};
+ return {seed,finish,day:s.day,gold:s.gold,lowestGold,buys,saturation,rep:s.rep,rank:J.rankOf(s),rankDay,friend:Math.max(...J.CLIENTS.map(p=>J.bondLevel(s,p.id))),helpers:J.CLIENTS.filter(p=>J.privileged(s,p.id)).length,letters:s.mail.length,book:Object.keys(s.book.e).length,marks:Object.keys(s.book.m).length,early,late:luxury(s,'pendant','lunar','trio')};
 }
 // The same saved model, restored and sold sixty times: reputation must not be farmed by repetition.
 // Only this probe gets coins for its materials.
@@ -59,7 +59,7 @@ const repeat=Array.from({length:20},(_,i)=>monotone(i+1));assert.ok(Math.max(...
 const s=J.newGame(11),d=J.makeDesign('pendant','oval','silver');d.gems.push({kind:'amethyst',x:50,y:49,size:3,cut:'round'});addPolish(d,[{x:50,y:50}],60);
 const item={id:'probe',design:d},buyer={client:'bren',budget:10000},raw=J.rawValue(d),fresh=J.quote(s,item,buyer).price;s.demand.push({signature:J.fingerprint(d),sales:4,until:s.tradeDay+7});const tired=J.quote(s,item,buyer).price;assert.ok(fresh>raw);assert.ok(tired<raw);assert.equal(tired,Math.round(fresh*.25));
 const dayRange=[Math.min(...runs.map(r=>r.day)),Math.max(...runs.map(r=>r.day))],goldRange=[Math.min(...runs.map(r=>r.gold)),Math.max(...runs.map(r=>r.gold))];
-const span=fn=>{const v=runs.map(fn);return [Math.min(...v),Math.max(...v)];},ranks={rep:span(r=>r.rep),firstRankDay:span(r=>r.rankDay),secondRank:{pieces:span(r=>r.early.crafted),day:span(r=>r.early.at)},finalRank:span(r=>r.rank),book:span(r=>r.book),marks:span(r=>r.marks),repeated:[Math.min(...repeat),Math.max(...repeat)]};
+const span=fn=>{const v=runs.map(fn);return [Math.min(...v),Math.max(...v)];},ranks={rep:span(r=>r.rep),firstRankDay:span(r=>r.rankDay),secondRank:{pieces:span(r=>r.early.crafted),day:span(r=>r.early.at)},finalRank:span(r=>r.rank),book:span(r=>r.book),marks:span(r=>r.marks),repeated:[Math.min(...repeat),Math.max(...repeat)]},friends={top:span(r=>r.friend),helpers:span(r=>r.helpers),letters:span(r=>r.letters)};
 // Each probe must sell in at least 90% of the runs: a gold ring as soon as the second rank is reached, a moon-alloy pendant after 60 pieces.
 const share=key=>runs.filter(r=>r[key].day).length/runs.length,range=key=>{const v=runs.map(r=>r[key].fair).filter(Boolean);return [Math.min(...v),Math.max(...v)];};
 const lux={early:{share:share('early'),fair:range('early')},late:{share:share('late'),fair:range('late')}};
@@ -71,7 +71,7 @@ const report=`# Экономика ювелирной мастерской v8
 
 Команда: \`npm run balance\`. Это проверка правил и достижимости развития; интерес и удобство рисования нужно проверять с игроками.
 
-120 сценариев: 40 начальных seed и обработка 25%, 60%, 95% поверхности. В каждом создано и продано 60 изделий, открыты все шесть навыков, оружейные оправы и три места находок. Бот играет через те же обёртки \`P.*\`, что и интерфейс, поэтому в сценариях работают книга мастера, репутация, звания, знаток дня и бюджеты званий. Монеты, материалы и опыт не добавлялись напрямую: использованы реальные закупки, сбор, изготовление и продажи. После каждого изделия сохранение перечитано валидатором и нормализацией. Дни: ${fmt(dayRange)}; итоговые монеты: ${fmt(goldRange)}. Все запасы и остаток монет остаются неотрицательными.
+120 сценариев: 40 начальных seed и обработка 25%, 60%, 95% поверхности. В каждом создано и продано 60 изделий, открыты все шесть навыков, оружейные оправы и три места находок. Бот играет через те же обёртки \`P.*\`, что и интерфейс, поэтому в сценариях работают книга мастера, репутация, звания, знаток дня, бюджеты званий, дружба и помощь жителей. Монеты, материалы и опыт не добавлялись напрямую: использованы реальные закупки, сбор, изготовление и продажи. После каждого изделия сохранение перечитано валидатором и нормализацией. Дни: ${fmt(dayRange)}; итоговые монеты: ${fmt(goldRange)}. Все запасы и остаток монет остаются неотрицательными.
 
 Контрольный серебряный кулон: материалы ${raw} монет, полная цена для подходящего покупателя ${fresh}, после насыщения ${tired}. Продажа одного и того же изделия после четвёртой полной продажи не покрывает закупку материалов. Спрос оценивает нормализованную форму, вырезы, композицию гравировки, рун и расположение камней. Смена названия, толщины, материала, цвета, зеркальное отражение и малое смещение не сбрасывают семью дизайна.
 
@@ -87,6 +87,10 @@ const report=`# Экономика ювелирной мастерской v8
 
 Бюджеты покупателей растут на 8 монет за каждое созданное изделие без верхнего предела, и к ним прибавляется бонус звания ${bonus}, чтобы вершина развития окупалась. Знаток дня (со звания «Ювелир лавки») получает кошелёк ×1,6 и платит за свежий для порта дизайн полную цену ×1,2; общий множитель всех таких надбавок ограничен ×1,4. Пробник роскоши проверяет продажи дорогих вещей на копии игры с нужными навыками и материалами: золотое кольцо с двумя алмазами, сделанное сразу по достижении второго звания, кто-то из гостей берёт по полной цене не позже чем за четыре дня в ${Math.round(lux.early.share*100)}% прогонов (полная цена от ${lux.early.fair[0]} до ${lux.early.fair[1]} монет); лунный кулон с тремя алмазами после 60 изделий — в ${Math.round(lux.late.share*100)}% (от ${lux.late.fair[0]} до ${lux.late.fair[1]} монет). Порог проверки — 90%.
 
+## Дружба и цеховой смотр
+
+Бот продаёт тем, кто больше заплатит, и не выполняет заказов, поэтому дружба у него растёт только за полные продажи по вкусу (+1 от 60%, +2 от 80%). К 60-му изделию самая крепкая дружба — ${fmt(friends.top)}-я ступень из пяти; третьей ступени, на которой житель начинает помогать мастерской, достигают ${fmt(friends.helpers)} из восьми жителей; писем к концу — ${fmt(friends.letters)}. Помощь жителей только добавляет: скидки Ады (−10% на металлы) и Серы (−15% на изумруды и сапфиры), камни Миры у двери, лишнее серебро, медь и пара камней на поисках. Проверка доступности замены материалов в прогонах по-прежнему считает полную цену поставщика, поэтому она осталась строже, чем сама игра. Цеховой смотр бот не посещает: медали и ленты проверяются тестами (\`tests/guild.test.mjs\`), лента прибавляет к цене 5% за ступень в общем потолке ×1,4.
+
 ## Оценка и запасной путь
 
 Мастерство зависит от целостности контура, устойчивости камней, гравировки и обработанной площади. Художественная оценка описывает симметрию, сдержанность, насыщенность, текучесть формы и сочетание камней; вкусы жителей различаются. Магические свойства возникают при связи поддерживаемого камня с руной. Это правила игры, а не универсальная оценка красоты.
@@ -94,4 +98,4 @@ const report=`# Экономика ювелирной мастерской v8
 При пустом кошельке берег доступен бесплатно и даёт три порции меди и камень. Небольшую свободную оправу можно сделать из одной порции меди и продать, затем покупать материалы или продолжать собирать находки.
 `;
 if(process.argv.includes('--write')){await mkdir(new URL('../docs/',import.meta.url),{recursive:true});await writeFile(new URL('../docs/BALANCE.md',import.meta.url),report);}
-console.log(JSON.stringify({playthroughs:runs.length,creations:runs.length*60,finish:[.25,.6,.95],dayRange,goldRange,control:{replacement:raw,fresh,saturated:tired},ranks,luxury:lux,allPassed:true},null,1));
+console.log(JSON.stringify({playthroughs:runs.length,creations:runs.length*60,finish:[.25,.6,.95],dayRange,goldRange,control:{replacement:raw,fresh,saturated:tired},ranks,friends,luxury:lux,allPassed:true},null,1));

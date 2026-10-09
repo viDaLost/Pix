@@ -60,7 +60,9 @@ const P={
  book:'<path d="M12 6.6C10 5 7.4 4.6 4 5v13.4c3.4-.4 6 0 8 1.6 2-1.6 4.6-2 8-1.6V5c-3.4-.4-6 0-8 1.6z"/><path d="M12 6.6V20"/>',
  lamp:'<path d="M12 2.8v3"/><path d="M8.8 9.2h6.4L14 5.8h-4z"/><path d="M8.8 9.2c0 4.3 1.4 6.8 3.2 6.8s3.2-2.5 3.2-6.8"/><path d="M10 19.5h4"/>',
  vase:'<path d="M9 13h6l-.8 7.5H9.8z"/><path d="M12 13V8.6"/><path d="M12 8.6c-1.9-2.7-.2-5 0-5.2.2.2 1.9 2.5 0 5.2z"/><path d="M10.3 12.2c-2.5-.2-3.8-1.9-3.8-3.7 1.7 0 3.5 1 3.8 3.7zM13.7 12.2c.3-2.7 2.1-3.7 3.8-3.7 0 1.8-1.3 3.5-3.8 3.7z"/>',
- frame:'<rect x="3.5" y="5" width="17" height="14" rx="1.5"/><path d="M6.8 15.5l3.2-4.3 2.6 2.6 2.4-3.3 2.4 5"/>'
+ frame:'<rect x="3.5" y="5" width="17" height="14" rx="1.5"/><path d="M6.8 15.5l3.2-4.3 2.6 2.6 2.4-3.3 2.4 5"/>',
+ letter:'<rect x="3.5" y="6" width="17" height="12.5" rx="1.5"/><path d="M4 7l8 6.2L20 7"/><circle cx="12" cy="15.8" r="1.6"/>',
+ ribbon:'<circle cx="12" cy="9" r="5"/><circle cx="12" cy="9" r="2"/><path d="M8.6 12.7L6.5 20.5l3-1.6 1.8 2.6 1.3-6.5M15.4 12.7l2.1 7.8-3-1.6-1.8 2.6-1.3-6.5"/>'
 };
 export const icon=(name,cls='')=>`<svg class="icon${cls?' '+cls:''}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${P[name]||P.info}</svg>`;
 export const ELEMENT_ICON={ember:'flame',ward:'shield',growth:'leaf',tide:'drop',focus:'eye',light:'moon'};

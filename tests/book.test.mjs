@@ -34,10 +34,10 @@ test('a layout counts only when at least half of its stones stand',()=>{
  for(const n of[1,2,3,5]){d.gems=cross.slice(0,n);assert.equal(P.catalogKeys(d).includes('layout:cross'),n>=3,`${n} of 5`);}
  for(const l of LAYOUTS)assert.ok(Number.isInteger(l.spots)&&l.spots>=1);
 });
-test('the chapters list 139 keys and 19 marks open today; friendship and ribbon marks wait for their part of the game',()=>{
+test('the chapters list 139 keys and all 21 marks, 160 entries in all',()=>{
  const six=P.CHAPTERS.filter(c=>c.id!=='marks').reduce((n,c)=>n+P.chapterKeys(c.id).length,0);assert.equal(six,139);
  assert.deepEqual(['forms','motifs','stones','layouts','runes','metals'].map(id=>P.chapterKeys(id).length),[56,14,18,6,21,24]);
- assert.equal(P.MARKS.length,21);assert.equal(P.chapterKeys('marks').length,19);assert.ok(!P.chapterKeys('marks').some(id=>['friend','gold-ribbon'].includes(id)));assert.equal(P.bookTotal(),158);
+ assert.equal(P.MARKS.length,21);assert.equal(P.chapterKeys('marks').length,21);assert.ok(['friend','gold-ribbon'].every(id=>P.chapterKeys('marks').includes(id)));assert.equal(P.bookTotal(),160);
  for(const c of P.CHAPTERS)for(const k of P.chapterKeys(c.id))assert.ok(P.keyName(k)&&!P.keyName(k).includes('undefined'),k);
  assert.equal(P.keyName('form:brooch.crescent'),'Полумесяц · брошь');assert.equal(P.keyName('pair:ember+focus'),'Тепло и ясность');assert.equal(P.keyName('form:sword.oval'),'Готовая оправа · меч');
 });
@@ -82,7 +82,7 @@ test('marks: eight earned by direct scenarios, each once, and checking again cha
  const rep=s2.rep;assert.deepEqual(P.checkMarks(s2,'sell',{q:{fit:100},before:1,buyer:{client:'mira'},item:{design:free}}).map(m=>m.id),['comeback']);assert.equal(s2.rep,rep+3);
  for(const ev of['sell','complete','deliver','book'])P.checkMarks(s2,ev,{q:{fit:100},before:1,buyer:{client:'mira'},item:{design:free},d:free,e:J.evaluate(free)});
  const once=J.serialize(s2);for(const ev of['sell','complete','deliver','book'])P.checkMarks(s2,ev,{q:{fit:100},before:1,buyer:{client:'mira'},item:{design:free},d:free,e:J.evaluate(free)});assert.equal(J.serialize(s2),once,'idempotent');
- assert.ok(!('friend'in s2.book.m)&&!('gold-ribbon'in s2.book.m),'marks of later parts are never earned yet');
+ assert.ok(!('friend'in s2.book.m)&&!('gold-ribbon'in s2.book.m),'friendship and the guild review have their own events');
 });
 test('the hidden mark of the cartographer and the halo of diamonds',()=>{
  const s=rich(P.newGame(8)),heart=J.makeDesign('pendant','heart','lunar');

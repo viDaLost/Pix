@@ -22,8 +22,8 @@ export const VELVETS=[
 ];
 // Things for the shop itself, bought once for coins; they only change how the shop looks.
 export const DECOR=[{id:'lamp',name:'Латунная лампа',desc:'Тёплый свет над прилавком',price:180},{id:'flowers',name:'Цветы в кувшине',desc:'Букет на столике у окна',price:260},{id:'map',name:'Карта порта в раме',desc:'Старая карта Велена на стене лавки',price:400}];
-// Marks of the workshop, each earned once. hidden: shown as «???» until earned. soon: belongs to a later part of the
-// game (friendship, the guild review) and is neither shown nor counted yet.
+// Marks of the workshop, each earned once. hidden: shown as «???» until earned. soon: belongs to a part of the game
+// still to come and is neither shown nor counted yet (none at the moment).
 export const MARKS=[
  {id:'first-piece',name:'Первая работа',desc:'Закончить первое изделие',event:'complete',test:s=>s.crafted>=1},
  {id:'awakened',name:'Пробуждённый камень',desc:'Пробудить руной хотя бы один камень',event:'complete',test:(s,c)=>c.e.connections>=1},
@@ -41,10 +41,10 @@ export const MARKS=[
  {id:'motley-day',name:'Пёстрый день',desc:'Продать за один день четыре разных вида',event:'sell',test:s=>s.daily.types.length>=4},
  {id:'comeback',name:'Снова в деле',desc:'Продать вещь, когда в кошельке меньше 10 монет',event:'sell',test:(s,c)=>c.before<10},
  {id:'trusted',name:'Доверие жителей',desc:'Выполнить пять личных заказов',event:'deliver',test:s=>s.stats.orders>=5},
- {id:'gold-ribbon',name:'Золотая лента',desc:'Получить золото на цеховом смотре',soon:true,test:()=>false},
+ {id:'gold-ribbon',name:'Золотая лента',desc:'Получить золото на цеховом смотре',event:'contest',test:(s,c)=>c.medal===3},
  {id:'collector-1',name:'Собиратель',desc:'Двадцать пять записей в книге',event:'book',test:s=>Object.keys(s.book.e).length>=25},
  {id:'collector-2',name:'Летописец',desc:'Семьдесят пять записей в книге',event:'book',test:s=>Object.keys(s.book.e).length>=75},
- {id:'friend',name:'Друг мастерской',desc:'Стать близким другом кого-то из жителей',soon:true,test:()=>false},
+ {id:'friend',name:'Близкий друг',desc:'Дойти до пятой ступени дружбы с кем-то из жителей',event:'bond',test:s=>J.CLIENTS.some(p=>J.bondLevel(s,p.id)>=5)},
  {id:'cartographer',name:'Сердце картографа',desc:'Элин купила сердце из лунного сплава, которое пришлось ей по душе',hidden:true,event:'sell',test:(s,c)=>c.buyer.client==='elin'&&c.item.design.template==='heart'&&c.item.design.metal==='lunar'&&c.q.fit>=90}
 ];
 export const activeMarks=()=>MARKS.filter(m=>!m.soon);
