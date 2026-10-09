@@ -1,10 +1,10 @@
-import {px,polygon,panel,texture,pixelLine,canvas,sparkle} from './pixel.js';
+import {px,polygon,panel,texture,pixelLine,canvas,sparkle,shade} from './pixel.js';
 import {paintCharacter} from './characters.js';
-import {drawJewel} from './jewel-art.js';
-import {CLIENTS,AREAS,METALS,GEMS} from './jewelry.js';
+import {drawJewel,velvetTone} from './jewel-art.js';
+import {CLIENTS,AREAS,METALS,GEMS,rankOf} from './jewelry.js';
 import {createActor,moveActor,updateActor} from './motion.js';
 const backgrounds=new Map(),jeweler={id:'smith',outfit:'gentleman',color:'#527f91',hair:'#51382e',skin:'#d9a17b',beard:true};
-function base(shop){const c=canvas(480,260),g=c.getContext('2d');px(g,0,0,480,260,'#1d2a33');px(g,8,8,464,244,'#6d4f3a');
+function base(shop,{sign=false,decor=[]}={}){const c=canvas(480,260),g=c.getContext('2d');px(g,0,0,480,260,'#1d2a33');px(g,8,8,464,244,'#6d4f3a');
  for(let y=12;y<137;y+=23)for(let x=12;x<468;x+=35){panel(g,x+(y%46?0:-15),y,34,22,'#40656a');texture(g,x,y,33,21,['#7fa197','#2f5257'],.1,4);}
  for(let y=138;y<250;y+=18){px(g,12,y,456,17,y%36?'#97693f':'#865b37');for(let x=12+(y%36?24:0);x<468;x+=69){pixelLine(g,x,y,x,y+15,'#654a3c');px(g,x+5,y+3,42,1,'#c99867');texture(g,x+2,y+2,65,12,['#78513c','#ba8f61'],.05,7);}}
  for(const x of[18,160,453]){panel(g,x,10,9,236,'#825b45');px(g,x+2,12,2,230,'#c19569');}
@@ -17,11 +17,20 @@ function base(shop){const c=canvas(480,260),g=c.getContext('2d');px(g,0,0,480,26
  panel(g,184,137,31,26,'#aa8358');px(g,188,141,23,18,'#e8d4a8');pixelLine(g,192,156,204,146,'#847057');sparkle(g,204,146,'#bf9463',3);
  pixelLine(g,222,136,222,159,'#d4b979',2);pixelLine(g,212,143,232,143,'#d4b979',2);pixelLine(g,213,143,213,153,'#9e8a60');pixelLine(g,231,143,231,153,'#9e8a60');px(g,208,154,12,2,'#dec891');px(g,226,154,12,2,'#dec891');
  panel(g,40,212,31,24,'#6f7556');polygon(g,[[54,215],[43,196],[52,204],[55,185],[60,208],[66,200],[59,218]],'#92bf78');
- panel(g,12,247,456,6,'#ac8556');return c;
+ panel(g,12,247,456,6,'#ac8556');
+ if(shop)furnish(g,sign,decor);return c;
+}
+// The rank sign over the shelves and the furnishings bought for the shop.
+function furnish(g,sign,decor){
+ if(decor.includes('map')){panel(g,309,40,24,30,'#7a5a3c');px(g,312,43,18,24,'#e6d3a3');polygon(g,[[312,52],[318,47],[323,50],[329,45],[329,66],[312,66]],'#9fbf95');pixelLine(g,313,60,328,55,'#6e9aa0');px(g,320,49,2,2,'#b4553f');px(g,326,61,1,1,'#3e3428');px(g,314,44,4,1,'#c9b083');}
+ if(decor.includes('flowers')){for(const[x,y,k]of[[108,104,'#e08d7d'],[115,98,'#f2d69a'],[122,101,'#c792aa'],[127,107,'#e08d7d'],[112,110,'#c792aa'],[119,107,'#f2d69a'],[104,112,'#f2d69a']]){pixelLine(g,x,y+2,116,118,'#5f8a5a');px(g,x-2,y-1,5,5,k);px(g,x-1,y,3,3,shade(k,30));px(g,x,y+1,1,1,'#fff4d6');}px(g,103,116,4,2,'#78a46c');px(g,127,114,4,2,'#78a46c');panel(g,108,116,17,16,'#6f8fa0');px(g,111,119,11,2,'#a9c7d2');px(g,112,124,2,5,'#a9c7d2');}
+ if(decor.includes('lamp')){px(g,169,62,8,2,'#3a2a20');px(g,175,62,2,4,'#c9a35e');panel(g,171,66,10,14,'#b08a4a');px(g,174,69,4,8,'#ffd58a');px(g,175,70,2,5,'#fff4c5');px(g,172,80,8,2,'#7a5a34');}
+ if(sign){panel(g,198,8,92,15,'#6a4630');px(g,201,11,86,9,'#2a1c15');g.save();g.fillStyle='#e9c47a';g.font='bold 7px Georgia, serif';g.textAlign='center';g.textBaseline='middle';g.fillText('ПОСТАВЩИК ДВОРА',244,16);g.restore();px(g,195,13,3,3,'#d7b072');px(g,290,13,3,3,'#d7b072');}
 }
 // Window shafts, a candle and drifting dust give the rooms one consistent light source.
-function light(c,shop,time){
+function light(c,shop,time,lamp=false){
  c.save();c.globalCompositeOperation='lighter';
+ if(lamp){const glow=c.createRadialGradient(176,74,1,176,74,70);glow.addColorStop(0,`rgba(255,200,120,${.26+.04*Math.sin(time*.006)})`);glow.addColorStop(1,'rgba(255,200,120,0)');c.fillStyle=glow;c.fillRect(0,0,480,260);}
  for(const x of[35,334]){const g=c.createLinearGradient(x,30,x+120,250);g.addColorStop(0,'rgba(255,236,190,.16)');g.addColorStop(1,'rgba(255,236,190,0)');c.fillStyle=g;c.beginPath();c.moveTo(x+7,32);c.lineTo(x+97,32);c.lineTo(x+170,250);c.lineTo(x+60,250);c.closePath();c.fill();}
  const candle=shop?[291,150]:[398,168],flicker=.85+.15*Math.sin(time*.011)*Math.sin(time*.0037),glow=c.createRadialGradient(candle[0],candle[1],2,candle[0],candle[1],90);glow.addColorStop(0,`rgba(255,184,96,${.3*flicker})`);glow.addColorStop(1,'rgba(255,184,96,0)');c.fillStyle=glow;c.fillRect(0,0,480,260);
  for(let i=0;i<14;i++){const x=(60+i*29+Math.sin(time*.0004+i)*14)%460+10,y=(40+((time*.008+i*37)%190));c.fillStyle=`rgba(255,240,200,${.25+.2*Math.sin(time*.003+i)})`;c.fillRect(Math.round(x),Math.round(y),1,1);}
@@ -31,9 +40,10 @@ function light(c,shop,time){
 export class AtelierScene{
  constructor(){this.thumbs=new Map();this.actors=new Map();this.time=0;this.main=createActor(236,228);this.lastBuyer=null;this.art=canvas(160,160);this.artDesign=null;this.artRev=-1;}
  // A draft changes in place while it is dragged, so its picture is keyed by the object and the editor revision.
- artwork(design,rev=0){if(design!==this.artDesign||rev!==this.artRev){this.art.getContext('2d').clearRect(0,0,160,160);drawJewel(this.art.getContext('2d'),design,{size:160});this.artDesign=design;this.artRev=rev;}return this.art;}
+ artwork(design,rev=0){if(design!==this.artDesign||rev!==this.artRev||velvetTone()!==this.artTone){this.art.getContext('2d').clearRect(0,0,160,160);drawJewel(this.art.getContext('2d'),design,{size:160});this.artDesign=design;this.artRev=rev;this.artTone=velvetTone();}return this.art;}
  paint(c,state,{shop=false,design=null,rev=0,stock=[],working=false,tool='engrave',buyerId=null,time=0,dt=.03}={}){
-  if(!backgrounds.has(shop))backgrounds.set(shop,base(shop));c.clearRect(0,0,480,260);c.drawImage(backgrounds.get(shop),0,0);
+  const sign=shop&&rankOf(state)>=4,decor=shop&&Array.isArray(state.cosmetics?.decor)?state.cosmetics.decor:[],key=shop?['shop',sign?'sign':'',...decor].join('|'):'atelier';
+  if(!backgrounds.has(key))backgrounds.set(key,base(shop,{sign,decor}));c.clearRect(0,0,480,260);c.drawImage(backgrounds.get(key),0,0);
   if(shop){
    const guests=state.customers.filter(b=>!b.served),chosen=guests.find(b=>b.id===buyerId)||guests[0],ids=new Set(guests.slice(0,3).map(b=>b.id));if(chosen)ids.add(chosen.id);
    for(const [id,a]of this.actors)if(!ids.has(id))this.actors.delete(id);
@@ -51,7 +61,7 @@ export class AtelierScene{
    if(design){c.imageSmoothingEnabled=false;c.drawImage(this.artwork(design,rev),261,178,43,27);}
    if(working){sparkle(c,268+Math.sin(time*.016)*5,186,tool==='rune'?'#a9e9df':'#f8dc8e',Math.floor(time/120)%2+1);}
   }
-  light(c,shop,time);
+  light(c,shop,time,decor.includes('lamp'));
  }
  thumb(design){let art=this.thumbs.get(design);if(!art){art=canvas(64,64);drawJewel(art.getContext('2d'),design,{size:64,background:false});this.thumbs.set(design,art);if(this.thumbs.size>48)this.thumbs.delete(this.thumbs.keys().next().value);}return art;}
 }
@@ -69,5 +79,8 @@ export function paintMap(c,state,time=0){
  for(const [x,y]of[[356,17],[383,9],[413,18]]){polygon(c,[[x-31,y+60],[x,y],[x+37,y+60]],'#779b9e');polygon(c,[[x-10,y+20],[x,y],[x+15,y+24]],'#dae5cf');}
  panel(c,35,192,48,35,'#956e4e');polygon(c,[[29,192],[59,168],[90,192]],'#476879');px(c,52,207,13,20,'#dfbd83');sparkle(c,60,183,'#ffebac',4);
  for(const a of AREAS){sparkle(c,a.x,a.y,state.crafted>=a.need?'#ffe2a0':'#59777a',6);}
+ // The lighthouse on its rock is always there; its fire is lit for the keeper of «Сияние».
+ polygon(c,[[440,166],[446,156],[460,155],[466,166]],'#6f7f7c');px(c,444,165,20,2,'#59686a');px(c,449,128,9,28,'#d9d2bd');px(c,449,136,9,3,'#b4553f');px(c,449,146,9,3,'#b4553f');px(c,447,124,13,5,'#5a5048');px(c,450,118,7,6,rankOf(state)>=5?'#ffe7a0':'#3e4a52');polygon(c,[[448,118],[453,112],[459,118]],'#5a5048');
+ if(rankOf(state)>=5){const a=.25+.075*(1+Math.sin(time*.003));c.save();c.globalAlpha=a;polygon(c,[[453,121],[392,104],[392,138]],'#fff1b8');polygon(c,[[454,121],[480,112],[480,130]],'#fff1b8');c.restore();}
  px(c,376,204,51,4,'#875d43');polygon(c,[[402,201],[402,169],[423,200]],'#eedeb1');pixelLine(c,402,170,402,209,'#715d4b',2);sparkle(c,443,130+Math.sin(time*.002)*2,'#d1eeea',2);
 }

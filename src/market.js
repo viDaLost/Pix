@@ -11,3 +11,6 @@ export function showcase(s,{buyerId=null,itemId=null,sort='new',policy='fair'}={
 export const deliverable=s=>s.requests.some(r=>!r.done&&s.stock.some(i=>J.matches(i.design,r)));
 // For every open order, the first piece that fits it and is still in fresh demand.
 export const orderPieces=s=>new Map(s.requests.map(r=>[r.id,r.done?null:s.stock.find(i=>J.matches(i.design,r)&&!J.demandInfo(s,i.design).remaining)||null]));
+// While the connoisseur of the day is chosen, the pieces still new to the port get ✦ in the gallery. Each design's
+// answer is cached and afterwards compares itself with new ledger entries only.
+export const freshMarks=(s,buyer)=>buyer?.novel?new Set(s.stock.filter(i=>J.isFresh(s,i.design)).map(i=>i.id)):null;

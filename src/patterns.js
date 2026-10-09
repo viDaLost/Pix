@@ -17,8 +17,9 @@ export const PATTERNS=[
  {id:'rosette',name:'Розетка',need:5,hint:'Лепестки вокруг центра'},
  {id:'stars',name:'Звёзды',need:5,hint:'Россыпь звёзд'}
 ];
+// spots: how many stones a full layout places; the book counts a layout when at least half of them stand.
 export const LAYOUTS=[
- {id:'solo',name:'Центр'},{id:'pair',name:'Пара'},{id:'trio',name:'Триада'},{id:'cross',name:'Крест'},{id:'halo',name:'Ореол'},{id:'column',name:'Столбик'}
+ {id:'solo',name:'Центр',spots:1},{id:'pair',name:'Пара',spots:2},{id:'trio',name:'Триада',spots:3},{id:'cross',name:'Крест',spots:5},{id:'halo',name:'Ореол',spots:9},{id:'column',name:'Столбик',spots:3}
 ];
 export const patternUnlocked=(s,id)=>(s.crafted||0)>=(PATTERNS.find(p=>p.id===id)?.need??99);
 function signedArea(points){let n=0;for(let i=0;i<points.length;i++){const a=points[i],b=points[(i+1)%points.length];n+=a.x*b.y-a.y*b.x;}return n/2;}
@@ -82,7 +83,7 @@ export function patternStrokes(d,id,{variant=0,width=.9}={}){
  const pattern=PATTERNS.find(p=>p.id===id),make=GENERATORS[id];if(!pattern||!make)throw new AtelierError('Неизвестный узор.');
  if(d.outline.length<3)throw new AtelierError('Сначала замкни контур изделия.');
  const kind=pattern.kind||'engrave',lines=make(d,variant).filter(l=>l.length>=2),strokes=[];let points=d.strokes.reduce((n,s)=>n+s.points.length,0),room=156-d.strokes.length;
- for(const line of lines)for(const run of clip(d,line)){if(room<=0||points+run.length>7800)break;strokes.push({kind,width:Math.max(.5,Math.min(2.5,width)),points:run});room--;points+=run.length;}
+ for(const line of lines)for(const run of clip(d,line)){if(room<=0||points+run.length>7800)break;strokes.push({kind,width:Math.max(.5,Math.min(2.5,width)),points:run,m:id});room--;points+=run.length;}
  if(!strokes.length)throw new AtelierError(room<=0||points>7700?'Для узора нет места: убери часть гравировки.':'Узор не помещается на эту форму.');
  return strokes;
 }
@@ -98,7 +99,7 @@ export function layoutGems(d,id,{kind='garnet',size=3,cut='round'}={}){
  if(id==='column')spots=[-1,0,1].map(k=>({x:c.x,y:c.y+k*Math.max(gap*.75,h*.22),size:k?size*.75:size}));
  if(!spots.length)throw new AtelierError('Неизвестная раскладка.');
  const gems=[...d.gems],added=[],ratio=(g,q)=>((g.cut==='round'?1:1.4)+(q.cut==='round'?1:1.4))/2;
- for(const s of spots){if(gems.length>=16)break;const g={kind,x:r2(Math.max(1,Math.min(99,s.x))),y:r2(Math.max(1,Math.min(99,s.y))),size:r2(Math.max(1.5,Math.min(7,s.size))),cut:s.size<size?'round':cut};
+ for(const s of spots){if(gems.length>=16)break;const g={kind,x:r2(Math.max(1,Math.min(99,s.x))),y:r2(Math.max(1,Math.min(99,s.y))),size:r2(Math.max(1.5,Math.min(7,s.size))),cut:s.size<size?'round':cut,l:id};
   if(support(g,d)>.75&&gems.every(q=>Math.hypot(g.x-q.x,(g.y-q.y)/ratio(g,q))>(g.size+q.size)*.85)&&!d.holes.some(hole=>inside(g,hole))){gems.push(g);added.push(g);}}
  if(!added.length)throw new AtelierError('Камни не помещаются: уменьши размер или расширь оправу.');
  return added;

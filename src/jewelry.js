@@ -16,6 +16,10 @@ export const GEMS={garnet:{name:'Гранат',color:'#c95668',light:'#ffbdaf',p
 export const ELEMENTS={ember:'Тепло',ward:'Защита',growth:'Жизнь',tide:'Спокойствие',focus:'Ясность',light:'Свет'};
 export const TYPES=[{id:'pendant',name:'Кулон',short:'Кулон'},{id:'ring',name:'Кольцо',short:'Кольцо'},{id:'brooch',name:'Брошь',short:'Брошь'},{id:'amulet',name:'Магический амулет',short:'Амулет'},{id:'sword',name:'Инкрустация меча',short:'Меч'},{id:'staff',name:'Навершие посоха',short:'Посох'}];
 export const TOOLS=[{id:'eye',name:'Глаз мастера',cost:35,xp:10,parents:[],desc:'Показывает причины оценки и точную цену покупателя.'},{id:'gold',name:'Золотое дело',cost:65,xp:20,parents:[],desc:'Золото и алмаз у поставщика.'},{id:'facets',name:'Новые огранки',cost:50,xp:20,parents:[],desc:'Овальная и каплевидная огранка, крупные камни.'},{id:'alchemy',name:'Резонанс рун',cost:75,xp:35,parents:['facets'],desc:'+25% силы связанных рун и доступ к лунным материалам.'},{id:'mounts',name:'Оружейные оправы',cost:80,xp:35,parents:['gold'],desc:'Инкрустация готовых мечей и наверший посохов.'},{id:'signature',name:'Имя мастера',cost:110,xp:65,parents:['eye'],desc:'+10% к цене действительно обработанных изделий.'}];
+// Reputation only grows. Each rank opens something and adds to every buyer's purse; the growth of purses with the
+// pieces made stays uncapped, so the top of the skill tree keeps selling.
+export const RANKS=[{name:'Подмастерье',rep:0,budget:0,unlocks:[]},{name:'Ювелир лавки',rep:20,budget:40,unlocks:['Знаток дня: раз в день один гость ищет то, чего в порту ещё не видели, и платит за новое на пятую часть дороже']},{name:'Мастер цеха',rep:100,budget:120,unlocks:['Основы «Солнце», «Арка», «Ракушка» и «Линза» для кулонов, брошей и амулетов','Можно хранить 60 моделей вместо 40']},{name:'Старшина цеха',rep:240,budget:250,unlocks:['Четвёртый личный заказ','Бархат «Латунь» для витрины']},{name:'Поставщик двора',rep:450,budget:450,unlocks:['Табличка «Поставщик двора» над прилавком']},{name:'Хранитель Сияния',rep:750,budget:700,unlocks:['На мысе зажигается маяк']}];
+export function rankOf(s){const rep=Number.isInteger(s?.rep)&&s.rep>0?s.rep:0;let r=0;while(r+1<RANKS.length&&rep>=RANKS[r+1].rep)r++;return r;}
 const tastes={mira:{style:'minimal',metal:'silver',element:'light',wants:['pendant','ring'],line:'Лёгкая оправа и ясный камень. Ценю сдержанность.'},bren:{style:'symmetry',metal:'silver',element:'ward',wants:['ring','amulet'],line:'Строгая симметрия. Защитная руна будет кстати.'},ada:{style:'ornate',metal:'gold',element:'ward',wants:['brooch','pendant'],line:'Люблю богатые узоры и цветные камни.'},elin:{style:'organic',metal:'lunar',element:'focus',wants:['amulet','pendant'],line:'Ищу текучие формы, напоминающие берег и волны.'},rowan:{style:'minimal',metal:'copper',element:'growth',wants:['ring','brooch'],line:'Простой, прочный подарок. Без лишней тяжести.'},sera:{style:'contrast',metal:'silver',element:'growth',wants:['amulet','brooch'],line:'Мне нравятся сочетания разных камней и живые узоры.'},nora:{style:'organic',metal:'copper',element:'light',wants:['pendant','amulet'],line:'Листья, капли, волны — и немного света в пути.'},daro:{style:'ornate',metal:'gold',element:'focus',wants:['brooch','ring'],line:'Собираю выразительные вещи с необычной гравировкой.'}};
 export const CLIENTS=PEOPLE.map(p=>({...p,...tastes[p.id]}));
 export const AREAS=[{id:'shore',name:'Берег',x:105,y:188,need:0,loot:['garnet','amethyst']},{id:'garden',name:'Сад аббатства',x:264,y:100,need:3,loot:['emerald','sapphire']},{id:'ridge',name:'Лунный кряж',x:395,y:57,need:8,loot:['moonstone','diamond']}];
@@ -28,7 +32,9 @@ function intersects(a,b,c,d){const cross=(u,v,w)=>(v.x-u.x)*(w.y-u.y)-(v.y-u.y)*
 export function simple(points){for(let i=0;i<points.length;i++)for(let j=i+2;j<points.length;j++){if(i===0&&j===points.length-1)continue;if(intersects(points[i],points[(i+1)%points.length],points[j],points[(j+1)%points.length]))return false;}return true;}
 function ellipse(cx,cy,rx,ry,n=24,turn=0){return Array.from({length:n},(_,i)=>({x:cx+Math.cos(turn+i*2*Math.PI/n)*rx,y:cy+Math.sin(turn+i*2*Math.PI/n)*ry}));}
 const round2=p=>({x:Math.round(p.x*100)/100,y:Math.round(p.y*100)/100});
-export const TEMPLATES=[{id:'oval',name:'Овал'},{id:'circle',name:'Круг'},{id:'drop',name:'Капля'},{id:'heart',name:'Сердце'},{id:'leaf',name:'Лист'},{id:'diamond',name:'Ромб'},{id:'shield',name:'Щит'},{id:'octagon',name:'Октагон'},{id:'flower',name:'Цветок'},{id:'star',name:'Звезда'},{id:'crescent',name:'Полумесяц'},{id:'free',name:'Свой контур'}];
+export const TEMPLATES=[{id:'oval',name:'Овал'},{id:'circle',name:'Круг'},{id:'drop',name:'Капля'},{id:'heart',name:'Сердце'},{id:'leaf',name:'Лист'},{id:'diamond',name:'Ромб'},{id:'shield',name:'Щит'},{id:'octagon',name:'Октагон'},{id:'flower',name:'Цветок'},{id:'star',name:'Звезда'},{id:'crescent',name:'Полумесяц'},{id:'sun',name:'Солнце',rank:2},{id:'arch',name:'Арка',rank:2},{id:'shell',name:'Ракушка',rank:2},{id:'lens',name:'Линза',rank:2},{id:'free',name:'Свой контур'}];
+export const templateOpen=(s,id)=>(TEMPLATES.find(t=>t.id===id)?.rank||0)<=rankOf(s);
+export const libraryLimit=s=>rankOf(s)>=2?60:40;
 // Rings keep a finger opening; weapon mounts are fixed blanks.
 export function templatesFor(type){if(type==='ring')return ['oval','octagon','flower','free'];if(['sword','staff'].includes(type))return ['oval','free'];return TEMPLATES.map(t=>t.id);}
 function templateOutline(template){
@@ -38,6 +44,11 @@ function templateOutline(template){
   if(template==='star')return Array.from({length:10},(_,i)=>{const a=-Math.PI/2+i*Math.PI/5,r=i%2?16:35;return {x:50+Math.cos(a)*r,y:53+Math.sin(a)*r};});
   if(template==='drop')return Array.from({length:30},(_,i)=>{const t=i*2*Math.PI/30;return {x:50+25*Math.sin(t)*Math.sin(t/2),y:50-34*Math.cos(t)};});
   if(template==='shield')return [{x:50,y:17},{x:63,y:19},{x:73,y:21},{x:73,y:40},{x:69,y:58},{x:60,y:72},{x:50,y:83},{x:40,y:72},{x:31,y:58},{x:27,y:40},{x:27,y:21},{x:37,y:19}];
+  // The blanks of the second rank differ from every older blank by at least 0.15 of the demand print, so a new blank is new to the port too.
+  if(template==='sun')return Array.from({length:40},(_,i)=>{const ray=Math.floor(i/5),k=i%5,a=-Math.PI/2+ray*Math.PI/4+(k?Math.PI/8*.6+(Math.PI/4-Math.PI/4*.6)*(k-1)/3:0),r=k?17:34;return {x:50+Math.cos(a)*r,y:50+Math.sin(a)*r};});
+  if(template==='arch'){const top=Array.from({length:13},(_,i)=>{const a=Math.PI-i*Math.PI/12;return {x:50+24*Math.cos(a),y:48-30*Math.sin(a)};}),door=Array.from({length:9},(_,i)=>{const a=i*Math.PI/8;return {x:50+12*Math.cos(a),y:52-12*Math.sin(a)};});return [{x:26,y:82},...top,{x:74,y:82},{x:62,y:82},...door,{x:38,y:82}];}
+  if(template==='shell')return [{x:50,y:74},...Array.from({length:41},(_,i)=>{const t=i/40,a=(320-100*t)*Math.PI/180,r=48-(1+Math.cos(10*Math.PI*t));return {x:50+r*Math.cos(a),y:74+r*Math.sin(a)};})];
+  if(template==='lens')return [...Array.from({length:17},(_,i)=>{const t=-.8774+i*.8774/8;return {x:50+41.63*Math.sin(t),y:76.63-41.63*Math.cos(t)};}),...Array.from({length:15},(_,i)=>{const t=.8774-(i+1)*.8774/8;return {x:50+41.63*Math.sin(t),y:23.37+41.63*Math.cos(t)};})];
   if(template==='crescent'){const outer=Array.from({length:19},(_,i)=>{const a=(60+i*240/18)*Math.PI/180;return {x:50+31*Math.cos(a),y:50+31*Math.sin(a)};}),r=Math.hypot(outer[0].x-66,outer[0].y-50),inner=Array.from({length:13},(_,i)=>{const a=Math.atan2(outer[18].y-50,outer[18].x-66)-(i+1)*(Math.atan2(outer[18].y-50,outer[18].x-66)-Math.atan2(outer[0].y-50,outer[0].x-66)+2*Math.PI)/14;return {x:66+r*Math.cos(a),y:50+r*Math.sin(a)};});return [...outer,...inner];}
   return null;
 }
@@ -55,14 +66,16 @@ export function makeDesign(type='pendant',template='oval',metal='copper'){
   if(type==='staff'&&template!=='free')outline=[{x:50,y:7},{x:67,y:19},{x:65,y:32},{x:57,y:42},{x:57,y:51},{x:43,y:51},{x:43,y:42},{x:35,y:32},{x:33,y:19}];
   return {type,template,metal,name:TYPES.find(t=>t.id===type).name,outline:outline.map(round2),holes:holes.map(h=>h.map(round2)),strokes:[],gems:[],polish:[],revision:0};
 }
+// A ready-made pattern marks its strokes (m) and a layout its stones (l) for the master's book; hand work has no mark.
+const LABEL=/^[a-z]{2,12}$/;
 const pointValid=p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y)&&p.x>=0&&p.x<=100&&p.y>=0&&p.y<=100;
 export function validateDesign(d,finished=false){
   check(d&&TYPES.some(t=>t.id===d.type)&&METALS[d.metal]&&TEMPLATES.some(t=>t.id===d.template)&&typeof d.name==='string'&&d.name.length<=48,'Повреждённое изделие.');
   check(Array.isArray(d.outline)&&d.outline.length<=300&&d.outline.every(pointValid),'Некорректный контур.');
   check(Array.isArray(d.holes)&&d.holes.length<=12&&d.holes.every(h=>Array.isArray(h)&&h.length>=3&&h.length<=160&&h.every(pointValid)),'Некорректные вырезы.');
-  check(Array.isArray(d.strokes)&&d.strokes.length<=160&&d.strokes.every(s=>['engrave','rune'].includes(s.kind)&&Number.isFinite(s.width)&&s.width>=.3&&s.width<=6&&Array.isArray(s.points)&&s.points.length>=2&&s.points.length<=500&&s.points.every(pointValid)),'Некорректная гравировка.');
+  check(Array.isArray(d.strokes)&&d.strokes.length<=160&&d.strokes.every(s=>['engrave','rune'].includes(s.kind)&&(s.m===undefined||LABEL.test(s.m))&&Number.isFinite(s.width)&&s.width>=.3&&s.width<=6&&Array.isArray(s.points)&&s.points.length>=2&&s.points.length<=500&&s.points.every(pointValid)),'Некорректная гравировка.');
   check(d.strokes.reduce((n,s)=>n+s.points.length,0)<=8000,'Слишком много линий. Убери часть гравировки.');
-  check(Array.isArray(d.gems)&&d.gems.length<=16&&d.gems.every(g=>GEMS[g.kind]&&pointValid(g)&&Number.isFinite(g.size)&&g.size>=1.5&&g.size<=7&&['round','oval','pear'].includes(g.cut)),'Некорректные камни.');
+  check(Array.isArray(d.gems)&&d.gems.length<=16&&d.gems.every(g=>GEMS[g.kind]&&(g.l===undefined||LABEL.test(g.l))&&pointValid(g)&&Number.isFinite(g.size)&&g.size>=1.5&&g.size<=7&&['round','oval','pear'].includes(g.cut)),'Некорректные камни.');
   check(Array.isArray(d.polish)&&d.polish.length<=144&&new Set(d.polish).size===d.polish.length&&d.polish.every(n=>Number.isInteger(n)&&n>=0&&n<144),'Некорректная обработка.');
   if(finished){check(d.outline.length>=3&&simple(d.outline),'Замкни контур без пересечений.');check(area(d.outline)>=60,'Основа слишком мала.');check(d.holes.every(h=>simple(h)&&h.every(p=>inside(p,d.outline))&&!h.some((p,i)=>d.outline.some((q,j)=>intersects(p,h[(i+1)%h.length],q,d.outline[(j+1)%d.outline.length])))),'Вырез должен целиком находиться в основе.');check(d.holes.every((h,i)=>d.holes.slice(i+1).every(other=>!h.some(p=>inside(p,other))&&!other.some(p=>inside(p,h))&&!h.some((p,j)=>other.some((q,k)=>intersects(p,h[(j+1)%h.length],q,other[(k+1)%other.length]))))),'Вырезы не должны пересекаться.');check(metalArea(d)>45,'Слишком мало металла для прочной оправы.');check(d.gems.every(g=>support(g,d)>.7),'Камень выходит за край или вырез. Перемести его на металл.');check(d.gems.every((g,i)=>d.gems.slice(i+1).every(h=>Math.hypot(g.x-h.x,(g.y-h.y)/(((g.cut==='round'?1:1.4)+(h.cut==='round'?1:1.4))/2))>(g.size+h.size)*.82)),'Камни перекрывают друг друга. Раздвинь оправы.');}
   return d;
@@ -133,25 +146,31 @@ export const craftMultiplier=e=>.7+e.craft*.006;
 export function value(s,d){const e=evaluate(d);return Math.round((rawValue(d)*1.6+Math.min(25,e.style.ornate*.2)+e.magic*.5*(s.skills.includes('alchemy')?1.25:1))*craftMultiplier(e))*(s.skills.includes('signature')&&e.polish>=50?1.1:1);}
 export function affinity(d,person,want=null){const e=evaluate(d),taste=e.style[person.style]||0;return Math.round(clamp(25+taste*.45+(person.metal===d.metal?14:0)+(e.effects[person.element]?12:0)+e.craft*.09+(want&&want===d.type?10:0),0,100));}
 export const POLICIES=['low','fair','high','counter'];
-function basis(s,item,customer){const d=item.design,p=CLIENTS.find(p=>p.id===customer.client),fit=affinity(d,p,customer.want),fair=Math.round(value(s,d)*(.7+fit*.006)),demand=demandInfo(s,d);return {fit,fair,demand,ceiling:Math.round(fair*(1.02+fit/200)*demand.factor),floor:Math.max(1,Math.round(fair*.75*demand.factor))};}
-function priced({fit,fair,demand,ceiling,floor},customer,policy){
+// Every bonus to the fair price (the connoisseur now, ribbons and friendship later) shares one ceiling.
+export const BOOST_CAP=1.4;
+// The connoisseur of the day buys only what the port has not seen yet and pays a fifth more for it.
+function basis(s,item,customer){const d=item.design,p=CLIENTS.find(p=>p.id===customer.client),fit=affinity(d,p,customer.want),stale=customer.novel===true&&!isFresh(s,d),boost=Math.min(BOOST_CAP,customer.novel===true&&!stale?1.2:1),fair=Math.round(value(s,d)*(.7+fit*.006)*boost),demand=demandInfo(s,d);return {fit,fair,demand,stale,ceiling:Math.round(fair*(1.02+fit/200)*demand.factor),floor:Math.max(1,Math.round(fair*.75*demand.factor))};}
+function priced({fit,fair,demand,stale,ceiling,floor},customer,policy){
   // The counter-offer is the most this buyer will pay today: their taste ceiling or their purse.
   const offer=Math.min(customer.budget,ceiling),price=policy==='counter'?Math.max(1,offer):Math.max(1,Math.round(fair*{low:.75,fair:1,high:1.25}[policy]*demand.factor));
+  if(stale)return {price,fair,fit,demand,offer:0,accepted:false,reason:'Такое в порту уже видели. Покажи мне что-то новое.'};
   return {price,fair,fit,demand,offer:offer>=floor?offer:0,accepted:policy==='counter'?offer>=floor:price<=Math.min(customer.budget,ceiling),reason:policy==='counter'&&offer<floor?'Мне это пока не по карману.':price>customer.budget?'Не хватает бюджета.':price>ceiling?'Цена выше, чем я готов платить за этот стиль.':'Мне подходит эта работа.'};
 }
 export function quote(s,item,customer,policy='fair'){check(POLICIES.includes(policy),'Неизвестная цена.');return priced(basis(s,item,customer),customer,policy);}
 // Every price policy from one appraisal: the showcase shows all of them on each render.
 export function quotes(s,item,customer){const b=basis(s,item,customer);return Object.fromEntries(POLICIES.map(p=>[p,priced(b,customer,p)]));}
 function rng(s){s.seed=(Math.imul(s.seed,1664525)+1013904223)>>>0;return s.seed/4294967296;}
-export function makeCustomers(s){if(s.customers.length)return;const ids=[...CLIENTS];for(let i=ids.length-1;i>0;i--){const j=Math.floor(rng(s)*(i+1));[ids[i],ids[j]]=[ids[j],ids[i]];}s.customers=ids.slice(0,4).map((p,i)=>({id:'buyer-'+s.nextId++,client:p.id,budget:150+Math.floor(rng(s)*170)+s.crafted*8,served:false,want:p.wants[(s.day+i)%p.wants.length]}));}
+export function makeCustomers(s){if(s.customers.length)return;const ids=[...CLIENTS];for(let i=ids.length-1;i>0;i--){const j=Math.floor(rng(s)*(i+1));[ids[i],ids[j]]=[ids[j],ids[i]];}const rank=rankOf(s);s.customers=ids.slice(0,4).map((p,i)=>({id:'buyer-'+s.nextId++,client:p.id,budget:150+Math.floor(rng(s)*170)+s.crafted*8+RANKS[rank].budget,served:false,want:p.wants[(s.day+i)%p.wants.length]}));
+ // From the first rank one guest a day is a connoisseur; no extra draw, so the order of guests stays the same.
+ if(rank>=1){const c=s.customers[s.day%4];c.novel=true;c.budget=Math.round(c.budget*1.6);}}
 export function newGame(seed=1){const s={version:VERSION,world:'jewel',seed:seed>>>0,worldSeed:hash32('world:'+(seed>>>0)),day:1,tradeDay:1,gold:180,xp:0,energy:4,crafted:0,sold:0,nextId:1,materials:{copper:50,silver:16,gold:0,lunar:0,garnet:3,amethyst:2,emerald:0,sapphire:1,diamond:0,moonstone:0},skills:[],draft:null,stock:[],library:[],customers:[],demand:[],requests:[],daily:{sales:0,areas:[],income:0,made:0},log:[],welcomed:false,sound:false,music:false,volume:.35,legacy:null};makeCustomers(s);makeRequests(s);return s;}
 export function accessible(s,id){return !['gold','diamond'].includes(id)||s.skills.includes('gold');}
 export function available(s,id){return accessible(s,id)&&(!['lunar','moonstone'].includes(id)||s.skills.includes('alchemy'));}
 export function typeAvailable(s,id){return !['sword','staff'].includes(id)||s.skills.includes('mounts');}
-export function startDesign(s,type='pendant',template='oval',metal='copper'){check(typeAvailable(s,type)&&available(s,metal),'Сначала изучи нужное ремесло.');s.draft={design:makeDesign(type,template,metal),undo:[],redo:[]};return s.draft;}
+export function startDesign(s,type='pendant',template='oval',metal='copper'){check(typeAvailable(s,type)&&available(s,metal),'Сначала изучи нужное ремесло.');check(templateOpen(s,template),`Эта основа откроется со званием «${RANKS[TEMPLATES.find(t=>t.id===template)?.rank||0].name}».`);s.draft={design:makeDesign(type,template,metal),undo:[],redo:[]};return s.draft;}
 export function edit(s,next){validateDesign(next);check(s.draft,'Нет текущего изделия.');const prev=s.draft.design;if(JSON.stringify(prev)===JSON.stringify(next))return false;s.draft.undo.push(clone(prev));s.draft.undo=s.draft.undo.slice(-35);s.draft.redo=[];s.draft.design=clone(next);s.draft.design.revision=(prev.revision||0)+1;return true;}
 export function undo(s,redo=false){check(s.draft,'Нет текущего изделия.');const from=redo?s.draft.redo:s.draft.undo,to=redo?s.draft.undo:s.draft.redo;if(!from.length)return false;to.push(clone(s.draft.design));s.draft.design=from.pop();return true;}
-function storeModel(s,design){const d=clone(design);validateDesign(d,true);const item={id:'model-'+s.nextId++,design:freezeDesign(d)};s.library.unshift(item);s.library=s.library.slice(0,40);return item;}
+function storeModel(s,design){const d=clone(design);validateDesign(d,true);const item={id:'model-'+s.nextId++,design:freezeDesign(d)};s.library.unshift(item);s.library=s.library.slice(0,libraryLimit(s));return item;}
 export function remember(s){check(s.draft,'Нет текущего изделия.');return storeModel(s,s.draft.design);}
 export function rememberItem(s,id){const item=s.stock.find(i=>i.id===id);check(item,'Изделие не найдено.');return storeModel(s,item.design);}
 export function hasHandwork(d){if(d.gems.length||d.strokes.some(s=>s.points.some(p=>onMetal(p,d)))||d.polish.some(i=>onMetal({x:(i%12+.5)*100/12,y:(Math.floor(i/12)+.5)*100/12},d)))return true;const base=makeDesign(d.type,d.template,d.metal);return JSON.stringify(d.outline)!==JSON.stringify(base.outline)||JSON.stringify(d.holes)!==JSON.stringify(base.holes);}
@@ -172,7 +191,8 @@ export function learn(s,id){const tool=TOOLS.find(t=>t.id===id);check(tool&&!s.s
 export function gather(s,id){const a=AREAS.find(a=>a.id===id);check(a&&s.crafted>=a.need,'Место ещё не открыто.');check(s.energy>0&&!s.daily.areas.includes(id),'Сегодня здесь уже искали.');s.energy--;s.daily.areas.push(id);const gem=a.loot[Math.floor(rng(s)*a.loot.length)],metal=id==='ridge'?'silver':'copper';s.materials[gem]++;s.materials[metal]+=3;s.xp+=3;return {gem,metal};}
 export function nextDay(s){s.day++;if(s.daily.sales>0)s.tradeDay++;s.demand=s.demand.filter(f=>!f.until||f.until>s.tradeDay);s.energy=4;s.daily={sales:0,areas:[],income:0,made:0};s.customers=[];makeCustomers(s);s.requests=s.requests.filter(r=>r.until>=s.day&&!r.done);makeRequests(s);}
 export function makeRequests(s){
- if(s.requests.length>=3)return;const templates=[
+ // A senior of the guild («Старшина цеха») gets a fourth order; named orders of friends (keep) do not take these places. Never more than 8.
+ const limit=3+(rankOf(s)>=3?1:0),open=()=>s.requests.filter(r=>!r.keep).length;if(open()>=limit||s.requests.length>=8)return;const templates=[
  {client:'nora',type:'pendant',style:'organic',min:45,minMagic:0,title:'Капля для путешествия'},
  {client:'bren',type:'ring',style:'symmetry',min:50,minMagic:6,title:'Печать караула'},
  {client:'ada',type:'brooch',style:'ornate',min:40,minMagic:0,title:'Праздничная брошь'},
@@ -184,7 +204,7 @@ export function makeRequests(s){
  ];
  if(typeAvailable(s,'sword'))templates.push({client:'bren',type:'sword',style:'symmetry',min:45,minMagic:6,title:'Украшение караульной сабли'},{client:'elin',type:'staff',style:'ornate',min:35,minMagic:8,title:'Свет навигатора'});
  for(let i=templates.length-1;i>0;i--){const j=Math.floor(rng(s)*(i+1));[templates[i],templates[j]]=[templates[j],templates[i]];}
- for(const base of templates){if(s.requests.length>=3)break;if(s.requests.some(r=>r.client===base.client))continue;s.requests.push({...base,id:'request-'+s.nextId++,until:s.day+3,done:false});}
+ for(const base of templates){if(open()>=limit||s.requests.length>=8)break;if(s.requests.some(r=>r.client===base.client))continue;s.requests.push({...base,id:'request-'+s.nextId++,until:s.day+3,done:false});}
 }
 export function matches(d,r){const e=evaluate(d);return d.type===r.type&&e.craft>=50&&e.style[r.style]>=r.min&&e.magic>=(r.minMagic||0);}
 export function deliver(s,id,itemId){const r=s.requests.find(r=>r.id===id&&!r.done),i=s.stock.find(v=>v.id===itemId);check(r&&r.until>=s.day&&i&&matches(i.design,r),'Изделие не соответствует заказу.');const buyer={id:'order',client:r.client,budget:100000,served:false},q=quote(s,i,buyer);const reward=Math.round(q.fair*1.15*q.demand.factor);check(q.demand.factor===1,'Заказчик просит свежий дизайн. Этот образ уже перенасыщен.');const f=marketFamily(s,i.design);f.full=true;countSale(s,f);s.gold+=reward;s.sold++;s.daily.sales++;s.daily.income=(s.daily.income||0)+reward;s.xp+=16;r.done=true;s.stock.splice(s.stock.indexOf(i),1);return reward;}

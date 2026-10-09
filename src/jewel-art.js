@@ -8,8 +8,12 @@ const AURA={ember:'#ff9f6e',ward:'#b9a2ff',growth:'#86e6ad',tide:'#86bfff',focus
 let pile=null;
 // Velvet pile: a fixed, seeded speckle so every tray looks like the same cloth.
 function velvetPattern(c){if(!pile){pile=document.createElement('canvas');pile.width=pile.height=64;const g=pile.getContext('2d');let n=7;for(let i=0;i<520;i++){n=(Math.imul(n,1664525)+1013904223)>>>0;const x=n%64;n=(Math.imul(n,1664525)+1013904223)>>>0;const y=n%64;g.fillStyle=i%3?'rgba(255,236,200,.035)':'rgba(0,0,0,.18)';g.fillRect(x,y,1,i%5?1:2);}}return c.createPattern(pile,'repeat');}
-export function drawVelvet(c,w,h,{light=1}={}){
-  const g=c.createRadialGradient(w*.5,h*.42,0,w*.5,h*.5,Math.max(w,h)*.72);g.addColorStop(0,'#2b3a3f');g.addColorStop(.55,'#1a2529');g.addColorStop(1,'#0c1215');c.fillStyle=g;c.fillRect(0,0,w,h);
+// The velvet chosen for the showcase. Pictures drawn on velvet keep its id in their cache key, so a new choice redraws them.
+let tone={id:'teal',hi:'#2b3a3f',mid:'#1a2529',lo:'#0c1215'};
+export function setVelvet(next){if(next?.id&&next.id!==tone.id)tone={id:next.id,hi:next.hi,mid:next.mid,lo:next.lo};return tone;}
+export const velvetTone=()=>tone;
+export function drawVelvet(c,w,h,{light=1,tone:t=tone}={}){
+  const g=c.createRadialGradient(w*.5,h*.42,0,w*.5,h*.5,Math.max(w,h)*.72);g.addColorStop(0,t.hi);g.addColorStop(.55,t.mid);g.addColorStop(1,t.lo);c.fillStyle=g;c.fillRect(0,0,w,h);
   const p=velvetPattern(c);if(p){c.fillStyle=p;c.fillRect(0,0,w,h);}
   if(light){const spot=c.createRadialGradient(w*.5,h*.3,0,w*.5,h*.38,Math.max(w,h)*.5);spot.addColorStop(0,`rgba(255,226,170,${.11*light})`);spot.addColorStop(1,'rgba(255,226,170,0)');c.fillStyle=spot;c.fillRect(0,0,w,h);}
 }
@@ -81,9 +85,10 @@ const thumbnails=new Map(),pictures=new WeakMap();
 function picture(d,size,background){const c=document.createElement('canvas');c.width=c.height=size;drawJewel(c.getContext('2d'),d,{size,background});return c.toDataURL();}
 // Finished designs are frozen, so their pictures are keyed by the object itself instead of its JSON.
 export function jewelURL(d,size=160,{background=true}={}){
-  if(Object.isFrozen(d)){let urls=pictures.get(d);if(!urls)pictures.set(d,urls=new Map());const key=size+':'+background;if(!urls.has(key))urls.set(key,picture(d,size,background));return urls.get(key);}
-  const key=size+':'+background+':'+JSON.stringify(d);if(thumbnails.has(key))return thumbnails.get(key);const url=picture(d,size,background);thumbnails.set(key,url);if(thumbnails.size>200)thumbnails.delete(thumbnails.keys().next().value);return url;}
-export function gemURL(kind,size=64){const key='gem:'+kind+':'+size;if(thumbnails.has(key))return thumbnails.get(key);const c=document.createElement('canvas');c.width=c.height=size;drawGem(c.getContext('2d'),{kind,x:50,y:50,size:30,cut:'round'},size/100,METALS.silver);const url=c.toDataURL();thumbnails.set(key,url);return url;}
+  const look=size+':'+(background?tone.id:'bare');
+  if(Object.isFrozen(d)){let urls=pictures.get(d);if(!urls)pictures.set(d,urls=new Map());if(!urls.has(look))urls.set(look,picture(d,size,background));return urls.get(look);}
+  const key=look+':'+JSON.stringify(d);if(thumbnails.has(key))return thumbnails.get(key);const url=picture(d,size,background);thumbnails.set(key,url);if(thumbnails.size>200)thumbnails.delete(thumbnails.keys().next().value);return url;}
+export function gemURL(kind,size=64,cut='round'){const key='gem:'+kind+':'+size+':'+cut;if(thumbnails.has(key))return thumbnails.get(key);const c=document.createElement('canvas');c.width=c.height=size;drawGem(c.getContext('2d'),{kind,x:50,y:50,size:cut==='round'?30:23,cut},size/100,METALS.silver);const url=c.toDataURL();thumbnails.set(key,url);return url;}
 export function metalURL(id,size=64){const key='metal:'+id+':'+size;if(thumbnails.has(key))return thumbnails.get(key);const c=document.createElement('canvas'),g=c.getContext('2d'),s=size/100,m=METALS[id],bar=[{x:24,y:34},{x:76,y:34},{x:90,y:70},{x:10,y:70}];c.width=c.height=size;
   g.save();g.shadowColor='rgba(0,0,0,.45)';g.shadowBlur=4*s;g.shadowOffsetY=3*s;g.beginPath();path(g,bar,s);g.fillStyle=palette(m.color,-50);g.fill();g.restore();
   g.beginPath();path(g,bar,s);g.fillStyle=metalFill(g,m,s,20,30,80,72);g.fill();g.beginPath();path(g,[{x:28,y:38},{x:72,y:38},{x:76,y:48},{x:24,y:48}],s);g.fillStyle=alpha(m.light,.55);g.fill();g.strokeStyle=alpha(palette(m.color,-90),.8);g.lineWidth=1.5*s;g.beginPath();path(g,bar,s);g.stroke();
