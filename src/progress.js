@@ -4,8 +4,10 @@ import * as J from './jewelry.js';
 import * as B from './book.js';
 import * as H from './people.js';
 import * as G from './guild.js';
+import * as U from './guide.js';
 export {CHAPTERS,VELVETS,DECOR,MARKS,catalogKeys,chapterKeys,keyName,bookTotal,bookCount,chapterDone} from './book.js';
 export {LETTERS,LETTER_IDS,letter,PRIVILEGES,NAMED,MEMORY,TYPE_PHRASE,OF,bondName,memoryLine,lastLine} from './people.js';
+export {TUTORIAL,REQUIRED,GIFT,coaching,tutorialStep,stepState,HINTS,HINT_IDS,nextHint,dotPending,broke,demandWarning,backupDue,BACKUP_EVERY,nextSteps,morningReport,plural} from './guide.js';
 export {THEMES,themeOf,themeOfWeek,weekOf,daysLeft,judge,medalOf,medalWithin,prizeGem,MEDALS,RIBBONS,MEDAL_REP,TRIES,PARTS,VERDICT} from './guild.js';
 const obj=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const count=v=>Number.isInteger(v)&&v>=0&&v<=1e9?v:0;
@@ -54,6 +56,15 @@ export function normalize(s){
  // The guild review: a week from the past is closed into the history; a ribbon must name a medal and a week.
  guard(()=>{const g=obj(s.guild)?s.guild:{},w=G.weekOf(count(s.day)||1),entry=h=>obj(h)&&day(h.w)&&THEME_IDS.includes(h.theme)&&[0,1,2,3].includes(h.medal)&&Number.isInteger(h.score)&&h.score>=0&&h.score<=100&&typeof h.name==='string'?{w:h.w,theme:h.theme,medal:h.medal,score:h.score,name:h.name.slice(0,48)}:null;
   s.guild={week:day(g.week)&&g.week<=w?g.week:w,best:[0,1,2,3].includes(g.best)?g.best:0,tried:list(g.tried,id=>typeof id==='string'&&/^jewel-[1-9][0-9]*$/.test(id),G.TRIES),score:Number.isInteger(g.score)&&g.score>=0&&g.score<=100?g.score:0,name:typeof g.name==='string'?g.name.slice(0,48):'',seen:g.seen===true,history:(Array.isArray(g.history)?g.history:[]).map(entry).filter(Boolean).slice(0,52)};rollWeek(s);});
+ // Даро's lessons: a workshop that has already worked has nothing to learn and no gift to receive, and a damaged record
+ // keeps a gift that was given. Lessons started again count from the work done at that moment, never ahead of it.
+ guard(()=>{const t=obj(s.tutorial)?s.tutorial:{},worked=count(s.crafted)>0||count(s.sold)>0||count(s.day)>1,f=obj(t.from)?t.from:null;
+  s.tutorial={done:list(t.done,id=>U.STEP_IDS.includes(id),U.STEP_IDS.length),skipped:t.skipped===true,finished:typeof t.finished==='boolean'?t.finished:worked,rewarded:typeof t.rewarded==='boolean'?t.rewarded:worked};
+  if(f&&['crafted','sold','gathers','day'].every(k=>day(f[k]))&&f.day>=1)s.tutorial.from={crafted:Math.min(f.crafted,count(s.crafted)),sold:Math.min(f.sold,count(s.sold)),gathers:Math.min(f.gathers,s.stats.gathers),day:Math.min(f.day,count(s.day)||1)};});
+ // Hints come once. A workshop from before the hints has met what its work already shows and is not told again.
+ guard(()=>{s.hintsSeen=Array.isArray(s.hintsSeen)?list(s.hintsSeen,id=>U.HINT_IDS.includes(id),64):U.HINTS.filter(h=>{try{return !!h.past?.(s);}catch{return false;}}).map(h=>h.id);});
+ // The game day of the last copy of the save (or of the last reminder about it).
+ guard(()=>{const d=count(s.day)||1;if(!(day(s.backup)&&s.backup>=1&&s.backup<=d))s.backup=d;});
  guard(()=>{if(Array.isArray(s.stock))for(const i of s.stock)if(obj(i)&&'ribbon'in i){if(obj(i.ribbon)&&[1,2,3].includes(i.ribbon.medal)&&day(i.ribbon.w))i.ribbon={w:i.ribbon.w,medal:i.ribbon.medal};else delete i.ribbon;}});
  return s;
 }
@@ -62,15 +73,15 @@ const lastOf=v=>obj(v)&&TYPE_IDS.includes(v.type)&&typeof v.name==='string'&&v.n
 // The week turns: its best result goes into the history if anything was entered, and the new week starts empty.
 function rollWeek(s){const g=s.guild,w=G.weekOf(s.day);if(g.week===w)return null;const done=g.tried.length?{w:g.week,theme:G.themeOfWeek(g.week).id,medal:g.best,score:g.score,name:g.name}:null;
  if(done){g.history.unshift(done);if(g.history.length>52)g.history.length=52;}Object.assign(g,{week:w,best:0,tried:[],score:0,name:'',seen:false});return done;}
-const ready=s=>{if(!obj(s.stats)||!obj(s.daily)||!Array.isArray(s.daily.types)||!obj(s.book)||!obj(s.cosmetics)||!Number.isInteger(s.rep)||!obj(s.bonds)||!Array.isArray(s.mail)||!obj(s.guild))normalize(s);return s;};
+const ready=s=>{if(!obj(s.stats)||!obj(s.daily)||!Array.isArray(s.daily.types)||!obj(s.book)||!obj(s.cosmetics)||!Number.isInteger(s.rep)||!obj(s.bonds)||!Array.isArray(s.mail)||!obj(s.guild)||!obj(s.tutorial)||!Array.isArray(s.hintsSeen))normalize(s);return s;};
 const soldType=(s,type)=>{if(!s.daily.types.includes(type)&&s.daily.types.length<6)s.daily.types.push(type);};
 const gain=(s,n)=>{s.rep+=n;s.daily.rep+=n;return n;};
 // Marks are earned once each; checking again changes nothing.
-export function checkMarks(s,event,ctx={}){const won=[];for(const m of B.MARKS){if(m.soon||m.event!==event||m.id in s.book.m||Object.keys(s.book.m).length>=64)continue;let ok=false;try{ok=!!m.test(s,ctx);}catch{}if(ok){s.book.m[m.id]=s.day;gain(s,3);won.push(m);}}return won;}
+export function checkMarks(s,event,ctx={}){const won=[];for(const m of B.MARKS){if(m.soon||m.event!==event||m.id in s.book.m||Object.keys(s.book.m).length>=64)continue;let ok=false;try{ok=!!m.test(s,ctx);}catch{}if(ok){s.book.m[m.id]=s.day;gain(s,3);won.push(m);J.note(s,`Клеймо «${m.name}»`,'mark');}}return won;}
 // After any gain: whole chapters (+10 and their velvet), the next mark chapter, and what a new rank opens.
 function settle(s,before,result){const marks=[...(result.marks||[]),...checkMarks(s,'book'),...checkMarks(s,'bond')],chapters=[],letters=[...(result.letters||[])];
- for(const c of B.CHAPTERS)if(!s.book.pages.includes(c.id)&&B.chapterDone(s.book,c.id)){s.book.pages.push(c.id);gain(s,10);chapters.push(c);const v=B.VELVETS.find(v=>v.chapter===c.id);if(v&&!s.cosmetics.owned.includes(v.id))s.cosmetics.owned.push(v.id);}
- const rank=J.rankOf(s);for(const v of B.VELVETS)if(v.rank&&rank>=v.rank&&!s.cosmetics.owned.includes(v.id))s.cosmetics.owned.push(v.id);
+ for(const c of B.CHAPTERS)if(!s.book.pages.includes(c.id)&&B.chapterDone(s.book,c.id)){s.book.pages.push(c.id);gain(s,10);chapters.push(c);J.note(s,`Глава книги «${c.name}» собрана`,'book');const v=B.VELVETS.find(v=>v.chapter===c.id);if(v&&!s.cosmetics.owned.includes(v.id))s.cosmetics.owned.push(v.id);}
+ const rank=J.rankOf(s);for(const v of B.VELVETS)if(v.rank&&rank>=v.rank&&!s.cosmetics.owned.includes(v.id))s.cosmetics.owned.push(v.id);if(rank>before.rank)J.note(s,`Звание «${J.RANKS[rank].name}»`,'rank');
  // The lighthouse of the highest rank is lit with a letter from Элин.
  if(rank>=J.RANKS.length-1)send(s,'elin-epilogue',letters);
  return {...result,marks,chapters,letters,rep:s.rep-before.rep,rank,rankUp:rank>before.rank};}
@@ -155,3 +166,17 @@ export function seeGuild(s){ready(s);if(s.guild.seen)return false;s.guild.seen=t
 // A letter is read once it has been opened.
 export function readLetter(s,id){ready(s);const m=s.mail.find(m=>m.id===id);if(m)m.read=true;return H.letter(id);}
 export const unread=s=>Array.isArray(s.mail)?s.mail.filter(m=>!m.read).length:0;
+// Даро's lessons. A step is written down once; the gift comes when the five steps that cannot be skipped are done, and
+// only once: lessons started again from the menu end without it.
+export function tutor(s,ctx={}){ready(s);const t=s.tutorial;if(t.finished||t.skipped)return null;const fresh=U.stepsDone(s,ctx).filter(id=>!t.done.includes(id));t.done.push(...fresh);
+ if(!U.REQUIRED.every(id=>t.done.includes(id)))return fresh.length?{done:fresh,finished:false}:null;
+ t.finished=true;J.note(s,'Уроки Даро пройдены','guide');if(t.rewarded)return {done:fresh,finished:true,gift:null,letters:[]};
+ t.rewarded=true;const before=snap(s),letters=[];for(const[id,n]of Object.entries(U.GIFT.materials))s.materials[id]+=n;gain(s,U.GIFT.rep);send(s,'daro-0',letters);
+ return settle(s,before,{done:fresh,finished:true,gift:U.GIFT,letters});}
+export function restartTutorial(s){ready(s);s.tutorial={done:[],skipped:false,finished:false,rewarded:s.tutorial.rewarded,from:{crafted:s.crafted,sold:s.sold,gathers:s.stats.gathers,day:s.day}};return s.tutorial;}
+export function skipTutorial(s){ready(s);s.tutorial.skipped=true;return s.tutorial;}
+// A hint is written down once it has been shown, or for a hint with a dot once its place is opened.
+export function seeHint(s,id){ready(s);if(!U.HINT_IDS.includes(id)||s.hintsSeen.includes(id)||s.hintsSeen.length>=64)return false;s.hintsSeen.push(id);return true;}
+export function seeDots(s,place){ready(s);let changed=false;for(const id of U.dotHints(s,place))changed=seeHint(s,id)||changed;return changed;}
+// A copy was downloaded, or the morning has reminded of one: the next reminder comes fourteen game days later.
+export function markBackup(s){ready(s);s.backup=s.day;}

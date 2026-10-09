@@ -2,8 +2,9 @@
 export const TOAST_KINDS=['info','mark','hint','error'];
 // toast(text,true) and toast(text,false,{action,label,icon}) from older calls mean {kind:'error'} and {action}.
 export function toastSpec(text,opt=false,act=null){const o=opt&&typeof opt==='object'?opt:{kind:opt?'error':'info',action:act};return {text:String(text),kind:TOAST_KINDS.includes(o.kind)?o.kind:'info',action:o.action||null};}
-// Long enough to read: 45 ms a letter, never under 3.3 s or over 8 s; a toast with a button waits 9 s for the tap.
-export const toastDuration=t=>t.action?9000:Math.min(8000,Math.max(3300,2500+45*t.text.length));
+// Long enough to read: 45 ms a letter, never under 3.3 s or over 8 s; a toast with a button waits 9 s for the tap,
+// and a hint with its «Понятно» stays the 8 s of the longest note.
+export const toastDuration=t=>t.action?(t.kind==='hint'?8000:9000):Math.min(8000,Math.max(3300,2500+45*t.text.length));
 const plain=t=>t?.kind==='info'&&!t.action,weight=t=>plain(t)?0:t.kind==='error'?4:t.action?3:t.kind==='mark'?2:1;
 // One toast on screen and at most four waiting. A plain message replaces a plain one at once; rewards, hints and
 // messages with a button wait their turn; an error goes first and sends a preempted reward back to the head of the line.

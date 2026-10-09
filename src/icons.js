@@ -62,7 +62,9 @@ const P={
  vase:'<path d="M9 13h6l-.8 7.5H9.8z"/><path d="M12 13V8.6"/><path d="M12 8.6c-1.9-2.7-.2-5 0-5.2.2.2 1.9 2.5 0 5.2z"/><path d="M10.3 12.2c-2.5-.2-3.8-1.9-3.8-3.7 1.7 0 3.5 1 3.8 3.7zM13.7 12.2c.3-2.7 2.1-3.7 3.8-3.7 0 1.8-1.3 3.5-3.8 3.7z"/>',
  frame:'<rect x="3.5" y="5" width="17" height="14" rx="1.5"/><path d="M6.8 15.5l3.2-4.3 2.6 2.6 2.4-3.3 2.4 5"/>',
  letter:'<rect x="3.5" y="6" width="17" height="12.5" rx="1.5"/><path d="M4 7l8 6.2L20 7"/><circle cx="12" cy="15.8" r="1.6"/>',
- ribbon:'<circle cx="12" cy="9" r="5"/><circle cx="12" cy="9" r="2"/><path d="M8.6 12.7L6.5 20.5l3-1.6 1.8 2.6 1.3-6.5M15.4 12.7l2.1 7.8-3-1.6-1.8 2.6-1.3-6.5"/>'
+ ribbon:'<circle cx="12" cy="9" r="5"/><circle cx="12" cy="9" r="2"/><path d="M8.6 12.7L6.5 20.5l3-1.6 1.8 2.6 1.3-6.5M15.4 12.7l2.1 7.8-3-1.6-1.8 2.6-1.3-6.5"/>',
+ scroll:'<path d="M6.5 4.5h11a2 2 0 012 2v1.5h-4"/><path d="M6.5 4.5a2 2 0 00-2 2v1.5h4"/><path d="M8.5 6.5v11a2 2 0 002 2h7a2 2 0 002-2v-1.5"/><path d="M11.5 10h5M11.5 13.5h5"/>',
+ home:'<path d="M3.8 11.2L12 4.5l8.2 6.7"/><path d="M6.3 9.5v10h11.4v-10"/><path d="M10 19.5v-5h4v5"/>'
 };
 export const icon=(name,cls='')=>`<svg class="icon${cls?' '+cls:''}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${P[name]||P.info}</svg>`;
 export const ELEMENT_ICON={ember:'flame',ward:'shield',growth:'leaf',tide:'drop',focus:'eye',light:'moon'};

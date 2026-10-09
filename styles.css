@@ -578,6 +578,95 @@ dialog.celebrate .modal-title h2{color:var(--brass-hi)}
 .shortfall .sum{border-top:1px solid var(--line);padding-top:8px;margin-top:8px}
 .welcome-start button{min-height:50px}
 
+/* Даро: the strip of the lessons above the panel, the step in the editor and the ring on the button to press */
+.coach{flex:none;padding:0 16px 6px}
+.coach-bar{display:flex;align-items:center;gap:6px;min-height:44px;padding:0 6px 0 0;border-radius:var(--r-md);background:linear-gradient(180deg,var(--surface-2),var(--surface));border:1px solid var(--line-2);box-shadow:var(--lift)}
+button.coach-main{flex:1;min-width:0;min-height:42px;justify-content:flex-start;gap:10px;padding:4px 6px 4px 5px;border:0;background:transparent;box-shadow:none;text-align:left;font-weight:500}
+.coach-face{position:relative;flex:none;width:34px;height:34px}
+.coach-face img{width:34px;height:34px;border-radius:9px;image-rendering:pixelated;box-shadow:0 0 0 1px var(--line-3)}
+.coach-face i{position:absolute;right:-7px;bottom:-5px;font-style:normal;font-size:11px;font-weight:800;line-height:15px;padding:0 4px;border-radius:8px;background:var(--brass);color:var(--on-brass);box-shadow:0 0 0 2px var(--surface)}
+.coach-main b{flex:1;min-width:0;font-size:calc(13px*var(--fs));font-weight:600;line-height:1.25;color:var(--text);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.coach-main .chev{flex:none;width:14px;height:14px;color:var(--text-3);transform:rotate(90deg);transition:transform .2s var(--ease)}
+.coach-main[aria-expanded="true"] .chev{transform:rotate(-90deg)}
+.coach-bar .chip{flex:none}
+.coach-panel{margin-top:6px;padding:10px 12px;border-radius:var(--r-md);background:var(--surface);border:1px solid var(--line);max-height:min(62dvh,460px);overflow:auto}
+.coach-panel ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.coach-panel li{display:grid;grid-template-columns:22px minmax(0,1fr);gap:8px;align-items:center;font-size:calc(13px*var(--fs));color:var(--text-3);min-height:24px}
+.coach-panel li i{font-style:normal;font-size:calc(11px*var(--fs));font-weight:700;text-align:center;width:20px;height:20px;line-height:20px;border-radius:50%;border:1px solid var(--line)}
+.coach-panel li .icon{width:18px;height:18px;color:var(--sage)}
+.coach-panel li.done,.coach-panel li.skip{color:var(--text-2)}
+.coach-panel li.now{color:var(--brass-hi);font-weight:700}.coach-panel li.now i{border-color:var(--brass);color:var(--brass-hi)}
+.coach-panel .fine-print{margin:8px 0}
+.coach-panel .row button{min-height:38px}
+.editor-hint.coach-hint{padding:0;border:0;background:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+button.coach-hint-button{display:block;pointer-events:auto;min-height:32px;padding:6px 11px;border-radius:14px;background:rgba(13,18,21,.8);backdrop-filter:blur(6px);border:1px solid var(--line-3);box-shadow:none;font-size:calc(12px*var(--fs));font-weight:600;line-height:1.3;text-align:left;color:var(--text)}
+.coach-hint-button b{color:var(--brass-hi);font-weight:800;margin-right:2px}
+.coach-hint-button em{font-style:normal;color:var(--brass-hi);text-decoration:underline;text-underline-offset:2px;margin-left:3px;white-space:nowrap}
+.coach-ring{outline:2px solid var(--brass-hi);outline-offset:2px;animation:coach-ring 1.5s ease-in-out infinite;position:relative;z-index:2}
+@keyframes coach-ring{50%{outline-offset:5px;box-shadow:0 0 0 7px rgba(242,214,154,.16)}}
+/* Inside a scrolled row the ring is drawn within the button, so the edge of the row never cuts it. */
+.rail .coach-ring,.tools .coach-ring{outline-offset:-3px;animation-name:coach-ring-in}
+@keyframes coach-ring-in{50%{outline-color:rgba(242,214,154,.35)}}
+.tools button{position:relative}
+.tools .dot{position:absolute;top:5px;right:9px;width:7px;height:7px;border-radius:50%;background:var(--rose);box-shadow:0 0 0 2px var(--surface-2)}
+/* «Сегодня» in the workshop and the advice of the morning */
+.card.today{padding:10px 14px 6px;margin:8px 0 0}
+.today .label{margin:0 0 2px}
+button.today-step{width:100%;justify-content:flex-start;gap:10px;min-height:44px;padding:8px 2px;border:0;border-top:1px solid var(--line);border-radius:0;background:transparent;box-shadow:none;text-align:left;font-weight:500;font-size:calc(14px*var(--fs))}
+.today .label+button.today-step{border-top:0}
+.today-step>.icon:first-child{width:19px;height:19px;color:var(--brass);flex:none}
+.today-step>span{flex:1;min-width:0}
+.today-step .go{width:16px;height:16px;color:var(--text-3);flex:none}
+/* The warning one sale before the demand of a design falls */
+.demand-warning{display:flex;gap:8px;align-items:flex-start;margin:6px 0 0;padding:8px 10px;border-radius:var(--r-sm);background:rgba(214,150,60,.12);border:1px solid rgba(230,170,80,.38);color:#f0c27a;font-size:calc(13px*var(--fs));line-height:1.4}
+.demand-warning .icon{width:17px;height:17px;flex:none;margin-top:1px}
+/* The morning: yesterday in one line, then sections that fold */
+.modal-body .label.first{margin-top:0}
+.morning-yesterday{display:grid;grid-template-columns:minmax(0,.92fr) minmax(0,.92fr) minmax(0,.96fr) minmax(0,1.2fr);gap:5px;margin-bottom:8px}
+.morning-yesterday span{display:flex;flex-direction:column;align-items:center;padding:7px 2px 6px;border-radius:var(--r-sm);background:var(--surface);border:1px solid var(--line);min-width:0}
+.morning-yesterday b{font-family:var(--display);font-size:calc(24px*var(--fs));line-height:1;color:var(--brass-hi);font-variant-numeric:lining-nums}
+.morning-yesterday small{font-size:calc(11px*var(--fs));letter-spacing:-.01em;color:var(--text-3);margin-top:3px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.morning-part{border-top:1px solid var(--line)}
+.morning-part summary{display:flex;align-items:center;gap:9px;min-height:42px;cursor:pointer;list-style:none;font-size:calc(14px*var(--fs));font-weight:600;color:var(--text)}
+.morning-part summary::-webkit-details-marker{display:none}
+.morning-part summary>.icon:first-child,.morning-line>.icon{width:18px;height:18px;color:var(--brass);flex:none}
+.morning-part summary>span{flex:1;min-width:0}
+.morning-part summary .chev{width:16px;height:16px;color:var(--text-3);transform:rotate(90deg);transition:transform .2s var(--ease);flex:none}
+.morning-part[open] summary .chev{transform:rotate(-90deg)}
+.morning-body{display:flex;flex-direction:column;gap:6px;padding:0 0 10px}
+.morning-line{display:flex;gap:9px;align-items:flex-start;margin:0;font-size:calc(14px*var(--fs));color:var(--text-2);line-height:1.4}
+.modal-body>.morning-line{border-top:1px solid var(--line);padding:11px 0}
+.morning-row{display:flex;align-items:center;gap:10px}
+.morning-row .portrait,button.morning-guest .portrait{width:36px;height:36px;border-radius:10px;flex:none}
+.morning-row>span,button.morning-guest>span:not(.best){display:flex;flex-direction:column;min-width:0;flex:1;line-height:1.25}
+.morning-row small,button.morning-guest small{font-size:calc(12px*var(--fs));color:var(--text-2);font-weight:400}
+.morning-row .chip{flex:none}
+button.morning-guest{width:100%;justify-content:flex-start;gap:10px;min-height:48px;padding:5px 8px 5px 5px;border-radius:var(--r-md);text-align:left;font-weight:600;background:var(--surface);box-shadow:none}
+.morning-guest .best{display:flex;align-items:center;gap:6px;flex:none;max-width:48%;min-width:0}
+.morning-guest .best>span{display:flex;flex-direction:column;align-items:flex-end;min-width:0;line-height:1.2}
+.morning-guest .best small{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.morning-guest .best b{color:var(--brass-hi);font-variant-numeric:tabular-nums}
+.morning-guest .best img{width:36px;height:36px;flex:none}
+.morning-advice{border-top:1px solid var(--line)}
+.morning-note{display:flex;align-items:center;gap:9px;margin-top:8px;padding:5px 5px 5px 10px;border-radius:var(--r-md);background:rgba(147,199,164,.08);border:1px solid rgba(147,199,164,.25);font-size:calc(13px*var(--fs));color:var(--text-2);line-height:1.35}
+.morning-note>.icon{width:18px;height:18px;color:var(--sage);flex:none}
+.morning-note .chip{flex:none}
+/* The chronicle, the reference and the way to the home screen */
+.chronicle{list-style:none;margin:0 0 6px;padding:0;display:flex;flex-direction:column;gap:5px}
+.chronicle li{display:grid;grid-template-columns:18px minmax(0,1fr);gap:8px;align-items:start;font-size:calc(14px*var(--fs));color:var(--text-2);line-height:1.35}
+.chronicle .icon{width:17px;height:17px;color:var(--brass);margin-top:1px}
+.marks-list .icon{width:20px;height:20px;color:var(--brass-hi);flex:none}
+.menu-top{margin-bottom:8px}.menu-top button{gap:8px}
+.ref-index{display:flex;flex-wrap:wrap;gap:6px}
+.ref p:not(.fine-print){font-size:calc(14px*var(--fs));margin:8px 0;color:var(--text-2);line-height:1.45}
+.ref p b{color:var(--text)}
+.ref .help-grid{margin:8px 0}
+.install-steps{margin:8px 0;padding-left:22px;font-size:calc(14px*var(--fs));line-height:1.5;color:var(--text)}
+.install-steps .icon.inline{width:16px;height:16px;vertical-align:-3px;color:var(--brass)}
+.welcome-sound{width:fit-content;margin:8px auto 0}
+.welcome-sound button{gap:6px;min-height:38px;padding:3px 14px}
+.welcome-dialog .big{margin-top:10px}.welcome-dialog .fine-print.center{margin-top:8px}
+
 /* Wider screens */
 @media(min-width:700px) and (min-height:600px){
   .topbar{padding:14px 24px 10px}.hud{margin:0 24px 12px}.panel{padding-left:24px;padding-right:24px}
@@ -601,7 +690,7 @@ dialog.celebrate .modal-title h2{color:var(--brass-hi)}
   .topbar{padding:6px 12px 4px}.brand{font-size:calc(24px*var(--fs))}.brand img{width:32px;height:32px}.brand small{font-size:calc(11px*var(--fs));letter-spacing:0}
   .header-actions .icon-button{min-height:38px;width:38px}
   .hud{margin:0 12px 6px}.hud .stat{min-height:32px;font-size:calc(13px*var(--fs))}
-  .panel{padding:0 12px 12px}
+  .panel{padding:0 12px 12px}.coach{padding:0 12px 4px}
   .bottom-nav{padding-top:4px;padding-bottom:calc(5px + env(safe-area-inset-bottom))}
   .bottom-nav button{min-height:44px;font-size:calc(11px*var(--fs));gap:1px}.bottom-nav button .icon{width:20px;height:20px}
   .editor-panel{gap:4px;padding:0 8px 5px}
@@ -616,6 +705,11 @@ dialog.celebrate .modal-title h2{color:var(--brass-hi)}
   .type-card{min-height:88px}.type-card img{width:50px;height:50px}
   .welcome img{width:150px;height:150px}
 }
+/* The shortest phones keep the whole welcome, start buttons included, in a smaller picture, and the morning in one
+   screen with its sections folded. */
+@media(max-height:600px){.welcome img{width:104px;height:104px;margin-top:-10px}.welcome-dialog .help-grid{gap:8px;margin:8px 0}
+  .morning-yesterday{margin-bottom:6px}.morning-yesterday span{padding:5px 1px 4px}.morning-yesterday b{font-size:calc(21px*var(--fs))}.morning-part summary{min-height:38px;font-size:calc(13px*var(--fs))}.morning-advice button.today-step{min-height:40px;padding:5px 2px;font-size:calc(13px*var(--fs))}.morning-dialog .modal-title{margin-bottom:6px}.morning-dialog .label.first{margin-bottom:5px}}
+@media(max-width:360px){.morning-yesterday{gap:4px}}
 /* The shortest phones keep the four readings in a thinner strip instead of hiding them. */
 @media(max-height:600px){
   .editor-metrics{gap:4px}.editor-metrics span{padding:1px 6px 2px}.editor-metrics em{line-height:1.15}.editor-metrics b{font-size:calc(12px*var(--fs));line-height:1.2}
@@ -634,6 +728,7 @@ dialog.celebrate .modal-title h2{color:var(--brass-hi)}
   .brand small{display:none}.brand{font-size:calc(21px*var(--fs))}
   .hud{margin:5px 10px 5px auto;width:50%}
   .bottom-nav button{min-height:36px;flex-direction:row;gap:6px}.bottom-nav .dot{top:5px;right:8px}
+  .coach{padding:0 10px 4px}.coach-bar{min-height:40px}button.coach-main{min-height:38px;padding:2px 6px 2px 4px}.coach-face,.coach-face img{width:30px;height:30px}.coach-main b{-webkit-line-clamp:1}
   .editor-panel{display:grid;grid-template-columns:minmax(0,1fr) 284px;grid-template-rows:36px auto minmax(0,1fr) auto 46px;column-gap:10px;padding:0 10px 5px}
   .editor-stage{grid-column:1;grid-row:1/6;min-height:0}
   .editor-heading{grid-column:2;grid-row:1}
@@ -643,7 +738,10 @@ dialog.celebrate .modal-title h2{color:var(--brass-hi)}
   .tool-options{grid-column:2;grid-row:4}
   .editor-bottom{grid-column:2;grid-row:5}
   .artist-inset{width:84px;height:46px}
-  .scene-wrap{max-width:46%;float:left;margin-right:14px}
+  /* The scene floats beside the content. A card keeps the transform of its entrance animation, which would paint it over
+     the float (the map and its pins could not be seen or tapped), so the scene is lifted and a card beside it starts
+     its own block next to it. */
+  .scene-wrap{max-width:46%;float:left;margin-right:14px;z-index:1}.scene-wrap~.card{display:flow-root}
   .tray img{max-height:150px}
 }
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important;animation:none!important}}

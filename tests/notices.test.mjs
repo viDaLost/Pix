@@ -14,6 +14,7 @@ test('older toast calls keep their meaning and unknown kinds fall back to a plai
 test('a toast stays long enough to read, between 3.3 and 8 seconds, and an offer with a button waits 9',()=>{
  assert.equal(toastDuration(t('Да')),3300);assert.equal(toastDuration(t('x'.repeat(40))),2500+45*40);assert.equal(toastDuration(t('x'.repeat(400))),8000);
  assert.equal(toastDuration(t('Изделие разобрано','info',{action:'unrecycle'})),9000);
+ assert.equal(toastDuration(t('Встречная цена — столько гость готов дать сам.','hint',{action:'hint-ok',label:'Понятно'})),8000,'a hint with «Понятно» stays eight seconds');
 });
 test('a plain note replaces a plain note at once, rewards and hints wait their turn',()=>{
  const q=new ToastQueue();assert.equal(q.add(t('Материалы в запасе.')),true);assert.equal(q.add(t('Модель сохранена.')),true);assert.deepEqual(texts(q),['Модель сохранена.']);
