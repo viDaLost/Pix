@@ -64,7 +64,13 @@ const P={
  letter:'<rect x="3.5" y="6" width="17" height="12.5" rx="1.5"/><path d="M4 7l8 6.2L20 7"/><circle cx="12" cy="15.8" r="1.6"/>',
  ribbon:'<circle cx="12" cy="9" r="5"/><circle cx="12" cy="9" r="2"/><path d="M8.6 12.7L6.5 20.5l3-1.6 1.8 2.6 1.3-6.5M15.4 12.7l2.1 7.8-3-1.6-1.8 2.6-1.3-6.5"/>',
  scroll:'<path d="M6.5 4.5h11a2 2 0 012 2v1.5h-4"/><path d="M6.5 4.5a2 2 0 00-2 2v1.5h4"/><path d="M8.5 6.5v11a2 2 0 002 2h7a2 2 0 002-2v-1.5"/><path d="M11.5 10h5M11.5 13.5h5"/>',
- home:'<path d="M3.8 11.2L12 4.5l8.2 6.7"/><path d="M6.3 9.5v10h11.4v-10"/><path d="M10 19.5v-5h4v5"/>'
+ home:'<path d="M3.8 11.2L12 4.5l8.2 6.7"/><path d="M6.3 9.5v10h11.4v-10"/><path d="M10 19.5v-5h4v5"/>',
+ share:'<circle cx="17.5" cy="5.5" r="2.5"/><circle cx="6.5" cy="12" r="2.5"/><circle cx="17.5" cy="18.5" r="2.5"/><path d="M8.7 10.7l6.6-3.9M8.7 13.3l6.6 3.9"/>',
+ camera:'<path d="M3.5 8.5h3.6L8.8 6h6.4l1.7 2.5h3.6v11h-17z"/><circle cx="12" cy="13.5" r="3.6"/>',
+ cloud:'<path d="M7 18.5h10.5a3.8 3.8 0 00.4-7.6A5.6 5.6 0 007.2 9.6 4.5 4.5 0 007 18.5z"/>',
+ rain:'<path d="M7 14.5h10.5a3.6 3.6 0 00.4-7.2A5.3 5.3 0 007.2 6 4.3 4.3 0 007 14.5z"/><path d="M8.5 17.5l-1 2.5M12.5 17.5l-1 2.5M16.5 17.5l-1 2.5"/>',
+ snow:'<path d="M12 3.5v17M4.6 7.8l14.8 8.4M4.6 16.2l14.8-8.4"/><path d="M9.8 4.8L12 6.6l2.2-1.8M9.8 19.2L12 17.4l2.2 1.8"/>',
+ vibrate:'<rect x="8" y="4" width="8" height="16" rx="2"/><path d="M4.5 9v6M19.5 9v6M2 10.5v3M22 10.5v3"/>'
 };
 export const icon=(name,cls='')=>`<svg class="icon${cls?' '+cls:''}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${P[name]||P.info}</svg>`;
 export const ELEMENT_ICON={ember:'flame',ward:'shield',growth:'leaf',tide:'drop',focus:'eye',light:'moon'};

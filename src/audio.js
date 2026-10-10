@@ -31,13 +31,15 @@ function tone(ctx,out,frequency,time,duration,amplitude,type='sine',track,group=
   gain.gain.setValueAtTime(.0001,time);gain.gain.linearRampToValueAtTime(amplitude,time+.006);gain.gain.exponentialRampToValueAtTime(.0001,time+duration);
   source.connect(gain);gain.connect(out);finishVoice(source,[source,gain],group,track);source.start(time);source.stop(time+duration+.015);
 }
+function noiseBuffer(ctx){let buffer=noiseBuffers.get(ctx);if(!buffer){buffer=ctx.createBuffer(1,ctx.sampleRate,ctx.sampleRate);const data=buffer.getChannelData(0);let seed=98731;for(let i=0;i<data.length;i++){seed=(Math.imul(seed,1664525)+1013904223)>>>0;data[i]=(seed/4294967296)*2-1;}noiseBuffers.set(ctx,buffer);}return buffer;}
 function noise(ctx,out,time,duration,amplitude,frequency,type,track){
-  let buffer=noiseBuffers.get(ctx);if(!buffer){buffer=ctx.createBuffer(1,ctx.sampleRate,ctx.sampleRate);const data=buffer.getChannelData(0);let seed=98731;for(let i=0;i<data.length;i++){seed=(Math.imul(seed,1664525)+1013904223)>>>0;data[i]=(seed/4294967296)*2-1;}noiseBuffers.set(ctx,buffer);}
-  const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain();source.buffer=buffer;filter.type=type;filter.frequency.value=frequency;filter.Q.value=.65;
+  const buffer=noiseBuffer(ctx),source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain();source.buffer=buffer;filter.type=type;filter.frequency.value=frequency;filter.Q.value=.65;
   gain.gain.setValueAtTime(amplitude,time);gain.gain.exponentialRampToValueAtTime(.0001,time+duration);
   source.connect(filter);filter.connect(gain);gain.connect(out);finishVoice(source,[source,filter,gain],'effect',track);source.start(time);source.stop(time+duration+.015);
 }
-export function playEffect(ctx,out,kind='good',time=ctx.currentTime,track){
+// The stones of a finished piece ring up a pentatonic run from D5, one note a stone.
+export const CHIME=[74,76,79,81,83,86,88,91,93,95,98,100];
+export function playEffect(ctx,out,kind='good',time=ctx.currentTime,track,{step=0}={}){
   if(kind==='hit'){
     for(const [i,f]of[220,690,1100,1770,2900].entries())tone(ctx,out,f,time,[.12,.18,.11,.08,.065][i],[.22,.13,.07,.03,.018][i],'sine',track);
     noise(ctx,out,time,.04,.08,1800,'bandpass',track);
@@ -50,6 +52,10 @@ export function playEffect(ctx,out,kind='good',time=ctx.currentTime,track){
   else if(kind==='coin')for(const [i,f]of[1046.5,1568,2093].entries())tone(ctx,out,f,time+i*.055,.17,.065,'sine',track);
   else if(kind==='magic')for(const [i,n]of[74,77,81].entries())tone(ctx,out,hz(n),time+i*.09,.4,.045,'triangle',track);
   else if(kind==='error')tone(ctx,out,130,time,.13,.06,'triangle',track);
+  else if(kind==='chime'){const f=hz(CHIME[Math.abs(step|0)%CHIME.length]);tone(ctx,out,f,time,.5,.05,'sine',track);tone(ctx,out,f*2,time,.22,.012,'sine',track);}
+  else if(kind==='stamp'){noise(ctx,out,time,.09,.14,400,'lowpass',track);tone(ctx,out,90,time,.12,.09,'triangle',track);}
+  else if(kind==='whoosh')noise(ctx,out,time,.35,.05,900,'highpass',track);
+  else if(kind==='bell'){tone(ctx,out,1320,time,.6,.04,'sine',track);tone(ctx,out,1980,time,.6,.02,'sine',track);}
   else{tone(ctx,out,440,time,.18,.045,'triangle',track);tone(ctx,out,660,time+.08,.2,.035,'sine',track);}
 }
 export function playMusicTick(ctx,out,scene,index,time,track){
@@ -62,7 +68,7 @@ export function playMusicTick(ctx,out,scene,index,time,track){
 export class GameAudio{
   constructor({contextFactory}={}){
     this.contextFactory=contextFactory||(()=>{const Audio=globalThis.AudioContext||globalThis.webkitAudioContext;return Audio?new Audio():null;});
-    this.context=null;this.options={sound:false,music:false,volume:.6};this.scene='forge';this.visible=true;this.voices=new Set();this.timer=null;this.index=0;this.nextTime=0;this.lastEffects=new Map();
+    this.context=null;this.options={sound:false,music:false,volume:.6};this.scene='forge';this.visible=true;this.voices=new Set();this.timer=null;this.index=0;this.nextTime=0;this.lastEffects=new Map();this.weather={rain:false};this.ambient=null;
   }
   setOptions(options){
     this.options={sound:Boolean(options.sound),music:Boolean(options.music),volume:Number.isFinite(options.volume)?Math.max(0,Math.min(1,options.volume)):.6};
@@ -71,7 +77,17 @@ export class GameAudio{
     this.music.gain.setTargetAtTime(this.options.music?1:0,now,.04);
     if(!this.options.music||this.options.volume===0)this.stopMusic();else this.startMusic();
     if((!this.options.sound&&!this.options.music||this.options.volume===0)&&this.context.state==='running')this.context.suspend().catch(()=>{});
+    this.syncAmbience();
   }
+  // Rain outside the windows: a quiet loop of filtered noise on a node of its own. It is not a voice, so the limit of
+  // forty voices never cuts it and it never pushes an effect out. It plays with the effects on and stops with them,
+  // in the background and when the weather changes.
+  setAmbience({rain=false}={}){this.weather={rain:!!rain};this.syncAmbience();}
+  syncAmbience(){const ctx=this.context,on=this.weather.rain&&this.visible&&this.options.sound&&this.options.volume>0&&ctx?.state==='running';
+    if(on&&!this.ambient){const now=ctx.currentTime,source=ctx.createBufferSource(),high=ctx.createBiquadFilter(),low=ctx.createBiquadFilter(),gain=ctx.createGain();source.buffer=noiseBuffer(ctx);source.loop=true;high.type='highpass';high.frequency.value=300;low.type='lowpass';low.frequency.value=1200;
+      gain.gain.setValueAtTime(.0001,now);gain.gain.linearRampToValueAtTime(.025,now+1.5);source.connect(high);high.connect(low);low.connect(gain);gain.connect(this.master);source.start(now);this.ambient={source,nodes:[source,high,low,gain]};}
+    else if(!on&&this.ambient)this.stopAmbience();}
+  stopAmbience(){const a=this.ambient;this.ambient=null;if(!a)return;try{a.source.stop();}catch{}for(const node of a.nodes)try{node.disconnect();}catch{}}
   async unlock(){
     if(!this.visible||(!this.options.sound&&!this.options.music)||this.options.volume===0)return false;
     try{
@@ -80,7 +96,7 @@ export class GameAudio{
         this.master=this.context.createGain();this.effects=this.context.createGain();this.music=this.context.createGain();
         this.master.connect(this.context.destination);this.effects.connect(this.master);this.music.connect(this.master);this.setOptions(this.options);
       }
-      await this.context.resume();this.startMusic();return this.context.state==='running';
+      await this.context.resume();this.startMusic();this.syncAmbience();return this.context.state==='running';
     }catch{return false;}
   }
   track(voice){
@@ -88,11 +104,12 @@ export class GameAudio{
     if(this.voices.size>40){const oldest=this.voices.values().next().value;try{oldest.source.stop();}catch{}for(const node of oldest.nodes)try{node.disconnect();}catch{}this.voices.delete(oldest);}
     return ()=>this.voices.delete(voice);
   }
-  play(kind='good'){
+  // A chime is a note of a run, so notes that follow closely are never dropped as repeats.
+  play(kind='good',{step=0}={}){
     const ctx=this.context;if(!ctx||ctx.state!=='running'||!this.visible||!this.options.sound||this.options.volume===0)return false;
-    const gap=kind==='step'?.19:kind==='polish'?.1:kind==='forge'?.4:.035;
-    if(ctx.currentTime-(this.lastEffects.get(kind)??-100)<gap)return false;
-    this.lastEffects.set(kind,ctx.currentTime);playEffect(ctx,this.effects,kind,ctx.currentTime,v=>this.track(v));return true;
+    const gap=kind==='chime'?0:kind==='step'?.19:kind==='polish'?.1:kind==='forge'?.4:.035;
+    if(gap&&ctx.currentTime-(this.lastEffects.get(kind)??-100)<gap)return false;
+    this.lastEffects.set(kind,ctx.currentTime);playEffect(ctx,this.effects,kind,ctx.currentTime,v=>this.track(v),{step});return true;
   }
   setScene(scene){scene=SCORES[scene]?scene:'forge';if(scene===this.scene)return;this.scene=scene;this.stopMusic();this.startMusic();}
   startMusic(){
@@ -109,7 +126,7 @@ export class GameAudio{
     if(!this.context)return;
     for(const voice of this.voices)if(voice.group==='music'){const gain=voice.nodes[1];try{gain.gain.cancelScheduledValues(this.context.currentTime);gain.gain.setTargetAtTime(.0001,this.context.currentTime,.01);voice.source.stop(this.context.currentTime+.035);}catch{}}
   }
-  pause(){this.visible=false;this.stopMusic();if(this.context)this.context.suspend().catch(()=>{});}
+  pause(){this.visible=false;this.stopMusic();this.stopAmbience();if(this.context)this.context.suspend().catch(()=>{});}
   resume(){this.visible=true;if(this.context)return this.unlock();return Promise.resolve(false);}
   async destroy(){this.pause();if(this.context)await this.context.close().catch(()=>{});this.voices.clear();}
 }

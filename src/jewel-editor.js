@@ -84,7 +84,7 @@ export class JewelEditor{
     const {w,h,base}=this.geometry(),ratio=Math.min(2,devicePixelRatio||1),cw=Math.round(w*ratio),ch=Math.round(h*ratio);if(cw<1||ch<1)return;if(this.canvas.width!==cw||this.canvas.height!==ch){this.canvas.width=cw;this.canvas.height=ch;}
     const c=this.canvas.getContext('2d');c.setTransform(ratio,0,0,ratio,0,0);drawVelvet(c,w,h);const size=base*this.zoom,left=(w-size)/2+this.pan.x,top=(h-size)/2+this.pan.y;
     if(this.symmetry){c.save();c.strokeStyle='rgba(243,215,156,.35)';c.setLineDash([4,5]);c.lineWidth=1;c.beginPath();c.moveTo(left+size/2,Math.max(0,top));c.lineTo(left+size/2,Math.min(h,top+size));c.stroke();c.restore();}
-    c.save();c.translate(left,top);drawJewel(c,d,{size,time:time/1000,handles:this.tool==='shape',selected:this.tool==='stone'?this.selected:-1,background:false,assessment:this.metrics});c.restore();
+    c.save();c.translate(left,top);drawJewel(c,d,{size,time:time/1000,handles:this.tool==='shape',selected:this.tool==='stone'?this.selected:-1,background:false,assessment:this.metrics,rev:this.rev});c.restore();
     if(this.operation?.kind==='hole'||this.operation?.kind==='shape'){c.save();c.strokeStyle='#f3d79c';c.setLineDash([5,4]);c.lineWidth=1.5;c.beginPath();this.operation.points.forEach((p,i)=>{const x=left+p.x/100*size,y=top+p.y/100*size;i?c.lineTo(x,y):c.moveTo(x,y);});c.stroke();c.restore();}
     this.dirty=false;
   }

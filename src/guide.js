@@ -2,6 +2,7 @@
 // the game here: progress.js writes down and rewards, the interface only shows what these functions decide.
 import * as J from './jewelry.js';
 import * as G from './guild.js';
+import * as A from './ambience.js';
 import * as H from './people.js';
 import * as B from './book.js';
 import {PATTERNS} from './patterns.js';
@@ -104,4 +105,4 @@ export function morningReport(s,prev={},{view='studio'}={}){const y=s.day-1,firs
   letters:(s.mail||[]).filter(m=>!m.read&&H.letter(m.id)).slice(0,3).map(m=>({id:m.id,from:H.letter(m.id).from})),
   guests:s.customers.map(c=>({id:c.id,client:c.client,novel:c.novel===true,want:c.want,best:best(c)})),
   theme:G.themeOf(s.day),left:G.daysLeft(s.day),news:{gift:prev.gift||null,named:prev.named||[],week:prev.week||null,theme:prev.theme||null},
-  advice:nextSteps(s,{view}).find(x=>!x.letter)||null,backup:backupDue(s)};}
+  advice:nextSteps(s,{view}).find(x=>!x.letter)||null,backup:backupDue(s),amb:A.ambience(s)};}

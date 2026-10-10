@@ -47,7 +47,7 @@ test('install bypasses the HTTP cache and the game then starts without the netwo
  const missing=await w.dispatch('fetch',{request:w.request('src/missing.js')});assert.equal(missing.type,'error');
 });
 test('a file missing from the cache is fetched once and kept; old caches are removed on activation',async()=>{
- const w=worker();w.stores.set('pix-forge-old',new Map());await w.dispatch('install');await w.dispatch('activate');assert.deepEqual([...w.stores.keys()],['pix-forge-v9']);
- w.stores.get('pix-forge-v9').delete(w.BASE+'src/app.js');w.net.calls=[];
+ const w=worker();w.stores.set('pix-forge-old',new Map());await w.dispatch('install');await w.dispatch('activate');assert.deepEqual([...w.stores.keys()],['pix-forge-v10']);
+ w.stores.get('pix-forge-v10').delete(w.BASE+'src/app.js');w.net.calls=[];
  await w.dispatch('fetch',{request:w.request('src/app.js')});await w.dispatch('fetch',{request:w.request('src/app.js')});assert.equal(w.net.calls.length,1);
 });

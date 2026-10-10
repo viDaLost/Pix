@@ -65,6 +65,13 @@ export function normalize(s){
  guard(()=>{s.hintsSeen=Array.isArray(s.hintsSeen)?list(s.hintsSeen,id=>U.HINT_IDS.includes(id),64):U.HINTS.filter(h=>{try{return !!h.past?.(s);}catch{return false;}}).map(h=>h.id);});
  // The game day of the last copy of the save (or of the last reminder about it).
  guard(()=>{const d=count(s.day)||1;if(!(day(s.backup)&&s.backup>=1&&s.backup<=d))s.backup=d;});
+ // The best work of the workshop and the kinds already made. A workshop from before the records counts what it has
+ // (showcase, models and the forms of the book), so its first piece after the update is not a false record.
+ guard(()=>{const r=obj(s.records)?s.records:null;if(r){s.records={craft:count(r.craft),magic:count(r.magic),value:count(r.value),types:list(r.types,id=>TYPE_IDS.includes(id),TYPE_IDS.length)};return;}
+  const rec={craft:0,magic:0,value:0,types:[]},seen=new Set(Object.keys(s.book?.e||{}).filter(k=>k.startsWith('form:')).map(k=>k.slice(5).split('.')[0]));
+  for(const i of[...(Array.isArray(s.stock)?s.stock:[]),...(Array.isArray(s.library)?s.library:[])])guard(()=>{const d=i.design,e=J.evaluate(d);seen.add(d.type);rec.craft=Math.max(rec.craft,e.craft);rec.magic=Math.max(rec.magic,e.magic);rec.value=Math.max(rec.value,Math.round(J.value(s,d)));});
+  rec.types=TYPE_IDS.filter(id=>seen.has(id));s.records=rec;});
+ guard(()=>{if(typeof s.haptics!=='boolean')s.haptics=true;});
  guard(()=>{if(Array.isArray(s.stock))for(const i of s.stock)if(obj(i)&&'ribbon'in i){if(obj(i.ribbon)&&[1,2,3].includes(i.ribbon.medal)&&day(i.ribbon.w))i.ribbon={w:i.ribbon.w,medal:i.ribbon.medal};else delete i.ribbon;}});
  return s;
 }
@@ -73,7 +80,7 @@ const lastOf=v=>obj(v)&&TYPE_IDS.includes(v.type)&&typeof v.name==='string'&&v.n
 // The week turns: its best result goes into the history if anything was entered, and the new week starts empty.
 function rollWeek(s){const g=s.guild,w=G.weekOf(s.day);if(g.week===w)return null;const done=g.tried.length?{w:g.week,theme:G.themeOfWeek(g.week).id,medal:g.best,score:g.score,name:g.name}:null;
  if(done){g.history.unshift(done);if(g.history.length>52)g.history.length=52;}Object.assign(g,{week:w,best:0,tried:[],score:0,name:'',seen:false});return done;}
-const ready=s=>{if(!obj(s.stats)||!obj(s.daily)||!Array.isArray(s.daily.types)||!obj(s.book)||!obj(s.cosmetics)||!Number.isInteger(s.rep)||!obj(s.bonds)||!Array.isArray(s.mail)||!obj(s.guild)||!obj(s.tutorial)||!Array.isArray(s.hintsSeen))normalize(s);return s;};
+const ready=s=>{if(!obj(s.stats)||!obj(s.daily)||!Array.isArray(s.daily.types)||!obj(s.book)||!obj(s.cosmetics)||!Number.isInteger(s.rep)||!obj(s.bonds)||!Array.isArray(s.mail)||!obj(s.guild)||!obj(s.tutorial)||!Array.isArray(s.hintsSeen)||!obj(s.records)||!Array.isArray(s.records.types))normalize(s);return s;};
 const soldType=(s,type)=>{if(!s.daily.types.includes(type)&&s.daily.types.length<6)s.daily.types.push(type);};
 const gain=(s,n)=>{s.rep+=n;s.daily.rep+=n;return n;};
 // Marks are earned once each; checking again changes nothing.
@@ -105,10 +112,14 @@ export const newGame=seed=>normalize(J.newGame(seed));
 export function load(raw){try{return normalize(J.deserialize(raw));}catch(e){throw e instanceof J.AtelierError?e:new J.AtelierError('Файл сохранения повреждён.');}}
 // The keys of a design that the book does not have yet; cheap enough for every change in the editor.
 export const novelKeys=(s,d,e)=>B.catalogKeys(d,e).filter(k=>!(k in s.book.e));
+// The records a piece sets: the first of its kind, and craft, magic or value above the best so far. A record needs
+// something to beat, so the very first piece and the first awakened one are not called the best work.
+function record(s,d,e){const r=s.records,out={},v=Math.round(J.value(s,d));if(!r.types.includes(d.type)){r.types.push(d.type);out.firstType=d.type;}
+ for(const [k,n]of[['craft',e.craft],['magic',e.magic],['value',v]]){if(r[k]>0&&n>r[k])out[k]={from:r[k],to:n};r[k]=Math.max(r[k],n);}return out;}
 // A finished piece writes what is new to the book: one reputation for each of the first four entries.
-export function complete(s){ready(s);const before=snap(s),item=J.complete(s),d=item.design,e=J.evaluate(d),fresh=novelKeys(s,d,e);
+export function complete(s){ready(s);const before=snap(s),item=J.complete(s),d=item.design,e=J.evaluate(d),fresh=novelKeys(s,d,e),records=record(s,d,e);
  for(const k of fresh){if(Object.keys(s.book.e).length<400)s.book.e[k]=s.day;if(s.daily.firsts.length<40&&!s.daily.firsts.includes(k))s.daily.firsts.push(k);}gain(s,Math.min(4,fresh.length));
- return settle(s,before,{item,fresh,marks:checkMarks(s,'complete',{item,d,e})});}
+ return settle(s,before,{item,fresh,records,marks:checkMarks(s,'complete',{item,d,e})});}
 // A full sale is one that counts toward demand: fresh design and at least 95% of the fair price. Only a full sale
 // earns reputation: +1, +1 for a fit of 70, +2 for a design new to the port, +2 for this resident's first, +2 for the connoisseur.
 // Friendship grows in steps, not sums: a full sale gives 1 from a fit of 60 and 2 from 80, and a discount to a guest

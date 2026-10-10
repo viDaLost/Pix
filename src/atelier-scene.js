@@ -3,6 +3,7 @@ import {paintCharacter} from './characters.js';
 import {drawJewel,velvetTone} from './jewel-art.js';
 import {CLIENTS,AREAS,METALS,GEMS,rankOf} from './jewelry.js';
 import {createActor,moveActor,updateActor} from './motion.js';
+import {ambience,sky,mix,HILLS,dayHash} from './ambience.js';
 const backgrounds=new Map(),jeweler={id:'smith',outfit:'gentleman',color:'#527f91',hair:'#51382e',skin:'#d9a17b',beard:true};
 function base(shop,{sign=false,decor=[]}={}){const c=canvas(480,260),g=c.getContext('2d');px(g,0,0,480,260,'#1d2a33');px(g,8,8,464,244,'#6d4f3a');
  for(let y=12;y<137;y+=23)for(let x=12;x<468;x+=35){panel(g,x+(y%46?0:-15),y,34,22,'#40656a');texture(g,x,y,33,21,['#7fa197','#2f5257'],.1,4);}
@@ -24,17 +25,47 @@ function base(shop,{sign=false,decor=[]}={}){const c=canvas(480,260),g=c.getCont
 // the furnishings are bought for the shop.
 function furnish(g,sign,decor){
  if(decor.includes('map')){panel(g,309,40,24,30,'#7a5a3c');px(g,312,43,18,24,'#e6d3a3');polygon(g,[[312,52],[318,47],[323,50],[329,45],[329,66],[312,66]],'#9fbf95');pixelLine(g,313,60,328,55,'#6e9aa0');px(g,320,49,2,2,'#b4553f');px(g,326,61,1,1,'#3e3428');px(g,314,44,4,1,'#c9b083');}
- if(decor.includes('flowers')){for(const[x,y,k]of[[108,104,'#e08d7d'],[115,98,'#f2d69a'],[122,101,'#c792aa'],[127,107,'#e08d7d'],[112,110,'#c792aa'],[119,107,'#f2d69a'],[104,112,'#f2d69a']]){pixelLine(g,x,y+2,116,118,'#5f8a5a');px(g,x-2,y-1,5,5,k);px(g,x-1,y,3,3,shade(k,30));px(g,x,y+1,1,1,'#fff4d6');}px(g,103,116,4,2,'#78a46c');px(g,127,114,4,2,'#78a46c');panel(g,108,116,17,16,'#6f8fa0');px(g,111,119,11,2,'#a9c7d2');px(g,112,124,2,5,'#a9c7d2');}
+ if(decor.includes('flowers'))flowers(g);
  if(decor.includes('lamp')){px(g,169,62,8,2,'#3a2a20');px(g,175,62,2,4,'#c9a35e');panel(g,171,66,10,14,'#b08a4a');px(g,174,69,4,8,'#ffd58a');px(g,175,70,2,5,'#fff4c5');px(g,172,80,8,2,'#7a5a34');}
  if(sign){panel(g,356,8,92,15,'#6a4630');px(g,359,11,86,9,'#2a1c15');g.save();g.fillStyle='#e9c47a';g.font='bold 7px Georgia, serif';g.textAlign='center';g.textBaseline='middle';g.fillText('ПОСТАВЩИК ДВОРА',402,16);g.restore();px(g,353,13,3,3,'#d7b072');px(g,448,13,3,3,'#d7b072');}
 }
+// The vase stands on the sill in front of the left window, so it is drawn again over the living window.
+function flowers(g){for(const[x,y,k]of[[108,104,'#e08d7d'],[115,98,'#f2d69a'],[122,101,'#c792aa'],[127,107,'#e08d7d'],[112,110,'#c792aa'],[119,107,'#f2d69a'],[104,112,'#f2d69a']]){pixelLine(g,x,y+2,116,118,'#5f8a5a');px(g,x-2,y-1,5,5,k);px(g,x-1,y,3,3,shade(k,30));px(g,x,y+1,1,1,'#fff4d6');}px(g,103,116,4,2,'#78a46c');px(g,127,114,4,2,'#78a46c');panel(g,108,116,17,16,'#6f8fa0');px(g,111,119,11,2,'#a9c7d2');px(g,112,124,2,5,'#a9c7d2');}
+// The sky and hills behind the glass, cached for 24 steps of the day × weather × season (the twelve latest kept).
+const skies=new Map(),WINDOWS=[35,334];
+function skyPane(amb){const step=Math.round(amb.phase*23),key=`${step}|${amb.weather}|${amb.season}`;let pane=skies.get(key);if(pane){skies.delete(key);skies.set(key,pane);return pane;}
+ pane=canvas(90,77);const g=pane.getContext('2d'),k=sky(step/23,amb.weather);
+ // Pixel bands from the top of the sky down to the horizon.
+ for(let y=0;y<77;y+=4)px(g,0,y,90,4,mix(k.top,k.bottom,y/60));
+ const hill=mix(HILLS[amb.season],k.hill,.25+.5*Math.max(0,Math.min(1,(step/23-.8)*5)));polygon(g,[[0,48],[28,27],[55,47],[84,31],[90,76],[0,76]],hill);polygon(g,[[0,62],[30,50],[62,64],[90,54],[90,77],[0,77]],shade(hill,-14));
+ if(amb.season===1){polygon(g,[[22,31],[28,27],[35,32],[30,34]],'#ffffff');polygon(g,[[78,35],[84,31],[90,34],[90,37],[83,36]],'#ffffff');}
+ skies.set(key,pane);if(skies.size>12)skies.delete(skies.keys().next().value);return pane;}
+// The windows are alive over the cached room: sky of the hour, hills of the season, clouds, rain, snow or fog, stars and
+// a harbour lantern at night; then the frame is laid over again.
+export function paintWindows(c,amb,time=0){const dark=Math.max(0,Math.min(1,(amb.phase-.8)*5)),wet=amb.weather!=='clear';
+ for(const [w,x] of WINDOWS.entries()){const gx=x+7,gy=32;c.save();c.beginPath();c.rect(gx,gy,90,77);c.clip();c.drawImage(skyPane(amb),gx,gy);
+  if(dark>0)for(let i=0;i<9;i++){const h=dayHash(w*31+i,7),sx=gx+Math.floor(h*86)+2,sy=gy+2+Math.floor(dayHash(i,w+3)*30);c.globalAlpha=dark*(.55+.45*Math.sin(time*.003+i*2.1));px(c,sx,sy,1,1,'#fff6d8');}c.globalAlpha=1;
+  // Three clouds drift two pixels a second; grey and low in bad weather, dim at night.
+  for(let i=0;i<3;i++){const cx=gx-28+((i*47+w*61+time*.002)%130),cy=gy+6+i*9+(wet?2:0),col=dark>.5?'rgba(58,68,102,.55)':wet?'rgba(150,160,170,.85)':'rgba(255,255,255,.72)';px(c,cx,cy,22,4,col);px(c,cx+5,cy-3,11,3,col);px(c,cx+3,cy+4,14,2,col);}
+  if(amb.weather==='rain')for(let i=0;i<16;i++){const ry=gy-6+((i*37+w*11+time*.12)%83),rx=gx+((i*23+w*7)%88)+Math.floor((ry-gy)*.2);px(c,rx,ry,1,4,'rgba(205,222,240,.6)');}
+  if(amb.weather==='snow')for(let i=0;i<12;i++){const sy=gy-2+((i*29+w*13+time*.016)%80),sx=gx+((i*31+w*17)%88)+Math.round(Math.sin(time*.0012+i)*2);px(c,sx,sy,i%3?1:2,i%3?1:2,'rgba(255,255,255,.9)');}
+  if(amb.weather==='fog'){const drift=Math.sin(time*.0004+w)*4;px(c,gx,gy+38+drift,90,9,'rgba(226,231,234,.38)');px(c,gx,gy+52-drift,90,12,'rgba(226,231,234,.3)');}
+  // A lantern on the quay is lit after dark in the right window.
+  if(w===1&&dark>0){px(c,gx+66,gy+50,2,27,'#2b2f3a');px(c,gx+64,gy+46,6,5,'#3a3330');c.globalAlpha=dark;px(c,gx+65,gy+47,4,3,'#ffd27a');c.globalAlpha=1;}
+  c.restore();
+  px(c,x+51,31,4,80,'#e5bb76');px(c,x+6,67,91,4,'#e5bb76');if(!dark)px(c,x+14,38,27,3,'rgba(240,252,244,.5)');}}
 // Window shafts, a candle and drifting dust give the rooms one consistent light source.
-function light(c,shop,time,lamp=false){
+// The room first takes the colour of the hour (never darker than the night key); the lamp, the candle and the shafts are
+// laid over it, so they keep their warmth in the evening. Shafts weaken as the day goes; at night the moon gives a cold one.
+const rgba=(hex,a)=>{const v=parseInt(hex.slice(1),16);return `rgba(${v>>16&255},${v>>8&255},${v&255},${a})`;};
+function light(c,shop,time,lamp=false,amb=null){const phase=amb?.phase??.35,k=sky(phase,amb?.weather||'clear'),dark=Math.max(0,Math.min(1,(phase-.8)*5)),dim=amb&&amb.weather!=='clear'?.6:1;
+ if(k.tint!=='#ffffff'){c.save();c.globalCompositeOperation='multiply';c.fillStyle=k.tint;c.fillRect(0,0,480,260);c.restore();}
  c.save();c.globalCompositeOperation='lighter';
- if(lamp){const glow=c.createRadialGradient(176,74,1,176,74,70);glow.addColorStop(0,`rgba(255,200,120,${.26+.04*Math.sin(time*.006)})`);glow.addColorStop(1,'rgba(255,200,120,0)');c.fillStyle=glow;c.fillRect(0,0,480,260);}
- for(const x of[35,334]){const g=c.createLinearGradient(x,30,x+120,250);g.addColorStop(0,'rgba(255,236,190,.16)');g.addColorStop(1,'rgba(255,236,190,0)');c.fillStyle=g;c.beginPath();c.moveTo(x+7,32);c.lineTo(x+97,32);c.lineTo(x+170,250);c.lineTo(x+60,250);c.closePath();c.fill();}
- const candle=shop?[291,150]:[398,168],flicker=.85+.15*Math.sin(time*.011)*Math.sin(time*.0037),glow=c.createRadialGradient(candle[0],candle[1],2,candle[0],candle[1],90);glow.addColorStop(0,`rgba(255,184,96,${.3*flicker})`);glow.addColorStop(1,'rgba(255,184,96,0)');c.fillStyle=glow;c.fillRect(0,0,480,260);
- for(let i=0;i<14;i++){const x=(60+i*29+Math.sin(time*.0004+i)*14)%460+10,y=(40+((time*.008+i*37)%190));c.fillStyle=`rgba(255,240,200,${.25+.2*Math.sin(time*.003+i)})`;c.fillRect(Math.round(x),Math.round(y),1,1);}
+ if(lamp){const glow=c.createRadialGradient(176,74,1,176,74,70+30*dark);glow.addColorStop(0,`rgba(255,200,120,${.26+.12*dark+.04*Math.sin(time*.006)})`);glow.addColorStop(1,'rgba(255,200,120,0)');c.fillStyle=glow;c.fillRect(0,0,480,260);}
+ const shaft=.16*(1-.7*phase)*dim*(1-dark)+.06*dark;
+ for(const x of WINDOWS){const g=c.createLinearGradient(x,30,x+120,250);g.addColorStop(0,rgba(k.shaft,shaft));g.addColorStop(1,rgba(k.shaft,0));c.fillStyle=g;c.beginPath();c.moveTo(x+7,32);c.lineTo(x+97,32);c.lineTo(x+170,250);c.lineTo(x+60,250);c.closePath();c.fill();}
+ const candle=shop?[291,150]:[398,168],flicker=.85+.15*Math.sin(time*.011)*Math.sin(time*.0037),glow=c.createRadialGradient(candle[0],candle[1],2,candle[0],candle[1],90+60*phase);glow.addColorStop(0,rgba(k.candle,.3*flicker));glow.addColorStop(1,rgba(k.candle,0));c.fillStyle=glow;c.fillRect(0,0,480,260);
+ for(let i=0;i<14*(1-dark*.6);i++){const x=(60+i*29+Math.sin(time*.0004+i)*14)%460+10,y=(40+((time*.008+i*37)%190));c.fillStyle=`rgba(255,240,200,${.25+.2*Math.sin(time*.003+i)})`;c.fillRect(Math.round(x),Math.round(y),1,1);}
  c.restore();
  const v=c.createRadialGradient(240,140,90,240,140,300);v.addColorStop(0,'rgba(8,10,16,0)');v.addColorStop(1,'rgba(8,10,16,.55)');c.fillStyle=v;c.fillRect(0,0,480,260);
 }
@@ -42,9 +73,11 @@ export class AtelierScene{
  constructor(){this.thumbs=new Map();this.actors=new Map();this.time=0;this.main=createActor(236,228);this.lastBuyer=null;this.art=canvas(160,160);this.artDesign=null;this.artRev=-1;}
  // A draft changes in place while it is dragged, so its picture is keyed by the object and the editor revision.
  artwork(design,rev=0){if(design!==this.artDesign||rev!==this.artRev||velvetTone()!==this.artTone){this.art.getContext('2d').clearRect(0,0,160,160);drawJewel(this.art.getContext('2d'),design,{size:160});this.artDesign=design;this.artRev=rev;this.artTone=velvetTone();}return this.art;}
- paint(c,state,{shop=false,design=null,rev=0,stock=[],working=false,tool='engrave',buyerId=null,time=0,dt=.03}={}){
+ // amb: the hour and weather to show; the night between two days passes its own.
+ paint(c,state,{shop=false,design=null,rev=0,stock=[],working=false,tool='engrave',buyerId=null,time=0,dt=.03,amb=ambience(state)}={}){
   const sign=shop&&rankOf(state)>=4,decor=shop&&Array.isArray(state.cosmetics?.decor)?state.cosmetics.decor:[],key=shop?['shop',sign?'sign':'',...decor].join('|'):'atelier';
   if(!backgrounds.has(key))backgrounds.set(key,base(shop,{sign,decor}));c.clearRect(0,0,480,260);c.drawImage(backgrounds.get(key),0,0);
+  paintWindows(c,amb,time);if(decor.includes('flowers'))flowers(c);
   if(shop){
    const guests=state.customers.filter(b=>!b.served),chosen=guests.find(b=>b.id===buyerId)||guests[0],ids=new Set(guests.slice(0,3).map(b=>b.id));if(chosen)ids.add(chosen.id);
    for(const [id,a]of this.actors)if(!ids.has(id))this.actors.delete(id);
@@ -62,11 +95,11 @@ export class AtelierScene{
    if(design){c.imageSmoothingEnabled=false;c.drawImage(this.artwork(design,rev),261,178,43,27);}
    if(working){sparkle(c,268+Math.sin(time*.016)*5,186,tool==='rune'?'#a9e9df':'#f8dc8e',Math.floor(time/120)%2+1);}
   }
-  light(c,shop,time,decor.includes('lamp'));
+  light(c,shop,time,decor.includes('lamp'),amb);
  }
  thumb(design){let art=this.thumbs.get(design);if(!art){art=canvas(64,64);drawJewel(art.getContext('2d'),design,{size:64,background:false});this.thumbs.set(design,art);if(this.thumbs.size>48)this.thumbs.delete(this.thumbs.keys().next().value);}return art;}
 }
-export function paintMap(c,state,time=0){
+export function paintMap(c,state,time=0,amb=ambience(state)){const winter=amb.season===1;
  px(c,0,0,480,260,'#8eb9bc');polygon(c,[[0,0],[397,0],[427,53],[423,120],[367,151],[321,174],[278,233],[192,260],[0,260]],'#80a77d');
  for(let y=8;y<250;y+=23)for(let x=8;x<410;x+=31){if(x>330&&y>155)continue;px(c,x,y,2,1,'#a9c390');if((x+y)%3===0){polygon(c,[[x,y-7],[x-8,y+9],[x+8,y+9]],'#5b8f73');px(c,x,y+6,2,8,'#896b4c');}}
  pixelLine(c,61,212,144,154,'#d8c497',6);pixelLine(c,143,155,266,100,'#d8c497',6);pixelLine(c,265,100,395,58,'#d8c497',6);
@@ -77,11 +110,18 @@ export function paintMap(c,state,time=0){
  polygon(c,[[371,74],[379,42],[400,35],[420,73]],'#6c8386');polygon(c,[[384,74],[386,54],[393,49],[402,58],[405,74]],'#304c60');for(const[x,y]of[[381,65],[411,62],[396,74]]){polygon(c,[[x,y-9],[x+4,y-3],[x+3,y+3],[x-3,y+1]],'#bcb3e3');px(c,x,y-6,1,5,'#e8dbf2');}
  for(const[x,y]of[[130,182],[174,118],[327,87],[212,191],[302,174]]){polygon(c,[[x,y-3],[x+5,y],[x+3,y+4],[x-4,y+3]],'#9cab89');px(c,x-2,y,4,1,'#cfccb0');}
  for(const[x,y]of[[165,171],[88,130],[223,146],[318,118],[134,233]]){px(c,x,y,2,2,'#ebd79a');px(c,x+4,y+3,1,2,'#d18b88');px(c,x-3,y+2,1,2,'#dae7b0');}
- for(const [x,y]of[[356,17],[383,9],[413,18]]){polygon(c,[[x-31,y+60],[x,y],[x+37,y+60]],'#779b9e');polygon(c,[[x-10,y+20],[x,y],[x+15,y+24]],'#dae5cf');}
+ // In winter the snow comes down the ridge: wider caps on the peaks and on the quarry.
+ for(const [x,y]of[[356,17],[383,9],[413,18]]){polygon(c,[[x-31,y+60],[x,y],[x+37,y+60]],'#779b9e');polygon(c,winter?[[x-18,y+34],[x,y],[x+24,y+38],[x+8,y+31]]:[[x-10,y+20],[x,y],[x+15,y+24]],winter?'#f4f8fa':'#dae5cf');}
+ if(winter)polygon(c,[[375,58],[379,42],[400,35],[412,58],[398,52]],'#eef4f6');
  panel(c,35,192,48,35,'#956e4e');polygon(c,[[29,192],[59,168],[90,192]],'#476879');px(c,52,207,13,20,'#dfbd83');sparkle(c,60,183,'#ffebac',4);
  for(const a of AREAS){sparkle(c,a.x,a.y,state.crafted>=a.need?'#ffe2a0':'#59777a',6);}
  // The lighthouse on its rock is always there; its fire is lit for the keeper of «Сияние».
  polygon(c,[[440,166],[446,156],[460,155],[466,166]],'#6f7f7c');px(c,444,165,20,2,'#59686a');px(c,449,128,9,28,'#d9d2bd');px(c,449,136,9,3,'#b4553f');px(c,449,146,9,3,'#b4553f');px(c,447,124,13,5,'#5a5048');px(c,450,118,7,6,rankOf(state)>=5?'#ffe7a0':'#3e4a52');polygon(c,[[448,118],[453,112],[459,118]],'#5a5048');
  if(rankOf(state)>=5){const a=.25+.075*(1+Math.sin(time*.003));c.save();c.globalAlpha=a;polygon(c,[[453,121],[392,104],[392,138]],'#fff1b8');polygon(c,[[454,121],[480,112],[480,130]],'#fff1b8');c.restore();}
  px(c,376,204,51,4,'#875d43');polygon(c,[[402,201],[402,169],[423,200]],'#eedeb1');pixelLine(c,402,170,402,209,'#715d4b',2);sparkle(c,443,130+Math.sin(time*.002)*2,'#d1eeea',2);
+ // The weather of the day crosses the map too, and the whole land takes the colour of the hour.
+ if(amb.weather==='rain')for(let i=0;i<46;i++){const y=(i*53+time*.12)%270-10,x=(i*97)%480+Math.floor(y*.2);px(c,x,y,1,5,'rgba(220,232,245,.45)');}
+ if(amb.weather==='snow')for(let i=0;i<40;i++){const y=(i*61+time*.016)%266-4,x=(i*89)%480+Math.round(Math.sin(time*.0012+i)*3);px(c,x,y,2,2,'rgba(255,255,255,.85)');}
+ if(amb.weather==='fog'){const drift=Math.sin(time*.0003)*14;px(c,0,70+drift,480,18,'rgba(232,236,238,.28)');px(c,0,150-drift,480,24,'rgba(232,236,238,.22)');}
+ const tint=sky(amb.phase,amb.weather).tint;if(tint!=='#ffffff'){c.save();c.globalCompositeOperation='multiply';c.fillStyle=tint;c.fillRect(0,0,480,260);c.restore();}
 }
