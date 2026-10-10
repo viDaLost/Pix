@@ -1,6 +1,6 @@
 {
   "name": "pix-jewel-atelier",
-  "version": "9.0.0",
+  "version": "10.0.0",
   "private": true,
   "type": "module",
   "description": "A mobile pixel-art jewelry atelier with a freehand design editor and a demand-driven shop",

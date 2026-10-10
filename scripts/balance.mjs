@@ -67,7 +67,7 @@ assert.ok(lux.early.share>=.9,`a gold ring with two diamonds sells at the full p
 // A range of one value reads as that value: «в день 1», not «в день 1–1».
 const fmt=([a,b])=>a===b?String(a):`${a}–${b}`;
 const names=J.RANKS.map(r=>`${r.name} — ${r.rep}`).join(', '),bonus=J.RANKS.map(r=>r.budget).join('/');
-const report=`# Экономика ювелирной мастерской v8
+const report=`# Экономика ювелирной мастерской v10
 
 Команда: \`npm run balance\`. Это проверка правил и достижимости развития; интерес и удобство рисования нужно проверять с игроками.
 
@@ -96,6 +96,8 @@ const report=`# Экономика ювелирной мастерской v8
 Мастерство зависит от целостности контура, устойчивости камней, гравировки и обработанной площади. Художественная оценка описывает симметрию, сдержанность, насыщенность, текучесть формы и сочетание камней; вкусы жителей различаются. Магические свойства возникают при связи поддерживаемого камня с руной. Это правила игры, а не универсальная оценка красоты.
 
 При пустом кошельке берег доступен бесплатно и даёт три порции меди и камень. Небольшую свободную оправу можно сделать из одной порции меди и продать, затем покупать материалы или продолжать собирать находки.
+
+Патина металла, свет камней, церемония «Готово», погода, сезоны и время суток только рисуются: оценка, стоимость, спрос, гости и находки их не читают, поэтому числа этой проверки от них не зависят. Погода дня определяется \`worldSeed\` и номером дня, а не генератором гостей и находок.
 `;
 if(process.argv.includes('--write')){await mkdir(new URL('../docs/',import.meta.url),{recursive:true});await writeFile(new URL('../docs/BALANCE.md',import.meta.url),report);}
 console.log(JSON.stringify({playthroughs:runs.length,creations:runs.length*60,finish:[.25,.6,.95],dayRange,goldRange,control:{replacement:raw,fresh,saturated:tired},ranks,friends,luxury:lux,allPassed:true},null,1));

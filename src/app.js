@@ -332,8 +332,8 @@ function hallmark(metal,rank){const sign={silver:'<text x="32" y="23" text-ancho
  return `<svg viewBox="0 0 64 48" aria-hidden="true"><defs><linearGradient id="brass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f2d69a"/><stop offset=".55" stop-color="#d6ad66"/><stop offset="1" stop-color="#8f6c3a"/></linearGradient></defs><ellipse cx="32" cy="24" rx="30" ry="22" fill="url(#brass)"/><ellipse class="line" cx="32" cy="24" rx="25.5" ry="18"/><g class="mark">${sign}<text x="32" y="39" text-anchor="middle" class="letter">В</text>${rank>=3?'<path d="M50 14.5l1.2 2.6 2.8.3-2.1 1.9.6 2.8-2.5-1.4-2.5 1.4.6-2.8-2.1-1.9 2.8-.3z"/>':''}</g></svg>`;}
 // «Первое кольцо»: the first piece of a kind, with the right gender; and the best work of the workshop so far.
 const FIRST={pendant:'Первый кулон',ring:'Первое кольцо',brooch:'Первая брошь',amulet:'Первый амулет',sword:'Первая инкрустация меча',staff:'Первое навершие посоха'};
-function recordLine(r={}){const best=[r.craft&&`мастерство ${r.craft.to}`,r.magic&&`магия ${magicOf({magic:r.magic.to})}`,r.value&&`стоимость ${r.value.to} мон.`].filter(Boolean);
- return [r.firstType&&`${FIRST[r.firstType]} мастерской`,best.length&&`${r.firstType?'лучшая':'Лучшая'} работа мастерской: ${best.join(', ')}`].filter(Boolean).join(' · ');}
+function recordLine(r={}){const best=[r.craft&&`мастерство ${r.craft.to}`,r.magic&&`магия ${magicOf({magic:r.magic.to})}`,r.value&&`стоимость ${r.value.to} мон.`].filter(Boolean).join(', '),first=FIRST[r.firstType];
+ return first&&best?`${first} и лучшая работа мастерской: ${best}`:first?`${first} мастерской`:best?`Лучшая работа мастерской: ${best}`:'';}
 // The ceremony of a finished piece (ceremony.js has the beats). The stage is a button: a tap shows the piece finished at
 // once. The readings count up, the mark is struck, and the buttons come last; the card for sharing is drawn meanwhile.
 let ceremony=null;
@@ -346,7 +346,7 @@ function showCeremony(item,done){const d=item.design,e=J.evaluate(d),calm=still(
  // Beats noticed late (the page was in the background) pass silently, so a return does not ring them all at once.
  const beat=(b,late=0)=>{const heard=late<250;if(heard&&b.kind==='cloth')audio.play('whoosh');if(heard&&b.kind==='gem'){audio.play('chime',{step:b.step});buzz(6);}if(heard&&b.kind==='magic')audio.play('magic');if(!['cloth','flash'].includes(b.kind))count();
   if(b.kind==='stamp'||b.kind==='final')strike(b.kind==='stamp'&&heard);if(heard&&b.kind==='stamp'){audio.play('stamp');buzz(20);}
-  if(b.kind==='final'){dialog.querySelector('.cloth')?.remove();const row=dialog.querySelector('.ceremony-actions');row?.removeAttribute('inert');row?.classList.add('shown');prepareCard(item);if(calm)audio.play('magic');}};
+  if(b.kind==='final'){dialog.querySelector('.cloth')?.remove();const row=dialog.querySelector('.ceremony-actions');row?.removeAttribute('inert');prepareCard(item);if(calm)audio.play('magic');}};
  ceremony=new Reveal($('#reveal-stage'),d,e,plan,{onBeat:beat,still:calm});ceremony.paint(performance.now());}
 function strike(animate){const h=dialog.querySelector('.hallmark');if(!h||h.classList.contains('struck'))return;h.classList.toggle('quiet',!animate);h.classList.add('struck');}
 // The readings of the ceremony count from zero in 0.6 s while their bars grow.
@@ -400,7 +400,7 @@ function welcome(){const d=J.makeDesign('pendant','drop','gold');try{d.gems=layo
 // Ending the day sends the waiting guests away, so it asks first while one of them could still buy.
 // The last day of a guild theme with nothing entered is a reason too: the next morning brings another theme.
 function dayReasons(){const guests=state.customers.filter(c=>!c.served),n=guests.length,theme=P.themeEnding(state);return [...n&&state.stock.length?[`${n} ${plural(n,'покупатель','покупателя','покупателей')} ещё в лавке и ${n===1?'уйдёт':'уйдут'}: ${guests.map(c=>client(c.client).name).join(', ')}.`]:[],...theme?[`Сегодня последний день темы «${theme.name}», а на смотр ещё ничего не подано.`]:[]];}
-function nextDay(confirmed=false){editor?.finish();const reasons=confirmed?[]:dayReasons();
+function nextDay(confirmed=false){if(night)return;editor?.finish();const reasons=confirmed?[]:dayReasons();
  if(reasons.length){modal('Закончить день?',`<ul class="reasons">${reasons.map(r=>`<li>${esc(r)}</li>`).join('')}</ul><p class="fine-print">Черновик, запасы и витрина останутся до завтра.</p><div class="row fill">${btn('stay-in-shop','Остаться в лавке')}${btn('confirm-next-day','Закончить день','primary')}</div>`);return;}
  let daily;const from=A.ambience(state);try{forgetRecycled();daily=P.nextDay(state);}catch(e){toast(e.message,true);return;}scheduleSave();render();warmShowcase();
  // The morning waits for what the night's render queued (Даро's letter, a new rank), so it opens after them.
