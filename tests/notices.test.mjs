@@ -79,3 +79,11 @@ test('every fixed grid shares its width with minmax(0,…), so a long label cann
  const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8'),bad=[...css.matchAll(/grid-template-columns:([^;}]*)/g)].map(m=>m[1]).filter(v=>/(^|[\s(,])[\d.]+fr/.test(v.replace(/minmax\([^)]*\)/g,'')));
  assert.deepEqual(bad,[]);
 });
+// A sent sheet takes back its entry in the history even though render() has already let the sheet go, and a sheet opened
+// from a dialog (the hunter for the sorcerer) gets one once the dialog has taken back its own, so «Назад» never does nothing.
+test('the sheet keeps exactly one entry in the history: none left after sending, one added after a dialog',()=>{
+ const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
+ assert.match(app,/function leaveSheet\(\)\{sheet=null;if\(history\.state\?\.sheet&&!dialog\.open\)\{ignorePop=true;history\.back\(\);\}\}/,'leaveSheet does not return early when the sheet is already gone');
+ assert.match(app,/else if\(sheet&&!history\.state\?\.sheet\)history\.pushState\(\{sheet:1\},''\);else if\(!sheet&&history\.state\?\.sheet\)\{ignorePop=true;history\.back\(\);\}/);
+ assert.match(app,/loadError\?'reset-recovery':'reset-game'/,'a damaged save offers its own «Начать заново»');
+});

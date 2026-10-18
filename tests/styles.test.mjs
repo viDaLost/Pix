@@ -39,3 +39,13 @@ test('the layout rules of the four sizes: short phones, the shortest, the landsc
  // The variant of a case is shown openly on its plate and in the sheet (decision D1).
  assert.match(app,/<em class="tier \$\{c\.variant\}">/);assert.match(app,/<p class="circ">\$\{VARIANT\[c\.variant\]\} облик · /);
 });
+// Found in the review of Г2: no size lets a dialog grow past 88 % of the screen; the stamp of a record in «Опыты» has the
+// width of its card under the name (at 320 px «Опровергнуто» was cut to «ОПРОВ»); a long word in a slot of the sheet
+// breaks inside its slot instead of running into the next; a town case says what the town pays, not the bounty.
+test('review of Г2: dialogs within 88dvh everywhere, whole stamps in «Опыты», slots that keep their words, the town pay',()=>{
+ for(const m of css.matchAll(/max-height:(\d+)dvh/g))assert.ok(Number(m[1])<=88,`a max-height of ${m[1]}dvh`);
+ assert.match(css,/\.lab-card>\.stamp\{grid-column:2\/4;/);assert.match(css,/\.lab-card>button\{grid-column:3;grid-row:1;/);
+ assert.match(css,/@media\(max-width:359px\)\{\.lab-card>\.lab-main\{grid-column:2\/4\}\.lab-card>button\{grid-column:2\/4;grid-row:3;/);
+ assert.match(css,/\.slot\{[^}]*overflow:hidden;/);assert.match(css,/\.slot \.hand\{[^}]*overflow-wrap:anywhere;hyphens:auto/);assert.match(css,/\.slot \.hand\.longword\{font-size:calc\(14px\*var\(--fs\)\)\}/);assert.match(app,/<span class="hand\$\{Math\.max\(/);
+ assert.match(app,/c\.kind==='town'\?`плата \$\{c\.fee\} · при победе \$\{P\.TOWN\.pay\*c\.tier\}`/);
+});

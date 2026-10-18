@@ -40,7 +40,7 @@ test('the morning card: who came back and how, who heals, who joined, the notes 
  // Nobody listened to Ведана: in the morning her note lies on the table, the rumour already in the bestiary.
  const ved=s.visitors.find(v=>v.kind==='vedana'&&v.rumour),r2=P.endDay(s),m2=G.morningReport(s,r2),note=m2.rows.find(x=>x.icon==='letter');
  assert.ok(ved&&note,'a note of the morning');assert.match(note.text,/^Ведана не дождалась и оставила на столе записку о /);assert.equal(note.view,'bestiary');assert.ok(s.know[r2.morning.notes[0].fact]);
- assert.ok(m2.rows.some(x=>x.text==='В артели новый охотник: Тимофей Скворцов'));assert.ok(m2.rows.some(x=>/^Лечатся: Гордей \(ещё \d дн/.test(x.text))||s.hunters.gordey.out===0);
+ assert.ok(m2.rows.some(x=>x.text==='В артели новый охотник: Тимофей Скворцов'));assert.ok(m2.rows.some(x=>/^Лечится: Гордей \(ещё \d дн/.test(x.text))||s.hunters.gordey.out===0);
  for(const x of[...m.rows,...m2.rows])assert.ok(leads(x),JSON.stringify(x));
  // A woman comes back in her own words.
  const t=game(21);clear(t);join(t,'agata');const c=place(t,{hunter:'agata',win:true,at:60});P.advise(t,c.id,['werewolf.silver','werewolf.aconite','werewolf.crossroads']);const mt=G.morningReport(t,P.endDay(t));
@@ -72,4 +72,33 @@ test('the guide changes nothing in the game: it only reads',()=>{
  const s=game(31);P.endDay(s);const before=P.serialize(s);G.nextSteps(s);G.morningReport(s);G.queueOf(s);G.standing(s);assert.equal(P.serialize(s),before);
  const src=readFileSync(new URL('../src/guide.js',import.meta.url),'utf8');assert.doesNotMatch(src,/\b(document|window|localStorage)\.|\bnavigator\b/,'no DOM');
  assert.doesNotMatch(src,/P\.(advise|listen|endDay|claim|buy|sell|brew|labTest|copyPage|writeTreatise|upgrade|equip)\(/,'no actions');
+});
+// The draft of a sheet (GDD 10.3): a slip in the sheet always comes out at a tap, even one a book or an experiment has
+// since found dangerous; a slip of a taken category replaces the other one; a dangerous slip and a fourth are refused;
+// a potion given to another hunter the same day leaves the draft instead of locking the sheet.
+test('the draft of a sheet: a slip comes out at a tap even when it turned dangerous, and a potion that is gone leaves it',()=>{
+ const s=game(23),cid=s.contracts[0].id,card=id=>P.cards(s,cid).find(x=>x.id===id);
+ const four=L.MON.get('werewolf').facts.filter(f=>s.know[f.id]&&P.cards(s,cid).find(x=>x.id===f.id).usable);const cats=[...new Set(four.map(f=>f.cat))];assert.ok(cats.length>=4);
+ const three=cats.slice(0,3).map(c=>four.find(f=>f.cat===c).id),fourth=four.find(f=>f.cat===cats[3]).id;
+ assert.equal(G.draftTap({facts:three,potions:[]},card(fourth)).refused,'full','a fourth slip is refused');
+ let d={facts:['werewolf.silver','werewolf.aconite','werewolf.dawn'],potions:['aconite_oil']};
+ know(s,'werewolf.dawn','dangerous');assert.equal(card('werewolf.dawn').usable,false,'the book made «На восходе» dangerous');
+ assert.deepEqual(G.draftTap(d,card('werewolf.dawn')),{facts:['werewolf.silver','werewolf.aconite'],removed:'werewolf.dawn'},'it still comes out of the sheet');
+ d={facts:['werewolf.silver'],potions:[]};assert.equal(G.draftTap(d,card('werewolf.dawn')).refused,'dangerous','but it is never written in');assert.deepEqual(d.facts,['werewolf.silver']);
+ d={facts:['werewolf.silver','werewolf.aconite'],potions:[]};const r=G.draftTap(d,card('werewolf.garlic'));
+ assert.deepEqual(r,{facts:['werewolf.silver','werewolf.garlic'],replaced:'werewolf.aconite'},'one slip a category: «Чеснок» takes the place of «Волчий корень»');
+ assert.deepEqual(G.draftTap({facts:['werewolf.silver'],potions:[]},card('werewolf.crossroads')),{facts:['werewolf.silver','werewolf.crossroads'],added:'werewolf.crossroads'});
+ s.potions.aconite_oil=0;assert.deepEqual(G.liveDraft(s,{facts:['werewolf.silver'],potions:['aconite_oil','thistle_brew']}),{facts:['werewolf.silver'],potions:['thistle_brew']},'the potion given away leaves the draft');
+ const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');assert.match(app,/G\.draftTap\(d,card\)/,'the sheet taps through G.draftTap');assert.match(app,/G\.liveDraft\(state,d\)/,'and keeps only what can still go');
+});
+// The slots of the sheet are narrow on a phone: long titles carry soft hyphens of their own, so «Перекрёсток» breaks as
+// «Перекрёс-ток», never «Перекрёсто-к», even in a browser without a hyphenation dictionary.
+test('soft hyphens keep a long title in its slot: every part has a vowel and two letters, never before ь, ъ, й',()=>{
+ const parts=w=>G.hyphenate(w).split('\u00ad');
+ assert.deepEqual(parts('Перекрёсток'),['Пе','рек','рёс','ток']);assert.deepEqual(parts('уберечься'),['убе','речь','ся']);assert.deepEqual(parts('Можжевельник'),['Мож','же','вель','ник']);
+ assert.equal(G.hyphenate('Волчий корень'),'Волчий корень','words under nine letters stay whole, so a line never breaks «ко-рень»');assert.equal(G.hyphenate('Серебро'),'Серебро');
+ for(const f of L.MONSTERS.flatMap(m=>m.facts))for(const w of G.hyphenate(f.title).split(/[\s-]/)){const p=w.split('\u00ad');assert.equal(p.join(''),w.replace(/\u00ad/g,''));
+  if(p.length>1)for(const x of p){assert.ok(x.replace(/[^А-Яа-яЁё]/g,'').length>=2,`${f.title}: «${x}»`);assert.match(x,/[аеёиоуыэюя]/i,`${f.title}: «${x}» without a vowel`);}
+  for(const x of p.slice(1))assert.doesNotMatch(x,/^[йьъ]/i,`${f.title}: a part begins with ь, ъ or й`);}
+ const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');assert.match(app,/esc\(G\.hyphenate\(f\.title\)\)/,'the slot writes the title with its soft hyphens');
 });

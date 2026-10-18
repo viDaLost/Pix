@@ -5,7 +5,8 @@ import * as L from './lore.js';
 import {townMorningWords} from './ambience.js';
 export const plural=L.plural;
 const name=id=>L.HUNTER.get(id)?.short||L.VISITOR.get(id)?.short||L.TOWN_TYPE.get(id)?.label||'';
-const and=list=>list.length>1?list.slice(0,-1).join(', ')+' и '+list.at(-1):list[0]||'';
+// «Агата», «Агата и Гордей», «Агата, Гордей и Ведана».
+export const and=list=>list.length>1?list.slice(0,-1).join(', ')+' и '+list.at(-1):list[0]||'';
 const LAB=['substance','ward'];
 // Who is the guest of a visit, in the nominative: «Агата», «Вдова с посада», «Ведана».
 export const guestName=v=>v.kind==='hunter'||v.kind==='town'?name(v.who):name(v.kind);
@@ -20,6 +21,27 @@ const rumourFrom=k=>k?.src==='book'&&L.BOOK.has(k.by)?`из книги «${L.BOO
 export function marginNote(k,f){if(k.rev)return `верно лишь: ${f.condTag}`;
  if(k.st==='confirmed')return k.ok>=3?'верно — проверено трижды':k.ok?'верно — проверено делом':k.src==='lab'||k.src==='trophy'?'верно — проверено опытом':k.src==='archive'?'верно — сошлось в летописях':'верно — так записано';
  if(k.st==='refuted')return 'пустое';if(k.st==='dangerous')return 'НИ В КОЕМ СЛУЧАЕ';const from=rumourFrom(k);return from?`слух — ${from}`:'слух';}
+// The draft of a sheet lives in the interface until the day ends (GDD 10.3). A tap on a slip takes it out of the sheet
+// when it is there — always, even a slip that turned dangerous since it was written in — writes it into a free slot, or
+// replaces the slip of its category; a dangerous slip and a fourth one are refused. Returns the new list of facts and
+// what happened: {facts, removed|added|replaced|refused}.
+export function draftTap(d,card){const facts=d.facts||[];if(!card)return {facts,refused:'missing'};
+ if(facts.includes(card.id))return {facts:facts.filter(x=>x!==card.id),removed:card.id};
+ if(!card.usable)return {facts,refused:'dangerous'};
+ const j=facts.findIndex(x=>L.FACT.get(x)?.cat===card.cat);if(j>=0){const next=[...facts];next[j]=card.id;return {facts:next,replaced:facts[j]};}
+ if(facts.length>=3)return {facts,refused:'full'};return {facts:[...facts,card.id],added:card.id};}
+// Soft hyphens in long Russian words, so a title keeps to its narrow slot of the sheet on every phone, with or without
+// a hyphenation dictionary in the browser: a break after a vowel before a consonant and a vowel («Пе-ре»), between two
+// consonants after a vowel («Пас-мур»), after «ь», «ъ» or «й» («уберечь-ся»); never before them, and each part keeps a
+// vowel and at least two letters («Пе|рек|рёс|ток»). Only words of nine letters and more get them: a shorter word fits
+// its slot whole, and a soft hyphen in it would only tempt the line to break «Волчий ко-рень».
+const VOW=/[аеёиоуыэюя]/i,SOFT=/[йьъ]/i;
+export const hyphenate=text=>String(text).replace(/[А-Яа-яЁё]{9,}/g,w=>{let out=w.slice(0,2);
+ for(let i=2;i<w.length;i++){const a=w[i-1],b=w[i],c=w[i+1]||'';const room=i<=w.length-2&&VOW.test(w.slice(0,i))&&VOW.test(w.slice(i))&&!SOFT.test(b)&&!VOW.test(b)&&VOW.test(c);
+  out+=(room&&(VOW.test(a)||SOFT.test(a)||VOW.test(w[i-2]))?'\u00ad':'')+b;}return out;});
+// What of a draft can still go: a potion given to another hunter today has left the shelf, so it leaves the draft too
+// rather than lock the sheet with «Нет снадобья».
+export const liveDraft=(s,d)=>({facts:(d.facts||[]).filter(id=>s.know[id]),potions:(d.potions||[]).filter(id=>(s.potions[id]||0)>0)});
 // The guests in the queue of the reception: a hunter or a townsperson while the case is on the table; Ведана, о. Никодим,
 // Янек, Даро and a townsperson with a rumour until they are heard; the Magister stays the day — his window of the Academy.
 export function queueOf(s){return s.visitors.filter(v=>v.contract?s.contracts.some(c=>c.id===v.contract):v.kind==='hunter'?false:v.kind==='otto'||!v.heard);}
@@ -49,7 +71,7 @@ export function morningReport(s,res={}){const m=res.morning||P.morning(s),rows=[
  for(const x of m.returns||[])row(x.win?'check':'bandage',`Вернул${L.female(x.hunter||x.town)?'ась':'ся'} ${x.hunter?name(x.hunter):L.TOWN_TYPE.get(x.town)?.label.toLowerCase()} — ${returnWords(x)}`,{report:x.report});
  for(const id of m.back||[])row('people',`Снова в строю: ${name(id)}`,{view:'reception',tab:'artel'});
  for(const id of m.forgiven||[])row('people',`${name(id)} снова ${L.female(id)?'готова':'готов'} к делу: «Кто старое помянет…»`,{view:'reception',tab:'artel'});
- const healing=(m.healing||[]).filter(h=>!(m.returns||[]).some(x=>x.hunter===h.hunter));if(healing.length)row('bandage',`Лечатся: ${healing.map(h=>`${name(h.hunter)} (ещё ${L.days(h.days)})`).join(', ')}`,{view:'reception',tab:'artel'});
+ const healing=(m.healing||[]).filter(h=>!(m.returns||[]).some(x=>x.hunter===h.hunter));if(healing.length)row('bandage',`${healing.length>1?'Лечатся':'Лечится'}: ${healing.map(h=>`${name(h.hunter)} (ещё ${L.days(h.days)})`).join(', ')}`,{view:'reception',tab:'artel'});
  for(const h of m.sulking||[])if(!(m.returns||[]).some(x=>x.hunter===h.hunter))row('people',`${name(h.hunter)} ${L.female(h.hunter)?'обиделась':'обиделся'} — вернётся через ${L.days(h.days)}`,{view:'reception',tab:'artel'});
  for(const id of m.joined||[])row('people',`В артели ${L.female(id)?'новая охотница':'новый охотник'}: ${L.HUNTER.get(id).name}`,{view:'reception',tab:'artel'});
  for(const n of m.notes||[])row('letter',n.text,{view:'bestiary',monster:L.monsterOf(n.fact)?.id});
