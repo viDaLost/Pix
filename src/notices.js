@@ -24,8 +24,10 @@ export class ToastQueue{
  // Takes out toasts that must wait for later (a hint while a dialog is open), the one on screen first, to be added again.
  take(test){const out=[...this.now&&test(this.now)?[this.now]:[],...this.waiting.filter(test)];if(out.length)this.drop(test);return out;}
 }
-// Dialogs that wait for the open one to close come in this order, whatever order they were asked for in.
-export const MODAL_ORDER=['welcome','update','ceremony','rank','letter','morning'];
+// Dialogs that wait for the open one to close come in this order, whatever order they were asked for in (GDD 1.1):
+// the welcome, the note about the previous game, a window for every report of the morning, a new rank, the event of
+// the story and last the card «Утро».
+export const MODAL_ORDER=['welcome','legacy','report','rank','story','morning'];
 export class ModalQueue{
  constructor(){this.list=[];}
  add(fn,kind){const rank=MODAL_ORDER.includes(kind)?MODAL_ORDER.indexOf(kind):MODAL_ORDER.length;let i=this.list.findIndex(m=>m.rank>rank);if(i<0)i=this.list.length;this.list.splice(i,0,{fn,rank,kind});}

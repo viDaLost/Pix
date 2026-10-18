@@ -1,108 +1,49 @@
-// Даро's lessons, the hints that come once, the advice of the day and the morning report. No DOM and no changes to
-// the game here: progress.js writes down and rewards, the interface only shows what these functions decide.
-import * as J from './jewelry.js';
-import * as G from './guild.js';
-import * as A from './ambience.js';
-import * as H from './people.js';
-import * as B from './book.js';
-import {PATTERNS} from './patterns.js';
-import {orderPieces} from './market.js';
-export const plural=(n,one,few,many)=>{const a=n%10,b=n%100;return a===1&&b!==11?one:a>=2&&a<=4&&(b<12||b>14)?few:many;};
-const client=id=>J.CLIENTS.find(p=>p.id===id);
-const safe=fn=>{try{return !!fn();}catch{return false;}};
-const START={crafted:0,sold:0,gathers:0,day:1};
-// Nine steps from the first blank to the first morning, each under 42 letters. The editor steps look at the draft; the
-// others at the work done since the lessons began, so lessons started again from the menu ask for new work.
-export const TUTORIAL=[
- {id:'start',text:'Кулон → Капля → Начать работу',view:'studio',done:(s,c)=>!!s.draft||s.crafted>c.from.crafted},
- {id:'pattern',text:'Узоры → коснись «Бисер»',tool:'pattern',done:(s,c)=>!!c.d?.strokes.some(p=>p.m)},
- {id:'stone',text:'Камни → коснись металла в центре',tool:'stone',done:(s,c)=>c.d?.gems.length>0},
- {id:'rune',text:'Руны → проведи линию от камня',tool:'rune',done:(s,c)=>!!c.d&&c.e().connections>=1},
- {id:'polish',text:'Блеск → потри металл до 30%',tool:'polish',done:(s,c)=>!!c.d&&c.e().polish>=30},
- {id:'finish',text:'Нажми «Готово»',view:'studio',done:(s,c)=>s.crafted>c.from.crafted},
- {id:'sell',text:'Витрина → продай тому, кому нравится',view:'shop',done:(s,c)=>s.sold>c.from.sold},
- {id:'gather',text:'Материалы → Места находок → Берег',view:'supplies',tab:'map',done:(s,c)=>(s.stats?.gathers||0)>c.from.gathers},
- {id:'day',text:'Заверши день — солнце вверху',done:(s,c)=>s.day>c.from.day}
-];
-export const STEP_IDS=TUTORIAL.map(t=>t.id);
-// A piece finished without a pattern or a stone can never go back for them, so the gift asks only for these five.
-export const REQUIRED=['start','finish','sell','gather','day'];
-export const GIFT={materials:{sapphire:1,silver:4},rep:5};
-const CRAFT=['pattern','stone','rune','polish','finish'];
-export const coaching=s=>!!s?.tutorial&&!s.tutorial.finished&&!s.tutorial.skipped;
-// An editor step is passed by doing it or a later step of the same piece; the five others only by doing them.
-const passed=(t,id)=>t.done.includes(id)||id!=='finish'&&CRAFT.includes(id)&&CRAFT.slice(CRAFT.indexOf(id)+1).some(x=>t.done.includes(x));
-export const tutorialStep=s=>coaching(s)?TUTORIAL.findIndex(x=>!passed(s.tutorial,x.id)):-1;
-export function stepState(s,i){const t=s.tutorial,id=TUTORIAL[i].id;return t.done.includes(id)?'done':passed(t,id)?'skip':i===tutorialStep(s)?'now':'next';}
-// The steps the game shows as done right now; the draft is assessed only when a step asks for it.
-export function stepsDone(s,ctx={}){const d=ctx.design||s.draft?.design||null;let e=ctx.e||null;const c={from:s.tutorial?.from||START,d,e:()=>e||=J.evaluate(d)};return TUTORIAL.filter(x=>safe(()=>x.done(s,c))).map(x=>x.id);}
-
-// The cheapest piece (a plain copper ring) and whether the workshop can make or buy it at all.
-const LEAST=J.costs(J.makeDesign('ring','oval','copper')).resources.copper;
-export const broke=s=>Object.keys(J.METALS).every(m=>!J.available(s,m)||s.materials[m]<LEAST)&&s.gold<J.buyCost(s,'copper',LEAST-s.materials.copper);
-const names=list=>list.length>1?list.slice(0,-1).map(n=>`«${n}»`).join(', ')+` и «${list.at(-1)}»`:`«${list[0]}»`;
-const tier=n=>names(PATTERNS.filter(p=>p.need===n).map(p=>p.name));
-// One-off hints, at most one per render. A hint with a dot keeps its dot until its place is opened (the pattern rail,
-// the map) and is written down only then. later: waits until the lessons are over. past: an older workshop that already
-// shows this has met it and is not told again.
-export const HINTS=[
- {id:'counter',text:'Встречная цена — столько гость готов дать сам. Ниже 95% от полной она идёт как скидка.',when:(s,c)=>!!c.counter,past:s=>s.sold>0},
- {id:'patterns-2',text:`Открылись узоры ${tier(2)}: они в «Узорах» редактора.`,dot:'pattern',when:s=>s.crafted>=2,past:s=>s.crafted>=2},
- {id:'patterns-5',text:`Открылись узоры ${tier(5)}.`,dot:'pattern',when:s=>s.crafted>=5,past:s=>s.crafted>=5},
- {id:'garden',text:'Открыт Сад аббатства: там находят изумруды и сапфиры.',dot:'map',when:s=>s.crafted>=3,past:s=>s.crafted>=3},
- {id:'ridge',text:'Открыт Лунный кряж: там находят алмазы, лунный камень и серебро.',dot:'map',when:s=>s.crafted>=8,past:s=>s.crafted>=8},
- {id:'broke',text:'Нет ни металла, ни монет — на Берегу медь ×3 даром.',when:broke},
- {id:'order-ready',text:'Для личного заказа есть подходящая вещь: «Заказы» → «Передать».',later:true,when:s=>s.requests.some(r=>!r.done&&s.stock.some(i=>J.matches(i.design,r))),past:s=>s.sold>0},
- {id:'connoisseur',text:'✦ Знаток дня платит на пятую часть дороже за вещь, какой порт ещё не видел.',when:s=>s.customers.some(c=>c.novel===true&&!c.served),past:s=>J.rankOf(s)>=1},
- {id:'contest',text:'Цех ждёт работу на смотр недели: «Заказы» → «Цех».',later:true,when:s=>s.stock.length>0&&!s.guild?.tried?.length,past:s=>s.guild?.history?.length>0||s.guild?.tried?.length>0},
- {id:'book',text:'Книга мастера помнит всё, что впервые вышло из твоих рук: «Развитие» → «Книга».',later:true,when:s=>Object.keys(s.book?.e||{}).length>0,past:s=>s.crafted>0}
-];
-// 'install' is the one-off offer to put the game on the home screen, shown in the morning report.
-export const HINT_IDS=[...HINTS.map(h=>h.id),'install'];
-const unseen=(s,h)=>!(s.hintsSeen||[]).includes(h.id);
-export const nextHint=(s,ctx={})=>HINTS.find(h=>unseen(s,h)&&!ctx.shown?.has(h.id)&&!(h.later&&coaching(s))&&safe(()=>h.when(s,ctx)))||null;
-export const dotHints=(s,place)=>HINTS.filter(h=>h.dot===place&&unseen(s,h)&&safe(()=>h.when(s,{}))).map(h=>h.id);
-export const dotPending=(s,place)=>dotHints(s,place).length>0;
-// The hardest rule of the market, said one sale before it bites. Two sales below 95% count as one full sale.
-export function demandWarning(d){if(!d||d.remaining||d.sales!==J.PREMIUM_LIMIT-1)return null;return `${d.soft?'Ещё одна продажа, даже со скидкой,':'Ещё одна полная продажа или две со скидкой'} — и спрос упадёт на 75% на ${J.COOLDOWN} ${plural(J.COOLDOWN,'торговый день','торговых дня','торговых дней')}`;}
-// A copy of the workshop is suggested once in fourteen game days; days pass only when the player ends one.
-export const BACKUP_EVERY=14;
-export const backupDue=s=>Number.isInteger(s?.backup)&&s.day-s.backup>=BACKUP_EVERY;
-
-const AT={shore:'на Берегу',garden:'в Саду аббатства',ridge:'на Лунном кряже'};
-// The best piece of the showcase for a guest: the connoisseur looks only at what is new to the port, and a saturated
-// design is no advice. Taste is cheap and asked of every piece; the port's ledger only from the best fit down, so a long
-// game does not compare its whole showcase with the ledger to give one advice.
-const picks=s=>c=>{const p=client(c.client);return s.stock.map(item=>({item,fit:J.affinity(item.design,p,c.want)})).sort((a,b)=>b.fit-a.fit).find(({item})=>!J.demandInfo(s,item.design).remaining&&(c.novel!==true||J.isFresh(s,item.design)))||null;};
-// What would move the workshop on now, most useful first, at most three: {p,icon,text} and where a tap leads
-// (view and tab, a guest and a piece of the showcase, a letter, or the end of the day).
-export function nextSteps(s,{view='studio'}={}){const out=[],add=(p,v)=>out.push({p,...v}),guests=s.customers.filter(c=>!c.served);
- if(s.draft&&view!=='studio')add(100,{icon:'studio',text:`Доделать «${s.draft.design.name}»`,view:'studio'});
- const m=(s.mail||[]).find(m=>!m.read),l=m&&H.letter(m.id);if(l)add(95,{icon:'letter',text:`Прочитать письмо от ${H.OF[l.from]}`,letter:m.id});
- const pieces=orderPieces(s),ready=s.requests.find(r=>pieces.get(r.id));if(ready)add(90,{icon:'orders',text:`Передать «${pieces.get(ready.id).design.name}» — ${client(ready.client).name}`,view:'orders',tab:'orders'});
- const ending=s.requests.find(r=>!r.done&&r.keep!==true&&r.until===s.day&&r!==ready);if(ending)add(85,{icon:'orders',text:`Заказ «${ending.title}» ждёт только сегодня`,view:'orders',tab:'orders'});
- if(guests.length&&s.stock.length){const best=picks(s);let top=null;for(const c of guests){const b=best(c);if(b&&(!top||b.fit>top.fit))top={...b,buyer:c.id,name:client(c.client).name};}
-  if(top)add(80,{icon:'heart',text:`${top.name} оценит «${top.item.design.name}» на ${top.fit}%`,view:'shop',buyer:top.buyer,item:top.item.id});}
- // With «Глаз мастера» the review is advised for a piece that could win a medal (the ledger is asked only when its
-// freshness decides); without it the forecast is hidden, so it only invites to try.
- if(s.stock.length&&!s.guild?.tried?.length){const theme=G.themeOf(s.day);if(!s.skills.includes('eye'))add(70,{icon:'ribbon',text:`Тема недели «${theme.name}»: попробуй подать работу`,view:'orders',tab:'guild'});else{const item=s.stock.find(i=>G.medalWithin(s,i.design)),score=item&&G.judge(s,item.design,theme).score;if(score>=62)add(70,{icon:'ribbon',text:`На смотр «${theme.name}»: «${item.design.name}», прогноз ${score}`,view:'orders',tab:'guild'});}}
- const skill=J.TOOLS.find(t=>!s.skills.includes(t.id)&&t.parents.every(p=>s.skills.includes(p))&&s.gold>=t.cost&&s.xp>=t.xp);if(skill)add(60,{icon:'develop',text:`Можно изучить «${skill.name}»`,view:'develop',tab:'skills'});
- const poor=broke(s),area=s.energy>0&&J.AREAS.find(a=>s.crafted>=a.need&&!s.daily.areas.includes(a.id));
- // Every place of the map gives three bars of metal, so an empty purse is sent to the first one not searched today.
- if(poor)add(40,area?{icon:'pin',text:`Кошелёк пуст — ${AT[area.id]} ${area.id==='ridge'?'серебро':'медь'} даром`,view:'supplies',tab:'map'}:{icon:'sun',text:'Кошелёк пуст — завтра на Берегу снова медь',end:true});
- else if(area)add(50,{icon:'pin',text:`Поискать находки: ${area.name}`,view:'supplies',tab:'map'});
- const next=Math.min(...[...PATTERNS,...J.AREAS].map(v=>v.need).filter(n=>n>s.crafted)),left=next-s.crafted;
- if(Number.isFinite(next)){const what=[...PATTERNS.filter(p=>p.need===next),...J.AREAS.filter(a=>a.need===next)].map(v=>v.name);add(30,{icon:'spark',text:`Ещё ${left} ${plural(left,'изделие','изделия','изделий')} → ${what.slice(0,2).join(', ')}${what.length>2?'…':''}`,view:'studio'});}
- else{const r=J.rankOf(s),rank=J.RANKS[r+1];if(rank)add(30,{icon:'crest',text:`Ещё ${rank.rep-s.rep} репутации → «${rank.name}»`,view:'develop',tab:'skills'});}
- if(s.customers.length&&!guests.length)add(10,{icon:'sun',text:'Все гости обслужены — можно завершить день',end:true});
- return out.sort((a,b)=>b.p-a.p).slice(0,3);}
-// The morning between two days, from the counters of the day that ended (P.nextDay returns them): yesterday in one
-// line, what went into the book, letters at the door, today's guests with their best piece, the guild, and one advice
-// that is not a letter (the letters are listed already).
-export function morningReport(s,prev={},{view='studio'}={}){const y=s.day-1,firsts=Array.isArray(prev.firsts)?prev.firsts:[],best=picks(s);
- return {yesterday:{day:y,made:prev.made||0,sales:prev.sales||0,income:prev.income||0,rep:prev.rep||0},
-  book:firsts.slice(0,6).map(k=>B.keyName(k)),more:Math.max(0,firsts.length-6),marks:B.MARKS.filter(m=>s.book?.m?.[m.id]===y).map(m=>m.name),
-  letters:(s.mail||[]).filter(m=>!m.read&&H.letter(m.id)).slice(0,3).map(m=>({id:m.id,from:H.letter(m.id).from})),
-  guests:s.customers.map(c=>({id:c.id,client:c.client,novel:c.novel===true,want:c.want,best:best(c)})),
-  theme:G.themeOf(s.day),left:G.daysLeft(s.day),news:{gift:prev.gift||null,named:prev.named||[],week:prev.week||null,theme:prev.theme||null},
-  advice:nextSteps(s,{view}).find(x=>!x.letter)||null,backup:backupDue(s),amb:A.ambience(s)};}
+// The advice of the day («Сегодня») and the morning card (GDD 9.2, 10.9). No DOM and no changes to the game: the
+// interface only shows what these functions decide. Даро's lessons and his one-off tips come with Г5.
+import * as P from './progress.js';
+import * as L from './lore.js';
+import {townMorningWords} from './ambience.js';
+export const plural=L.plural;
+const name=id=>L.HUNTER.get(id)?.short||L.VISITOR.get(id)?.short||L.TOWN_TYPE.get(id)?.label||'';
+const and=list=>list.length>1?list.slice(0,-1).join(', ')+' и '+list.at(-1):list[0]||'';
+const LAB=['substance','ward'];
+// Who is the guest of a visit, in the nominative: «Агата», «Вдова с посада», «Ведана».
+export const guestName=v=>v.kind==='hunter'||v.kind==='town'?name(v.who):name(v.kind);
+// The guests in the queue of the reception: a hunter or a townsperson while the case is on the table; Ведана, о. Никодим,
+// Янек, Даро and a townsperson with a rumour until they are heard; the Magister stays the day — his window of the Academy.
+export function queueOf(s){return s.visitors.filter(v=>v.contract?s.contracts.some(c=>c.id===v.contract):v.kind==='hunter'?false:v.kind==='otto'||!v.heard);}
+// The cases without a guest: personal cases of the hunters and the case of the sorcerer wait on the table without a term.
+export const standing=s=>s.contracts.filter(c=>c.kind==='personal'||c.kind==='story');
+// One to three steps that would move the bestiary on, without reproach. Each leads to its place: a view and its tab,
+// a report, a monster, or the end of the day.
+export function nextSteps(s){const out=[],add=x=>{if(out.length<3)out.push(x);};
+ const waiting=s.visitors.filter(v=>v.contract&&!v.heard&&s.contracts.some(c=>c.id===v.contract)),told=s.visitors.filter(v=>!v.contract&&!v.heard&&v.kind!=='hunter');
+ if(waiting.length)add({id:'guests',icon:'door',text:waiting.length===1?`${guestName(waiting[0])} ждёт у стола`:`Ждут у стола: ${and(waiting.slice(0,3).map(guestName))}`,view:'reception'});
+ const r=s.reports.find(r=>r.day===s.day&&r.offer&&!r.choice);if(r)add({id:'reward',icon:'coin',text:`${name(r.hunter)} ждёт, какую награду взять`,report:r.id});
+ if(told.length)add({id:'listen',icon:'door',text:`${guestName(told[0])} ${L.female(told[0].kind==='town'?told[0].who:told[0].kind)?'зашла':'зашёл'} — выслушай`,view:'reception'});
+ const left=P.candlesLeft(s);
+ if(left>0){const m=P.openList(s).find(m=>m.facts.filter(f=>LAB.includes(f.cat)&&s.know[f.id]?.st==='rumour').length&&[m.loot.common,m.loot.rare].some(p=>(s.stock[p]||0)>0));
+  if(m){const n=m.facts.filter(f=>LAB.includes(f.cat)&&s.know[f.id]?.st==='rumour').length;add({id:'lab',icon:'mortar',text:`У ${L.genOf(m)} ${n} ${plural(n,'слух','слуха','слухов')} — их можно проверить на образце`,view:'lab',tab:'samples',monster:m.id});}}
+ if(P.academyOpen(s)){const best=P.openList(s).map(m=>({m,o:P.academyOffer(s,m.id)})).filter(x=>x.o.n>=P.ACADEMY.need).sort((a,b)=>b.o.coins-a.o.coins)[0];
+  if(best)add({id:'academy',icon:'scale',text:`Магистр в городе: ${best.o.n} ${plural(best.o.n,'запись','записи','записей')} на продажу`,view:'shop',tab:'academy'});}
+ const full=P.openList(s).find(m=>m.tier<4&&!s.monsters[m.id].treatise&&P.pageDone(s,m.id));if(full)add({id:'treatise',icon:'book',text:`Страница ${L.genOf(full)} полна — можно писать трактат`,view:'shop',tab:'academy'});
+ add(left>0?{id:'candles',icon:'candle',text:`Свечей осталось: ${left}`,end:!waiting.length&&!told.length}:{id:'night',icon:'snuff',text:'Свечи догорели — можно задуть свечу',end:true});
+ return out;}
+// The words of a hunter's return: «с победой», «потрёпан», «ранен на 2 дня».
+function returnWords(x){const f=L.female(x.hunter||x.town);if(x.win)return x.rag?`с победой, но ${f?'потрёпана':'потрёпан'}`:'с победой';
+ return x.town?'ни с чем':x.injury>1?`${f?'ранена':'ранен'} на ${L.days(x.injury)}`:f?'потрёпана':'потрёпан';}
+// The card «Утро, день N» (GDD 10.9): the sky, who came back, who heals and sulks, who joined, the notes left by guests
+// who were not heard (decision D5), the shelf and the Academy, the words of the hunters' arcs. Every row leads somewhere.
+export function morningReport(s,res={}){const m=res.morning||P.morning(s),rows=[],row=(icon,text,to={})=>rows.push({icon,text,...to});
+ for(const x of m.returns||[])row(x.win?'check':'bandage',`Вернул${L.female(x.hunter||x.town)?'ась':'ся'} ${x.hunter?name(x.hunter):L.TOWN_TYPE.get(x.town)?.label.toLowerCase()} — ${returnWords(x)}`,{report:x.report});
+ for(const id of m.back||[])row('people',`Снова в строю: ${name(id)}`,{view:'reception',tab:'artel'});
+ for(const id of m.forgiven||[])row('people',`${name(id)} снова ${L.female(id)?'готова':'готов'} к делу: «Кто старое помянет…»`,{view:'reception',tab:'artel'});
+ const healing=(m.healing||[]).filter(h=>!(m.returns||[]).some(x=>x.hunter===h.hunter));if(healing.length)row('bandage',`Лечатся: ${healing.map(h=>`${name(h.hunter)} (ещё ${L.days(h.days)})`).join(', ')}`,{view:'reception',tab:'artel'});
+ for(const h of m.sulking||[])if(!(m.returns||[]).some(x=>x.hunter===h.hunter))row('people',`${name(h.hunter)} ${L.female(h.hunter)?'обиделась':'обиделся'} — вернётся через ${L.days(h.days)}`,{view:'reception',tab:'artel'});
+ for(const id of m.joined||[])row('people',`В артели ${L.female(id)?'новая охотница':'новый охотник'}: ${L.HUNTER.get(id).name}`,{view:'reception',tab:'artel'});
+ for(const n of m.notes||[])row('letter',n.text,{view:'bestiary',monster:L.monsterOf(n.fact)?.id});
+ for(const a of res.arcs||[])if(!a.id.endsWith('.end'))row('quill',`${name(a.hunter)}: «${a.text}»`,{view:'reception',tab:'artel'});
+ if(m.books)row('book','Новые книги на полке у Янека',{view:'shop',tab:'trader'});
+ if(m.academy)row('scale','Магистр Брандт в Велене: Академия покупает листы',{view:'shop',tab:'academy'});
+ row('door',m.guests?`Сегодня ${m.guests===1?'ждёт':'ждут'} ${m.guests} ${plural(m.guests,'гость','гостя','гостей')}`:'Сегодня никого не ждём',{view:'reception',tab:'queue'});
+ return {title:`Утро, день ${s.day}`,sky:townMorningWords({season:m.season,weather:m.weather}),line:m.line,hold:m.hold,thaw:m.thaw,rows};}

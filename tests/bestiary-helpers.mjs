@@ -1,6 +1,6 @@
 // Helpers for the tests of the bestiary: scenarios are built on a real new game, then cases are placed on the table with
 // ids chosen so that the seeded roll of the hunt falls where a test needs it.
-import * as P from '../src/progress-next.js';
+import * as P from '../src/progress.js';
 import * as L from '../src/lore.js';
 import * as R from '../src/rules.js';
 import * as B from '../src/bestiary.js';

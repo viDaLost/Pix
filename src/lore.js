@@ -36,5 +36,8 @@ export function words({monster,place,fact,hunter,variant,fee,coins:c,days:d,n,da
  if(loot)v.loot=loot;if(trophy)v.trophy=trophy;if(book)v.book=book;if(story)v.storyTitle=story;if(stage!=null)v.stage=stage;if(stamp)v.stamp=stamp;return v;}
 // One line of a list, fixed by an id and a key so a reopened window says the same thing.
 export const line=(seed,id,key,list)=>Array.isArray(list)?pick(seed,['line',id,key],list):list;
+// The genitive of a monster («у кикиморы болотной», «у волколака»): an animate masculine noun takes it from the accusative,
+// a feminine one turns «-у/-ую» of the accusative into «-ы/-ой».
+export const genOf=m=>{const x=typeof m==='string'?MON.get(m):m;return x?x.acc.split(' ').map(w=>w.endsWith('ую')?w.slice(0,-2)+'ой':w.endsWith('у')?w.slice(0,-1)+(/[кгхжшщч]$/.test(w.slice(0,-1))?'и':'ы'):w).join(' '):'';};
 export const variantName=(monster,variant)=>MON.get(monster)?.variants.find(v=>v.id===variant)?.name||MON.get(monster)?.name||'';
 export const partName=id=>MAT.get(id)?.name||id;

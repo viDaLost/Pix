@@ -6,7 +6,7 @@ import {writeFile,mkdir} from 'node:fs/promises';
 import {Worker,isMainThread,parentPort,workerData} from 'node:worker_threads';
 import {availableParallelism} from 'node:os';
 import {play} from './bot.mjs';
-import * as P from '../src/progress-next.js';
+import * as P from '../src/progress.js';
 import * as L from '../src/lore.js';
 import * as R from '../src/rules.js';
 import {roll} from '../src/rng.js';
@@ -127,7 +127,7 @@ function writeReport({of,q,med,min,max,pooled,fullPooled,share,rankAt,checks,dri
  return `# Баланс «Бестиария Велена»
 
 Команда: \`npm run balance\` (проверка; \`-- --write\` пересобирает этот файл). Бот играет только через обёртки \`P.*\`
-(\`src/progress-next.js\`), как интерфейс, и после каждого дня перечитывает сохранение: \`P.load(P.serialize(s))\`.
+(\`src/progress.js\`), как интерфейс, и после каждого дня перечитывает сохранение: \`P.load(P.serialize(s))\`.
 Прогон: ${SEEDS} сидов × 5 стратегий × ${DAYS} дней и careful/learning × ${LONG} дней — ${(ms/1000).toFixed(1)} с на ${n} потоках.
 Эталон поведения — \`pix-tools/bestiary/gdd-sim.mjs\` (GDD 12.7); правила — GDD 3–7 и решения D3, D5.
 

@@ -16,9 +16,11 @@ function roundRoute(points) {
   }
   route.push(points.at(-1));return route;
 }
-export function moveActor(actor,x,y,room='forge') {
-  const points=[{x:actor.x,y:actor.y}],corridor=room==='atelier-shop'?230:room==='shop'?278:286;
-  if(Math.abs(x-actor.x)>80&&Math.min(actor.y,y)<(room==='atelier-shop'?230:260))points.push({x:actor.x,y:corridor},{x,y:corridor});
+// The floor of the scriptorium is free, so a guest walks straight from the door to the table (art.md 4.1); the rooms of
+// older scenes went round their counters by a corridor.
+export function moveActor(actor,x,y,room='scriptorium') {
+  const points=[{x:actor.x,y:actor.y}],corridor=room==='scriptorium'?null:room==='atelier-shop'?230:room==='shop'?278:286;
+  if(corridor!==null&&Math.abs(x-actor.x)>80&&Math.min(actor.y,y)<(room==='atelier-shop'?230:260))points.push({x:actor.x,y:corridor},{x,y:corridor});
   points.push({x,y});actor.path=roundRoute(points);actor.after=null;actor.workUntil=0;
 }
 export function updateActor(actor,dt,now) {

@@ -1,7 +1,7 @@
 // The core of the bestiary (GDD 1–5, 12): the state, strict loading, the knowledge of the player, the guests and cases of
 // a day, the night of the hunts and the reports, and every action of the scriptorium. No DOM. Every action checks all it
 // needs first and changes nothing when it refuses: it returns {ok:false, why} with a Russian reason for a toast.
-// Story, arcs, normalize and the order of the night live in progress-next.js; the interface goes only through P.*.
+// Story, arcs, normalize and the order of the night live in progress.js; the interface goes only through P.*.
 import * as L from './lore.js';
 import * as R from './rules.js';
 import {roll,pick,weighted} from './rng.js';
@@ -213,7 +213,7 @@ export function resolveHunt(s,hunt){
  return r;}
 // Steps 1–5 of the night (GDD 1.4): rewards left unchosen become coins, wounds and sulks count down, every hunt is rolled
 // and reported, the cases not deferred close, the day turns. A guest who was not heard leaves his rumour as a note on the
-// table for the morning (decision D5). Story, arcs and the new day are the next steps (progress-next.js).
+// table for the morning (decision D5). Story, arcs and the new day are the next steps (progress.js).
 export function night(s){
  for(const r of s.reports){if(r.offer&&!r.choice)claim(s,r.id,'coins');r.read=true;}
  const back=[],forgiven=[],marked=s.daily.firsts.length;

@@ -1,7 +1,7 @@
 // The balance bot of the bestiary (GDD 12.6). It plays only through the wrappers P.*, like the interface, and reads the
 // content only through lore.js; after every day the state goes through P.load(P.serialize(s)). Five strategies:
 // naive, careful, learning, random, merchant. The reference of its behaviour is pix-tools/bestiary/gdd-sim.mjs.
-import * as P from '../src/progress-next.js';
+import * as P from '../src/progress.js';
 import * as L from '../src/lore.js';
 import {roll} from '../src/rng.js';
 

@@ -1,14 +1,15 @@
-const CACHE = 'pix-forge-v10';
+// «Бестиарий Велена» caches under its own prefix; the caches of the previous game «Сияние» (pix-forge-*) go on activation.
+const CACHE = 'pix-bestiary-v11';
 const BASE = new URL('./', self.location.href);
 const INDEX = new URL('./index.html', BASE).href;
-const FILES = ['./', './index.html', './styles.css', './src/app.js', './src/jewelry.js', './src/progress.js', './src/guide.js', './src/book.js', './src/people.js', './src/guild.js', './src/notices.js', './src/market.js', './src/jewel-editor.js', './src/jewel-art.js', './src/patterns.js', './src/icons.js', './src/atelier-scene.js', './src/ambience.js', './src/ceremony.js', './src/share-card.js', './src/atelier-store.js', './src/game.js', './src/content.js', './src/motion.js', './src/audio.js', './src/pixel.js', './src/characters.js', './src/character-rig.js', './src/content-data.js', './src/lore.js', './src/rng.js', './src/rules.js', './src/bestiary.js', './src/progress-next.js', './manifest.webmanifest', './assets/icon.svg', './assets/icon-192.png', './assets/icon-512.png', './assets/fonts/cormorant-garamond-cyrillic-600-normal.woff2', './assets/fonts/cormorant-garamond-latin-600-normal.woff2', './assets/fonts/cormorant-garamond-cyrillic-700-normal.woff2', './assets/fonts/cormorant-garamond-latin-700-normal.woff2', './assets/fonts/manrope-cyrillic-wght-normal.woff2', './assets/fonts/manrope-latin-wght-normal.woff2'].map(path => new URL(path, BASE).href);
+const FILES = ['./', './index.html', './styles.css', './src/app.js', './src/progress.js', './src/bestiary.js', './src/rules.js', './src/lore.js', './src/content-data.js', './src/rng.js', './src/guide.js', './src/notices.js', './src/store.js', './src/scriptorium-scene.js', './src/ambience.js', './src/audio.js', './src/icons.js', './src/characters.js', './src/character-rig.js', './src/motion.js', './src/pixel.js', './manifest.webmanifest', './assets/icon.svg', './assets/icon-192.png', './assets/icon-512.png', './assets/fonts/cormorant-garamond-cyrillic-600-normal.woff2', './assets/fonts/cormorant-garamond-latin-600-normal.woff2', './assets/fonts/cormorant-garamond-cyrillic-700-normal.woff2', './assets/fonts/cormorant-garamond-latin-700-normal.woff2', './assets/fonts/manrope-cyrillic-wght-normal.woff2', './assets/fonts/manrope-latin-wght-normal.woff2'].map(path => new URL(path, BASE).href);
 // The cache name changes with every build, so a cached file is always the one of this version.
 // cache:'reload' skips the HTTP cache, which could otherwise mix files of the previous deploy into the new set.
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES.map(url => new Request(url, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', event => {
-  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('pix-forge-') && key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim()));
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => (key.startsWith('pix-bestiary-') || key.startsWith('pix-forge-')) && key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim()));
 });
 // Cache first: the game starts offline and never waits for the network; only missing files are fetched.
 self.addEventListener('fetch', event => {
