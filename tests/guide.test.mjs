@@ -51,6 +51,23 @@ test('the morning words stay whole through a long game: no placeholder, every ro
    if(c.kind==='story'&&!c.hunter){const h=L.HUNTERS.find(h=>P.free(s,h.id));if(h)P.assign(s,c.id,h.id);}if(pick.length===3)P.advise(s,c.id,pick.map(x=>x.id));}
   const m=G.morningReport(s,P.endDay(s));assert.match(m.title,/^Утро, день \d+$/);for(const x of m.rows){assert.doesNotMatch(x.text,/\{|\}|undefined|NaN/,x.text);assert.ok(leads(x),JSON.stringify(x));}}}
 });
+test('the margin of a record speaks from its state, and a rumour names its teller in the right case (GDD 2.4, 10.5)',()=>{
+ const s=game(41),f=id=>L.FACT.get(id),k=(id,x)=>({st:'rumour',rev:0,src:'start',ok:0,none:0,worse:0,...x});
+ assert.equal(G.marginNote(k('werewolf.garlic'),f('werewolf.garlic')),'слух — из Тетради Даро');
+ const told={shop:'от Янека',vedana:'от Веданы',nikodim:'от о. Никодима',town:'от горожан',tale:'из рассказа охотника',rummage:'из летописей',story:'из предания'};
+ for(const [src,from] of Object.entries(told))assert.equal(G.marginNote(k('werewolf.garlic',{src}),f('werewolf.garlic')),`слух — ${from}`);
+ assert.equal(G.marginNote(k('werewolf.dawn',{src:'book',by:'lubok_wonders'}),f('werewolf.dawn')),`слух — из книги «${L.BOOK.get('lubok_wonders').title}»`);
+ assert.equal(G.rumourSource(k('werewolf.dawn',{src:'shop'})),'Янек','the stamp keeps the nominative');assert.equal(G.rumourSource(k('werewolf.dawn',{src:'book',by:'lubok_wonders'})),`«${L.BOOK.get('lubok_wonders').title}»`);
+ assert.equal(G.marginNote(k('werewolf.silver',{st:'confirmed',ok:3}),f('werewolf.silver')),'верно — проверено трижды');
+ assert.equal(G.marginNote(k('werewolf.silver',{st:'confirmed',ok:1}),f('werewolf.silver')),'верно — проверено делом');
+ assert.equal(G.marginNote(k('werewolf.silver',{st:'confirmed',src:'lab'}),f('werewolf.silver')),'верно — проверено опытом');
+ assert.equal(G.marginNote(k('werewolf.crossroads',{st:'refuted'}),f('werewolf.crossroads')),'пустое');
+ assert.equal(G.marginNote(k('werewolf.dawn',{st:'dangerous'}),f('werewolf.dawn')),'НИ В КОЕМ СЛУЧАЕ');
+ assert.equal(G.marginNote(k('werewolf.name',{st:'confirmed',rev:1}),f('werewolf.name')),`верно лишь: ${f('werewolf.name').condTag}`);
+ // Every record of a long game reads as a whole phrase.
+ const x=P.load(play(5,'learning',30,{stopAt:30}).state);for(const [id,r] of Object.entries(x.know)){const t=G.marginNote(r,f(id));assert.match(t,/^(верно|пустое|НИ В КОЕМ СЛУЧАЕ|слух — (из|от|с) )/,`${id}: ${t}`);assert.doesNotMatch(t,/undefined|\{/);}
+ assert.ok(s.know['werewolf.garlic'],'a new game starts with the rumours of Даро');
+});
 test('the guide changes nothing in the game: it only reads',()=>{
  const s=game(31);P.endDay(s);const before=P.serialize(s);G.nextSteps(s);G.morningReport(s);G.queueOf(s);G.standing(s);assert.equal(P.serialize(s),before);
  const src=readFileSync(new URL('../src/guide.js',import.meta.url),'utf8');assert.doesNotMatch(src,/\b(document|window|localStorage)\.|\bnavigator\b/,'no DOM');

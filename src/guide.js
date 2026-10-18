@@ -9,6 +9,17 @@ const and=list=>list.length>1?list.slice(0,-1).join(', ')+' и '+list.at(-1):lis
 const LAB=['substance','ward'];
 // Who is the guest of a visit, in the nominative: «Агата», «Вдова с посада», «Ведана».
 export const guestName=v=>v.kind==='hunter'||v.kind==='town'?name(v.who):name(v.kind);
+// Who told a rumour, as its stamp says it («Янек», «Тетрадь Даро», the title of a book) and as the margin of the page says
+// it in the genitive («слух — от Янека», «слух — из Тетради Даро») (GDD 2.4, 10.5).
+const SRC={start:'Тетрадь Даро',shop:'Янек',vedana:'Ведана',nikodim:'о. Никодим',town:'горожане',tale:'рассказ охотника',rummage:'летописи',archive:'летописи',story:'предание',hunt:'охота',lab:'опыт',trophy:'трофей'};
+const SRC_FROM={start:'из Тетради Даро',shop:'от Янека',vedana:'от Веданы',nikodim:'от о. Никодима',town:'от горожан',tale:'из рассказа охотника',rummage:'из летописей',archive:'из летописей',story:'из предания',hunt:'с охоты',lab:'из опыта',trophy:'с трофея'};
+export const rumourSource=k=>k?.src==='book'&&L.BOOK.has(k.by)?`«${L.BOOK.get(k.by).title}»`:SRC[k?.src]||'';
+const rumourFrom=k=>k?.src==='book'&&L.BOOK.has(k.by)?`из книги «${L.BOOK.get(k.by).title}»`:SRC_FROM[k?.src]||'';
+// The note in the keeper's hand on the margin of a record, built from its state: «верно — проверено трижды», «пустое»,
+// «НИ В КОЕМ СЛУЧАЕ», «верно лишь: лишь молодого», «слух — от Янека».
+export function marginNote(k,f){if(k.rev)return `верно лишь: ${f.condTag}`;
+ if(k.st==='confirmed')return k.ok>=3?'верно — проверено трижды':k.ok?'верно — проверено делом':k.src==='lab'||k.src==='trophy'?'верно — проверено опытом':k.src==='archive'?'верно — сошлось в летописях':'верно — так записано';
+ if(k.st==='refuted')return 'пустое';if(k.st==='dangerous')return 'НИ В КОЕМ СЛУЧАЕ';const from=rumourFrom(k);return from?`слух — ${from}`:'слух';}
 // The guests in the queue of the reception: a hunter or a townsperson while the case is on the table; Ведана, о. Никодим,
 // Янек, Даро and a townsperson with a rumour until they are heard; the Magister stays the day — his window of the Academy.
 export function queueOf(s){return s.visitors.filter(v=>v.contract?s.contracts.some(c=>c.id===v.contract):v.kind==='hunter'?false:v.kind==='otto'||!v.heard);}

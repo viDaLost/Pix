@@ -29,4 +29,13 @@ test('the layout rules of the four sizes: short phones, the shortest, the landsc
  // Dialogs scroll inside 88 % of the screen; the app shell never scrolls the document.
  assert.match(css,/dialog\{[^}]*max-height:88dvh;overflow:auto/);assert.match(css,/\.app-shell\{[^}]*height:100svh/);assert.match(css,/main\{[^}]*overflow:hidden/);
  assert.match(app,/document\.body\.classList\.toggle\('in-sheet'/,'the sheet is a mode of the reception');
+ // A page of the bestiary is two leaves; on a landscape phone the left one (name, plate, fullness) stays while the right
+ // one scrolls (art.md 2.2).
+ assert.match(app,/<div class="leaf left">[\s\S]*<div class="leaf right">/);assert.match(css,/\.folio>\.leaf\.left\{position:sticky;top:0\}/);
+ // The line under the name keeps the rank on a phone; the town and the year return where there is room.
+ assert.match(app,/<span class=\\?"where\\?">Велен · 1740 · <\/span>\$\{esc\(rankName\(\)\)\}/);assert.match(css,/\.brand \.where\{display:none\}@media\(min-width:430px\)\{\.brand \.where\{display:inline\}\}/);
+ // The reception of a landscape phone: the scene, the segments and the guests on the left, the card on the right.
+ assert.match(app,/<div class="reception"><div class="reception-side">\$\{sceneHTML\(\)\}[^`]*<\/div><div class="reception-main">/);assert.match(css,/\.reception\{display:grid;grid-template-columns:minmax\(0,44%\) minmax\(0,1fr\)/);
+ // The variant of a case is shown openly on its plate and in the sheet (decision D1).
+ assert.match(app,/<em class="tier \$\{c\.variant\}">/);assert.match(app,/<p class="circ">\$\{VARIANT\[c\.variant\]\} облик · /);
 });

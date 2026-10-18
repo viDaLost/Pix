@@ -86,7 +86,7 @@ input[type=range]{accent-color:var(--brass);min-width:50px}
 .coins{display:inline-flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums;white-space:nowrap}.coins .icon{width:16px;height:16px;color:var(--brass)}
 .cost{display:inline-flex;align-items:center;gap:1px;font-variant-numeric:tabular-nums;font-weight:800}.cost .icon{width:15px;height:15px;color:var(--candle)}
 .segmented{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;padding:3px;border-radius:999px;border:1px solid var(--line);margin-top:12px}
-.segmented button{min-height:40px;border-radius:999px;border-color:transparent;background:transparent;box-shadow:none}
+.segmented button{min-height:40px;border-radius:999px;border-color:transparent;background:transparent;box-shadow:none;white-space:nowrap;padding-left:8px;padding-right:8px;gap:6px}
 .segmented button.active{background:var(--surface-3);border-color:var(--line-2)}
 
 /* Shell */
@@ -96,6 +96,8 @@ input[type=range]{accent-color:var(--brass);min-width:50px}
 .brand img{width:38px;height:38px;border-radius:10px;box-shadow:0 0 0 1px var(--line-2),0 6px 14px -8px rgba(255,190,110,.6);flex:none}
 .brand>span{min-width:0;display:flex;flex-direction:column;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .brand small{display:block;font-family:var(--ui);font-weight:600;font-size:calc(11px*var(--fs));letter-spacing:.03em;color:var(--brass);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* On a phone the line under the name keeps the rank; the town and the year come back where there is room. */
+.brand .where{display:none}@media(min-width:430px){.brand .where{display:inline}}
 .header-actions{display:flex;gap:8px;flex:none}
 .header-actions .icon-button{border-radius:50%}
 button.snuff-button{min-height:42px;padding:0 13px 0 9px;gap:6px;border-radius:999px;font-size:calc(13px*var(--fs));font-weight:700;color:var(--candle);white-space:nowrap}
@@ -150,7 +152,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;overflow:hidden}
 .tabs button>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tabs button small{font-size:calc(11px*var(--fs));font-weight:800;min-width:18px;height:18px;line-height:18px;border-radius:9px;background:var(--surface-3);color:var(--brass-hi);padding:0 5px}
 .tabs button.active{background:var(--surface-3);border-color:var(--line-2);color:var(--brass-hi)}
-@media(max-width:350px){.tabs.three .icon{display:none}}
+@media(max-width:429px){.tabs.three .icon{display:none}}@media(max-width:350px){.tabs.three button{padding:4px 3px;font-size:calc(12px*var(--fs))}}
 @media(max-width:359px){.slip-side{max-width:104px}.slip .stamp small{display:none}button.slip{gap:6px;padding-left:7px;grid-template-columns:18px minmax(0,1fr) auto}.slip-icon .icon{width:17px;height:17px}
   .bottom-nav{gap:0;padding-left:2px;padding-right:2px}.bottom-nav button{padding:6px 0;letter-spacing:-.02em}}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
@@ -239,12 +241,17 @@ button.today-step{width:100%;justify-content:flex-start;gap:10px;min-height:44px
 /* The plate of a monster stands in a frame until the engravings come (Г4). */
 .plate-thumb{position:relative;display:grid;place-items:center;width:64px;height:48px;flex:none;border-radius:3px;background:repeating-linear-gradient(135deg,rgba(91,71,51,.18) 0 1px,transparent 1px 4px),var(--parch-2);box-shadow:inset 0 0 0 1px var(--parch-edge),inset 0 0 0 3px var(--parch-2),inset 0 0 0 4px rgba(91,71,51,.5)}
 .plate-thumb b{font:700 calc(17px*var(--fs))/1 var(--display);color:var(--ink-3)}
+/* The variant of a case on its plate: wood for the young, ink for the grown, slate for the ancient (decision D1). */
+.plate-thumb .tier{position:absolute;left:2px;right:2px;bottom:2px;font:700 11px/14px var(--ui);font-style:normal;letter-spacing:0;white-space:nowrap;overflow:hidden;text-align:center;color:var(--on-wax);background:var(--ink-2);border-radius:2px}
+.plate-thumb .tier.young{background:#7a4a2a}.plate-thumb .tier.ancient{background:#46505c}.plate-thumb:has(.tier) b{transform:translateY(-7px)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.signs small{font:600 calc(12px*var(--fs)) var(--ui);color:var(--ink-3)}
 .plate-thumb.silhouette{background:repeating-linear-gradient(135deg,rgba(43,32,24,.28) 0 1px,transparent 1px 3px),#bfae88}
 .plate-thumb .dot{position:absolute;top:3px;right:3px;width:8px;height:8px;border-radius:50%;background:var(--st-cond);box-shadow:0 0 0 2px var(--parch)}
 .plate-thumb .treatise{position:absolute;left:3px;bottom:2px;width:14px;height:14px;color:var(--st-ok)}
 .artel{display:flex;flex-direction:column;gap:6px;margin-top:4px}
-.artel-row{display:flex;align-items:center;gap:6px}
-button.artel-main{flex:1;min-height:72px;justify-content:flex-start;text-align:left;gap:10px;padding:8px 10px;flex-wrap:wrap}
+.artel-row{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:4px 6px}
+button.artel-main{flex:1 1 100%;min-height:72px;justify-content:flex-start;text-align:left;gap:10px;padding:8px 10px;flex-wrap:wrap}
 .artel-main .who{display:flex;flex-direction:column;min-width:0;flex:1;gap:2px;line-height:1.2}
 .artel-main .who b{font-size:calc(14px*var(--fs));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .artel-main .who small{font-size:calc(12px*var(--fs))}
@@ -252,7 +259,8 @@ button.artel-main{flex:1;min-height:72px;justify-content:flex-start;text-align:l
 .state{display:inline-flex;align-items:center;gap:5px;font-size:calc(12px*var(--fs));font-weight:700;padding:3px 9px 3px 6px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
 .state .icon{width:15px;height:15px}
 .state.ready{color:var(--ok)}.state.away{color:var(--brass-hi)}.state.hurt{color:var(--danger)}.state.sulk{color:var(--refuted)}
-.artel-row .chip{flex:none;align-self:stretch;min-height:44px}
+/* The doctor waits under the card of a wounded hunter, not beside it. */
+.artel-row .chip{flex:none;min-height:44px}
 .state-line{display:flex;gap:6px;align-items:center;margin:8px 0;font-size:calc(14px*var(--fs));font-weight:700}
 .state-line.ready{color:var(--ok)}.state-line.away{color:var(--brass-hi)}.state-line.hurt{color:var(--danger)}.state-line.sulk{color:var(--refuted)}
 .state-line .icon{width:17px;height:17px}
@@ -285,7 +293,7 @@ ol.slots li{min-width:0;display:flex}
 .slot.empty.none>span{font-size:calc(11px*var(--fs));line-height:1.2}
 .pot-col{display:flex;flex-direction:column;align-items:center;gap:2px;border:1px dashed rgba(43,32,24,.38);border-radius:4px;padding:4px 2px;min-height:54px;color:var(--ink-2)}
 .pot-col em{font:800 calc(11px*var(--fs))/1.1 var(--ui);font-style:normal;text-transform:uppercase;letter-spacing:.02em;color:var(--ink-3)}
-.pot-col i{display:block;font-style:normal}.pot-col .icon{width:18px;height:18px;color:var(--brass-lo)}.pot-col i.none{color:var(--ink-3)}
+.pot-col i{display:block;font-style:normal}.pot-col .icon{width:18px;height:18px;color:var(--brass-lo)}.pot-col i.none{color:var(--ink-3)}.pot-col i.small{font:700 11px/1.15 var(--ui);text-align:center}
 .meter{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) 52px;gap:6px;height:16px;margin:16px 0 5px;cursor:pointer}
 .seg{position:relative;display:block;border-radius:3px;height:16px}
 .seg::after{position:absolute;inset:0;display:grid;place-items:center;font:800 11px/16px var(--ui);color:var(--parch)}
@@ -589,7 +597,7 @@ button.keeper-pick{flex-direction:column;gap:6px;min-height:96px;padding:8px}
 .morning-dialog .quote{color:var(--ink-2);font-size:calc(15px*var(--fs))}
 .recovery{text-align:center;margin-top:20px}.recovery h2{margin:8px 0}
 /* The night between two days: the whole page dims while the windows of the room go dark; a tap brings the morning. */
-.night-veil{position:fixed;inset:0;z-index:35;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:8px;min-height:0;margin:0;padding:0 16px calc(96px + env(safe-area-inset-bottom));border:0;border-radius:0;box-shadow:none;background:radial-gradient(120% 90% at 50% 15%,rgba(22,30,66,.4),rgba(5,6,14,.8));color:var(--brass-hi);font-size:calc(15px*var(--fs));opacity:0;animation:night-fall 1.6s linear forwards}
+.night-veil{position:fixed;inset:0;z-index:35;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:8px;min-height:0;margin:0;padding:0 16px calc(96px + env(safe-area-inset-bottom));border:0;border-radius:0;box-shadow:none;background:radial-gradient(120% 90% at 50% 15%,rgba(22,30,66,.62),rgba(5,6,14,.9));color:var(--brass-hi);font-size:calc(15px*var(--fs));opacity:0;animation:night-fall 1.6s linear forwards}
 .night-veil span{display:flex;align-items:center;gap:8px;padding:7px 16px;border-radius:999px;background:rgba(8,10,22,.6);border:1px solid var(--line-2)}
 .night-veil .night-title{font-family:var(--display);font-size:calc(19px*var(--fs));font-weight:700}
 .night-line{animation:rise .4s var(--ease) both;color:var(--text-2);font-size:calc(14px*var(--fs))}
@@ -629,7 +637,7 @@ button.keeper-pick{flex-direction:column;gap:6px;min-height:96px;padding:8px}
    only when there is room; the sheet scrolls whole with its foot pinned, so three slips are always in view. */
 @media(max-height:600px){
   .scene-wrap canvas,.view-reception .scene-wrap canvas{max-height:112px;object-fit:cover;object-position:50% 66%}.scene-caption{display:none}
-  .case .sign{display:none}button.guest-chip{min-height:40px}.case-head .plate-thumb{width:48px;height:36px}.case-head h2{font-size:calc(16px*var(--fs))}.case-head .claws .icon{width:11px;height:11px;margin-left:-2px}.case-head{gap:9px}
+  .case .sign{display:none}button.guest-chip{min-height:40px}.case-head .plate-thumb{width:56px;height:40px}.case-head h2{font-size:calc(16px*var(--fs))}.case-head .claws .icon{width:11px;height:11px;margin-left:-2px}.case-head{gap:9px}
   .returns{margin:3px 0 0}.returns .chip{min-height:32px}
 }
 @media(max-height:600px) and (orientation:portrait),(max-width:700px) and (orientation:portrait) and (max-height:700px){
@@ -642,7 +650,7 @@ button.keeper-pick{flex-direction:column;gap:6px;min-height:96px;padding:8px}
   .potion-row .label{display:none}button.potion-chip{min-height:38px}button.send{min-height:48px}
   button.slip{min-height:52px;padding-top:4px;padding-bottom:4px}.cat-head{padding:5px 2px 4px}
 }
-/* A landscape phone (844×390): the top line and the HUD share one row, the scene floats beside the cards, the sheet
+/* A landscape phone (844×390): the top line and the HUD share one row, the scene stands beside the cards, the sheet
    keeps its list on the left and the parchment on the right, a page of the bestiary opens as a spread. */
 @media(orientation:landscape) and (max-height:500px){
   .topbar{position:absolute;top:env(safe-area-inset-top);left:env(safe-area-inset-left);right:50%;height:46px;padding:4px 12px;z-index:var(--z-nav)}
@@ -653,20 +661,19 @@ button.keeper-pick{flex-direction:column;gap:6px;min-height:96px;padding:8px}
   .bottom-nav{padding-top:3px;padding-bottom:calc(3px + env(safe-area-inset-bottom))}
   .bottom-nav button{min-height:38px;flex-direction:row;gap:6px}.bottom-nav .dot{top:5px;right:8px}
   .bottom-nav .long{display:inline}.bottom-nav .short{display:none}
-  /* The scene floats beside the content; a card keeps the transform of its entrance animation, which would paint it over
-     the float, so the scene is lifted and a card beside it starts its own block next to it. */
-  .scene-wrap{max-width:44%;float:left;margin:2px 12px 4px 0;z-index:1;position:relative}
+  /* The reception in two columns: the scene, the segments and the line of guests stay on the left while the card of the
+     chosen guest, the returns and «Сегодня» scroll on the right. */
+  .reception{display:grid;grid-template-columns:minmax(0,44%) minmax(0,1fr);column-gap:12px;align-items:start}.reception-side{position:sticky;top:0}
+  .reception-side .tabs{margin:4px 0}
   .panel.sheet-panel{display:grid;grid-template-columns:minmax(0,1fr) 320px;grid-template-rows:auto auto minmax(0,1fr) auto;column-gap:12px;row-gap:6px}
   .sheet-panel .sheet-head{grid-column:2;grid-row:1}.sheet-panel section.sheet{grid-column:2;grid-row:2}.sheet-panel .slips{grid-column:1;grid-row:1/4;height:100%}
   .sheet-panel .sheet-foot{display:contents}.sheet-panel .potion-row{grid-column:1;grid-row:4;align-self:end}.sheet-panel button.send{grid-column:2;grid-row:4}
   .sheet-head{min-height:36px}.sheet-head h1{font-size:calc(18px*var(--fs))}.sheet-head .icon-button,.sheet-head .portrait-button{width:36px;min-height:36px}
   section.sheet{padding:5px 10px}.circ{margin-bottom:3px}.slot{min-height:44px}.meter{margin:13px 0 3px}.estimate b{font-size:calc(19px*var(--fs))}.estimate .icon-button{width:28px;min-height:28px}
   .potion-row .label{display:none}button.potion-chip{min-height:38px}button.send{min-height:46px}
-  .view-bestiary article.folio:not(.locked){display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:20px;align-items:start;box-shadow:inset 12px 0 14px -12px rgba(60,40,20,.5),0 0 0 1px rgba(80,55,25,.4)}
-  .folio:not(.locked)>.folio-head,.folio:not(.locked)>.plate-frame,.folio:not(.locked)>.plate-title,.folio:not(.locked)>.fullness{grid-column:1}
-  .folio:not(.locked)>:not(.folio-head):not(.plate-frame):not(.plate-title):not(.fullness){grid-column:2}
-  .folio:not(.locked)>.folio-head{grid-row:1}.folio:not(.locked)>.plate-frame{grid-row:2}.folio:not(.locked)>.plate-title{grid-row:3}.folio:not(.locked)>.fullness{grid-row:4}
-  .folio:not(.locked)>.cat-section:first-of-type{grid-row:1}
+  /* The spread: the left leaf (name, plate, fullness) stays put while the right one with the records scrolls past it. */
+  .view-bestiary article.folio:not(.locked){display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:24px;align-items:start;background-image:linear-gradient(90deg,transparent calc(50% - 14px),rgba(60,40,20,.16) 50%,transparent calc(50% + 14px))}
+  .folio>.leaf.left{position:sticky;top:0}.folio .leaf.left .plate-frame{width:min(100%,210px);margin:6px auto 4px}.folio .leaf.left .folio-head h2{font-size:calc(24px*var(--fs))}
   .toc{grid-template-columns:repeat(8,minmax(0,1fr))}
   .recipes{grid-template-columns:repeat(3,minmax(0,1fr))}.trophy-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
   dialog{max-height:92dvh;padding:14px 16px}

@@ -99,3 +99,21 @@ test('every button of the interface has its handler and every icon it draws exis
  for(const i of['door','book','flask','scale','scroll','candle','snuff','quill','cauldron','mortar','hourglass','bandage','fang','blade','amulet','hand','claw','people','pin'])assert.ok(ICONS.includes(i),`art.md 1.6: ${i}`);
  for(const c of L.CATEGORIES)assert.ok(ICONS.includes(c.icon),c.icon);
 });
+// The screens and words of GDD 10 are all in the interface: the five tabs, the HUD, the segments of every screen, the
+// labels of the actions (10.9), the welcome and the window of the previous game word for word, the menu of 10.1.
+test('the interface carries every screen, segment and label of GDD 10',()=>{
+ const app=src('app.js');
+ for(const t of['Приёмная','Бестиарий','Опыты','Лаборатория','Лавка','Летопись','Очередь','Артель','Образцы','Алхимия','Архив','Торговка','Академия','Обустройство','Путь','Трофеи','Дни'])assert.ok(app.includes(`'${t}'`),`a tab or segment «${t}»`);
+ for(const t of['Выслушать','Открыть лист','Отложить','Отказать','Отдать лист просителю','Вписать в бестиарий','Расспросить','Лекарь','Испытать','Изучить','Сверить летописи','Порыться в летописях','Сварить','Докупить и сварить','Купить','Продать','Продать лист','Написать трактат','Листок для печатни','Напечатать Великий бестиарий','Выбрать охотника','К Академии'])assert.ok(app.includes(t),`the label «${t}» (GDD 10.9)`);
+ assert.match(app,/`Отправить \$\{h\.acc\}`/,'«Отправить Гордея»: the hunter in the accusative');
+ for(const t of['Тебе приходят за советом: какое чудище, где и как его взять.','Пиши три указания — каждое верное даёт треть успеха, три верных — победу.','Ошибёшься — охотник вернётся побитым и расскажет, что было не так.'])assert.ok(app.includes(t),`the welcome: ${t}`);
+ assert.ok(app.includes('Здесь была ювелирная мастерская «Сияние». Её сохранение не тронуто — его можно скачать в меню. В бестиарий оно не переносится.'),'the window of the previous game');
+ for(const t of['Справочник','Звук','Музыка','Громкость','Крупный текст','Меньше анимаций','Вибрация','Облик летописца','Скачать сохранение','Загрузить сохранение','Скачать сохранение прежней игры','Вернуть прежний бестиарий','Начать заново','На главный экран'])assert.ok(app.includes(t),`the menu: ${t}`);
+ for(const t of['Сегодня никого не ждёт','Нет сведений ещё одного рода','Книги в лавке','Порыться в архиве','Как считается','Как узнать?','Этот лист у Магистра уже есть','Магистр сомневается: какая-то запись верна не всегда','Не заведено','Откроется по письму Академии.','Великий бестиарий','Свечи догорели — завтра','Опасно — так советовать нельзя','не нужно'])assert.ok(app.includes(t),`a line of GDD 10: ${t}`);
+ // The bar of the estimate: three segments under the slots and the fourth of potions, «Надёжно N%», «от», «до».
+ assert.match(app,/pv\.segments\.map\(s=>`<i class="seg \$\{SEG\[s\.kind\]\}"><\/i>`\)/);assert.match(app,/<i class="seg plus">/);assert.match(app,/<b>Надёжно \$\{pv\.mid\}%<\/b>/);assert.match(app,/role="meter"/);
+ // The report: a stamp for every piece of advice, the medal of the lot with the estimate shown at the time, never the truth.
+ assert.match(app,/stamp\(it\.seen\?it\.o:'unseen'\)/);assert.match(app,/по листу: надёжно \$\{r\.shown\.mid\}%/);assert.doesNotMatch(app,/truthChance/,'the interface never shows the true chance');
+ // The morning windows come in the order of GDD 1.1.
+ for(const k of['welcome','legacy','report','rank','story','morning'])assert.match(app,new RegExp(`queueModal\\([^;]*,'${k}'\\)`),k);
+});
