@@ -48,3 +48,13 @@ test('every line of hunters, guests and facts renders without a placeholder left
  assert.equal(L.say(D.LINES.note,L.words({monster:'kikimora',fact:'kikimora.yarn'}),'vedana'),`не дождалась и оставила на столе записку о кикиморе болотной: «${L.FACT.get('kikimora.yarn').advice}»`);
  for(const k of['monster','where','advice','coins','days','hunterAcc'])assert.ok(PLACEHOLDERS.has(k));
 });
+test('the content rules catch a broken content (a mutation check of scripts/content-rules.mjs)',()=>{
+ const with_=(fn,undo,re)=>{fn();try{const e=contentErrors();assert.ok(e.some(x=>re.test(x)),`${re}: ${e.slice(0,3).join('; ')}`);}finally{undo();}};
+ const f=D.MONSTERS[0].facts[0],title=f.title;with_(()=>{f.title='Очень длинное название указания';},()=>{f.title=title;},/> 18 chars/);
+ const start=f.start;with_(()=>{f.start='refuted';},()=>{f.start=start;},/only myths start refuted/);
+ const g=D.MONSTERS[0].facts.find(x=>x.id==='werewolf.moonrise');with_(()=>{g.start='confirmed';},()=>{g.start=null;},/exactly 2 confirmed|books confirm|safe/);
+ const b=D.BOOKS.find(x=>x.id==='vilna_werewolves');with_(()=>{b.sets['werewolf.moonrise']='confirmed';},()=>{b.sets['werewolf.moonrise']='rumour';},/books confirm 3/);
+ const line=f.lines.ok;with_(()=>{f.lines.ok='Сработало {wat}';},()=>{f.lines.ok=line;},/unknown placeholder \{wat\}/);
+ const p=D.POTIONS.find(x=>x.id==='courage');with_(()=>{p.bonus=12;},()=>{p.bonus=5;},/best general \+ best family > 20/);
+ assert.deepEqual(contentErrors(),[],'restored');
+});

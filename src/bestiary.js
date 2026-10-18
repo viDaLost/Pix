@@ -137,7 +137,8 @@ export function makeDay(s){
  const s10=L.STORY.get('S10').effect.contract;
  if(s.story.seen.includes('S10')&&!s.story.koldun&&s.monsters[s10.monster])add(contract(s,{kind:'story',monster:s10.monster,variant:s10.variant,place:s10.place,fee:s10.fee,bounty:0}),false);
  // Other guests: Ведана and о. Никодим bring a free rumour chosen now and written when they are heard.
- for(const v of L.VISITORS){if(v.role==='townsfolk'||v.role==='council'||v.role==='apprentice'||!visits(s,v))continue;let rumour=null;
+ // Day 1 is the lesson: only Гордей waits at the table (GDD 9.1); Даро speaks through the story and from his armchair.
+ for(const v of L.VISITORS){if(v.role==='townsfolk'||v.role==='council'||v.role==='apprentice'||!visits(s,v)||d===1)continue;let rumour=null;
   if(v.visits.rumour){const list=openList(s).filter(m=>m.tier<4&&m.tags.some(t=>v.visits.rumour.tags.includes(t))&&fresh(m));if(list.length)rumour=pickUnknown(s,pick(seed,[v.id,d],list),[v.id,d,'fact'],null,told()).id;}
   guest(v.id,v.id,{rumour});}
  // Two sealed rumour sheets of Янек, about open monsters with something unknown; the fact is drawn when one is bought.
@@ -215,13 +216,14 @@ export function resolveHunt(s,hunt){
 // table for the morning (decision D5). Story, arcs and the new day are the next steps (progress-next.js).
 export function night(s){
  for(const r of s.reports){if(r.offer&&!r.choice)claim(s,r.id,'coins');r.read=true;}
- const back=[],forgiven=[];
+ const back=[],forgiven=[],marked=s.daily.firsts.length;
  for(const h of L.HUNTERS){const x=s.hunters[h.id];if(!x)continue;if(x.out>0){x.out--;if(!x.out)back.push(h.id);}if(!x.out)x.rag=0;if(x.sulk>0){x.sulk--;if(!x.sulk){x.trust=Math.max(1,x.trust);forgiven.push(h.id);}}}
  // Hunts are rolled in the order of their cases, so the order the sheets were sent in changes nothing.
  const num=h=>Number(h.contract.id.slice(2)),reports=[...s.hunts].sort((a,b)=>num(a)-num(b)).map(h=>resolveHunt(s,h));s.hunts=[];
  const unheard=s.visitors.filter(v=>v.rumour&&!v.heard);
  s.contracts=s.contracts.filter(c=>c.deferred===1&&c.day===s.day&&(c.kind==='hunter'||c.kind==='town'));s.visitors=[];
- s.day++;s.daily=freshDaily();if(s.story.thaw>0)s.story.thaw--;
+ // The firsts of the night (a failure, a harm, a condition) belong to the morning that tells of them.
+ const firsts=s.daily.firsts.slice(marked);s.day++;s.daily=freshDaily();s.daily.firsts.push(...firsts);if(s.story.thaw>0)s.story.thaw--;
  const notes=[];for(const v of unheard){let f=L.FACT.get(v.rumour);if(s.know[f.id])f=pickUnknown(s,L.monsterOf(f.id),[v.kind,s.day-1,'again']);const src=v.kind==='town'?'town':v.kind;if(f&&addRumour(s,f,src))notes.push({who:v.who,kind:v.kind,fact:f.id});}
  s.reports=[...reports,...s.reports].slice(0,R.LIMITS.reports);
  return {reports,back,forgiven,notes};}

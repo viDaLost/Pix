@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as J from '../src/jewelry.js';
 import * as P from '../src/progress.js';
-import {dayPhase,season,weatherFor,sky,ambience,skyWords,morningWords,SEASONS,WEATHER,WEATHER_ICON} from '../src/ambience.js';
+import {dayPhase,season,weatherFor,moonFor,MOON,sky,ambience,skyWords,morningWords,townMorningWords,SEASONS,WEATHER,WEATHER_ICON} from '../src/ambience.js';
+import * as BP from '../src/progress-next.js';
 
 test('the weather of a day depends only on the world seed and the day; snow falls only in winter',()=>{
  for(const seed of[0,1,77,4294967295])for(let day=1;day<=60;day++)assert.equal(weatherFor(seed,day),weatherFor(seed,day));
@@ -35,4 +36,16 @@ test('words and icons of the weather',()=>{
  for(const w of Object.keys(WEATHER))assert.ok(WEATHER_ICON[w]);assert.equal(SEASONS.length,4);
  assert.equal(skyWords({season:0,weather:'rain'}),'осень, дождь');assert.equal(morningWords({season:1,weather:'snow'}),'Зима, гавань в снегу');assert.equal(morningWords({season:2,weather:'clear'}),'Весна, ясное утро над гаванью');
  const s=P.newGame(9);const r=P.morningReport(s,P.nextDay(s));assert.equal(r.amb.day,s.day);assert.equal(r.amb.weather,weatherFor(s.worldSeed,s.day));
+});
+test('the bestiary: weather by the season of the rules, the moon of the night window, the light of the scriptorium (GDD 1.1, 1.5)',()=>{
+ for(const seed of[1,77,4242])for(let day=1;day<=60;day++){assert.equal(weatherFor(seed,day),weatherFor(seed,day,season(day)),'without k the calendar decides, as before');
+  const w=weatherFor(seed,day,1);assert.ok(['snow','fog','clear'].includes(w),'the winter table');}
+ let snow=0;for(let day=25;day<=36;day++)for(let seed=1;seed<=50;seed++)if(weatherFor(seed,day,1)==='snow')snow++;assert.ok(snow/600>.35&&snow/600<.55,`a spring day under the Black Winter snows: ${snow}`);
+ for(const seed of[0,9,123456])for(let day=1;day<=40;day++){const m=moonFor(seed,day);assert.ok(Number.isInteger(m)&&m>=0&&m<8);assert.equal(moonFor(seed,day+8),m,'a cycle of eight days');assert.equal(moonFor(seed,day+1),(m+1)%8);}
+ assert.equal(MOON.length,8);assert.equal(MOON[4],'полнолуние');
+ const lit=d=>dayPhase({daily:d});assert.equal(lit({talks:0,candles:0}),.12);assert.ok(Math.abs(lit({talks:1,candles:1})-.34)<1e-9);assert.equal(lit({talks:3,candles:5}),.8);assert.equal(lit({talks:-2,candles:'x'}),.12);
+ assert.equal(lit({sales:1,made:0,areas:[]}),.24,'the workshop keeps its own light');
+ const s=BP.newGame(5);assert.deepEqual(ambience(s),{day:1,season:0,weather:BP.weatherOf(s),phase:.12,moon:moonFor(s.worldSeed,1)});
+ s.story.hold=true;s.day=30;assert.equal(ambience(s).season,1);assert.equal(ambience(s).weather,BP.weatherOf(s),'the scene and the rules see the same sky');
+ assert.equal(townMorningWords({season:1,weather:'snow'}),'Зима, Велен в снегу');assert.equal(townMorningWords({season:0,weather:'fog'}),'Осень, Велен в тумане');
 });

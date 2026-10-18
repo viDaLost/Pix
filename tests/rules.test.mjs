@@ -30,7 +30,8 @@ test('every example of GDD 3.7',()=>{
  close(R.chance(2,0,b('gordey',gordey,'grown')),74+2/3,'the lesson: silver, wolfsbane, crossroads');close(R.chance(2,0,b('gordey',gordey,'grown',['aconite_oil'])),84+2/3,'with the wolfsbane oil');
  close(R.chance(1,1,b('gordey',gordey,'grown')),16+1/3,'the owner example: silver, garlic, dawn');
  close(R.chance(2,1,b('gordey',gordey,'grown')),49+2/3,'silver, wolfsbane, dawn');
- const marta={xp:10,skill:0,gear:[]};assert.equal(R.level(marta.xp),2);assert.equal(R.skillBonus('marta',marta),9);
+ // Марта ур. III: skill 4 gives 6, the level 3 more.
+ const marta={xp:18,skill:0,gear:[]};assert.equal(R.level(marta.xp),3);assert.equal(R.skillBonus('marta',marta),9);
  close(R.chance(2,0,b('marta',marta,'ancient',['dawn_tincture','courage'])),81+2/3,'the grey werewolf with Marta');
  assert.equal(R.chance(3,0,b('marta',marta,'ancient',['dawn_tincture','courage'])),100);
  close(R.chance(2,1,R.bonuses(null,null,'zlyden','young',[])),46+2/3,'a townsperson, the young zlyden');
@@ -53,9 +54,11 @@ test('the sheet: exactly three different cards of this monster, one a category, 
  assert.match(err(['werewolf.silver','werewolf.aconite','werewolf.garlic']).join(),/одного указания на род «Оберег»/);
  know(s,'werewolf.dawn','dangerous');assert.match(err(['werewolf.silver','werewolf.aconite','werewolf.dawn']).join(),/опасно: так советовать нельзя/);
  // A revealed condition that harms in these circumstances is refused; where it helps, it may go.
- know(s,'zlyden.offering','confirmed',1);const z=ids=>R.adviceErrors(s.know,'zlyden',ctx('grown'),ids),ok=L.MON.get('zlyden').facts.find(f=>f.id!=='zlyden.offering'&&f.cat!==F('zlyden.offering').cat&&s.know[f.id]?.st==='confirmed');
- const why=z(['zlyden.offering']).join();assert.match(why,/сейчас опасно/);
- assert.equal(R.usable(s.know['zlyden.offering'],F('zlyden.offering'),ctx('grown')),R.outcome(F('zlyden.offering'),ctx('grown'))!=='worse');assert.ok(ok);
+ // «Каша за печь» helps only the offended домовой (grown); against the young злыдень it harms.
+ know(s,'zlyden.offering','confirmed',1);const z=(v,ids)=>R.adviceErrors(s.know,'zlyden',ctx(v),ids),safe=['zlyden.thistle','zlyden.stove'].filter(id=>s.know[id]?.st==='confirmed');
+ assert.equal(safe.length,2,'the two confirmed cards of the злыдень');
+ assert.match(z('young',[...safe,'zlyden.offering']).join(),/«Каша за печь» сейчас опасно/);assert.deepEqual(z('grown',[...safe,'zlyden.offering']),[]);
+ assert.equal(R.usable(s.know['zlyden.offering'],F('zlyden.offering'),ctx('young')),false);assert.equal(R.usable(s.know['zlyden.offering'],F('zlyden.offering'),ctx('grown')),true);
  assert.equal(R.usable({st:'dangerous',rev:0},F('werewolf.dawn'),ctx()),false);assert.equal(R.usable({st:'refuted',rev:0},F('werewolf.crossroads'),ctx()),true,'a refuted myth is a safe third card');
 });
 test('potions: at most two, different, one general and one against a family; the sum of their P-bonus stops at 20 (GDD 3.4)',()=>{
@@ -95,4 +98,15 @@ test('preview: the bar of the sheet from the player’s records, never the truth
  const d=P.preview(s,c.id,['werewolf.silver'],['aconite_oil']);assert.deepEqual(d.segments.map(x=>x.kind),['ok','empty','empty']);assert.equal(d.potion,10);assert.match(d.errors[0],/Нужно ещё 2/);
  // The truth of the owner's example is 16⅓; the bar showed 41 — the difference is what the rumours hide.
  close(P.truthChance(s,c.id,['werewolf.silver','werewolf.garlic','werewolf.dawn']),16+1/3);
+});
+test('the owner’s brief: on day 1 every starting monster has a safe sheet of checked records worth at least 66⅔%, true to the shown',()=>{
+ for(const id of L.START){const s=game(8);s.rep=20;clear(s);const c=place(s,{kind:'town',monster:id,variant:'grown'}),cards=P.cards(s,c.id).filter(x=>x.usable&&x.st!=='rumour');let best=null;
+  for(let a=0;a<cards.length;a++)for(let b=a+1;b<cards.length;b++)for(let d=b+1;d<cards.length;d++){const x=[cards[a],cards[b],cards[d]];if(new Set(x.map(k=>k.cat)).size<3)continue;
+   const ids=x.map(k=>k.id),pv=P.preview(s,c.id,ids,[]);if(pv.errors.length)continue;if(!best||pv.raw.mid>best.mid)best={mid:pv.raw.mid,truth:P.truthChance(s,c.id,ids,[]),ids};}
+  assert.ok(best,`${id}: a sheet of three checked cards`);close(best.mid,200/3,`${id}: two thirds by the records`);close(best.truth,best.mid,`${id}: the shown is the truth`);}
+});
+test('the owner’s brief: three correct pieces of advice win always — the one roll of the case cannot lose',()=>{
+ for(let seed=1;seed<=200;seed++){const s=game(seed);clear(s);for(const f of L.MON.get('werewolf').facts)know(s,f.id,f.truth==='true'?'confirmed':f.truth==='myth'?'refuted':f.truth==='harmful'?'dangerous':'confirmed',f.truth==='conditional'?1:0);
+  const c=place(s,{monster:'werewolf',variant:['young','grown','ancient'][seed%3],hunter:'agata'}),sheet=['werewolf.silver','werewolf.aconite','werewolf.moonrise'];
+  assert.equal(P.preview(s,c.id,sheet).mid,100);assert.equal(P.truthChance(s,c.id,sheet),100);assert.ok(P.advise(s,c.id,sheet).ok);assert.equal(P.endDay(s).reports[0].win,true,`seed ${seed}`);}
 });

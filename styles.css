@@ -84,6 +84,9 @@ input[type=range]{accent-color:var(--brass);min-width:50px}
 .hud .stat b{color:var(--brass-hi)}
 .hud .stat.day{color:var(--text-2);font-size:calc(13px*var(--fs));gap:4px}
 .hud .stat.day .icon{width:16px;height:16px;color:var(--text-2)}
+/* The day keeps one line; on the narrowest phones the weather stays in the caption of the scene and in the label. */
+.hud .stat.day>span{white-space:nowrap}
+@media(max-width:379px){.hud .stat.day .icon{display:none}}
 .hud .xp{position:absolute;left:12px;right:12px;bottom:4px;height:2px;border-radius:2px;background:var(--line)}
 .hud .xp::after{content:'';position:absolute;inset:0;width:var(--p);background:var(--brass);border-radius:2px}
 .hud .stat.pulse{animation:pulse .6s var(--spring)}

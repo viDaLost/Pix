@@ -149,7 +149,7 @@ export function normalize(s){
  guard(()=>{const out=[],ids=new Set();for(const r of Array.isArray(s.reports)?s.reports:[])guard(()=>{if(out.length<R.LIMITS.reports&&!ids.has(r.id)&&reportOk(s,r)){ids.add(r.id);out.push(r);}});s.reports=out;});
  guard(()=>{const out=[],ids=new Set();for(const v of Array.isArray(s.visitors)?s.visitors:[])guard(()=>{if(!obj(v)||typeof v.id!=='string'||!/^v-[1-9][0-9]*$/.test(v.id)||ids.has(v.id)||!VISITOR_KINDS.includes(v.kind)||out.length>=R.LIMITS.visitors)return;
    const who=v.kind==='hunter'?!!s.hunters[v.who]:v.kind==='town'?L.TOWN_TYPE.has(v.who):v.who===v.kind;if(!who)return;
-   ids.add(v.id);out.push({id:v.id,kind:v.kind,who:v.who,contract:typeof v.contract==='string'&&/^c-[1-9][0-9]*$/.test(v.contract)?v.contract:null,rumour:L.FACT.has(v.rumour)&&s.monsters[L.monsterOf(v.rumour).id]?v.rumour:null,heard:v.heard===true});});s.visitors=out;});
+   ids.add(v.id);out.push({id:v.id,kind:v.kind,who:v.who,contract:typeof v.contract==='string'&&(s.contracts.some(c=>c.id===v.contract)||s.hunts.some(h=>h.contract.id===v.contract))?v.contract:null,rumour:L.FACT.has(v.rumour)&&s.monsters[L.monsterOf(v.rumour).id]?v.rumour:null,heard:v.heard===true});});s.visitors=out;});
  guard(()=>{const t=obj(s.trader)?s.trader:{};s.trader={day:num(t.day,0,s.day,0),rumours:(Array.isArray(t.rumours)?t.rumours:[]).filter(x=>obj(x)&&s.monsters[x.monster]&&L.MON.get(x.monster).tier<4).slice(0,2).map(x=>({monster:x.monster,price:R.RUMOUR_PRICE[L.MON.get(x.monster).tier],sold:x.sold===true}))};});
  guard(()=>{s.chronicle=(Array.isArray(s.chronicle)?s.chronicle:[]).filter(e=>obj(e)&&typeof e.t==='string').slice(0,R.LIMITS.chronicle).map(e=>({d:num(e.d,0,s.day,0),t:e.t.slice(0,200),k:typeof e.k==='string'&&/^[a-z-]{1,16}$/.test(e.k)?e.k:'note'}));});
  guard(()=>{s.daily.candles=Math.min(s.daily.candles,R.candleMax(s));s.rankSeen=num(s.rankSeen,0,R.rankOf(s.rep),R.rankOf(s.rep));});
@@ -173,7 +173,7 @@ export function endDay(s){ready(s);
  for(const r of night.reports){if(r.contract.kind==='personal'&&s.personal[r.hunter]){const p=s.personal[r.hunter];p.tries++;if(r.win)p.state='won';personal[r.hunter]=r.win?'won':'lost';}
   if(r.contract.kind==='story')applyStory(s,L.STORY.get('S11'));
   const m=L.MON.get(r.contract.monster),who=r.hunter||r.town;B.note(s,L.say(r.win?L.LINES.log.win:L.LINES.log.lose,{...L.words({monster:m,place:r.contract.place,day:s.day-1}),hunter:r.hunter?L.HUNTER.get(r.hunter).short:L.TOWN_TYPE.get(r.town).label},who),'hunt');}
- const shelf=R.shelfTier(s);joinHunters(s);const story=storyStep(s);const joined=joinHunters(s);const ctx={personal};const arcs=arcStep(s,ctx);
+ const shelf=R.shelfTier(s),joined=joinHunters(s),story=storyStep(s);joined.push(...joinHunters(s));const ctx={personal};const arcs=arcStep(s,ctx);
  B.makeDay(s);arcs.push(...arcStep(s,ctx));
  const rank=R.rankOf(s.rep);let rankUp=null;if(rank>s.rankSeen){rankUp={rank,from:s.rankSeen,name:L.RANKS[rank].name,opens:L.RANKS[rank].opens};s.rankSeen=rank;B.note(s,`День ${s.day}: звание «${L.RANKS[rank].name}».`,'rank');}
  return {reports:night.reports,rank:rankUp,story,arcs,morning:morning(s,night,joined,shelf)};}
@@ -228,7 +228,8 @@ export function skipTutorial(s){ready(s);s.tutorial.skipped=true;return s.tutori
 export function seeHint(s,id){ready(s);if(!TIP_IDS.includes(id)||s.hintsSeen.includes(id)||s.hintsSeen.length>=64)return false;s.hintsSeen.push(id);return true;}
 export function markBackup(s){ready(s);s.backup=s.day;}
 // What the reception shows: the cases on the table with their guest, hunter and circumstances.
-export function cases(s){ready(s);return s.contracts.map(c=>({...c,ctx:B.ctxOf(s,c),visitor:s.visitors.find(v=>v.contract===c.id)?.id||null}));}
+// One sign of the variant is shown on the card, fixed by the id of the case (GDD 3.5).
+export function cases(s){ready(s);return s.contracts.map(c=>({...c,ctx:B.ctxOf(s,c),sign:L.line(s.worldSeed,c.id,'sign',L.MON.get(c.monster).variants.find(v=>v.id===c.variant)?.signs||[])||'',visitor:s.visitors.find(v=>v.contract===c.id)?.id||null}));}
 // «Небо дня» (GDD 3.5): the weather and season of the rules, and the revealed conditions of open pages that hold or are
 // empty today (variant conditions depend on the case and are shown on its card instead).
 export function skyToday(s){ready(s);const ctx={weather:B.weatherOf(s),season:B.seasonOf(s)},facts=[];
