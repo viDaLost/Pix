@@ -29,7 +29,7 @@ const server = http.createServer(async (req,res) => {
     if ((await stat(file)).isDirectory()) file = path.join(file,'index.html');
     if (!['.html','.js','.css','.json','.webmanifest','.svg','.png','.woff2'].includes(path.extname(file))) throw new Error('Not a public asset');
     let data = await readFile(file);
-    if (file === path.join(root,'sw.js')) data = Buffer.from(data.toString('utf8').replace(/'pix-forge-v\d+'/, `'pix-forge-dev-${createHash('sha256').update(await stamp(root)).digest('hex').slice(0,12)}'`));
+    if (file === path.join(root,'sw.js')) data = Buffer.from(data.toString('utf8').replace(/'pix-bestiary-v\d+'/, `'pix-bestiary-dev-${createHash('sha256').update(await stamp(root)).digest('hex').slice(0,12)}'`));
     res.writeHead(200,{'Content-Type':mime[path.extname(file)] || 'application/octet-stream','Cache-Control':'no-cache'}); res.end(data);
   } catch { res.writeHead(404,{'Content-Type':'text/plain; charset=utf-8'}); res.end('Not found'); }
 });

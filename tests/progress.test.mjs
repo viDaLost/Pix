@@ -79,3 +79,23 @@ test('a tip of Даро is marked once a day for the interface, and only until i
  // A failure at night marks its tip for the morning that tells of it.
  const t=game(97);assert.ok(P.advise(t,'c-1',['werewolf.silver','werewolf.garlic','werewolf.dawn']).ok);P.endDay(t);assert.ok(t.daily.firsts.includes('tip:first_failure'));assert.ok(t.daily.firsts.includes('tip:first_harmful'));
 });
+// The interface changes the game only through P.* (GDD 12.4): no core, rules or raw content in app.js, and the only
+// fields it writes itself are the player's settings.
+test('the interface reaches the game only through P.*, the content only through lore.js',async()=>{
+ const app=src('app.js'),imports=[...app.matchAll(/^import[^;]*from '\.\/([^']+)'/gm)].map(m=>m[1]);
+ for(const f of['rules.js','bestiary.js','content-data.js','rng.js'])assert.ok(!imports.includes(f),`app.js imports ${f}`);
+ assert.doesNotMatch(app,/\b[BR]\.[a-zA-Z]+\(/,'no call of the core or the rules');
+ const writes=[...app.matchAll(/state\.([A-Za-z]+)(?:\.[A-Za-z]+)*(?:=(?!=)|\+\+|--|\.(?:push|splice|pop|shift|unshift)\()/g)].map(m=>m[1]);
+ assert.deepEqual([...new Set(writes)].filter(k=>!['welcomed','legacySeen','sound','music','volume','haptics','prefs','savedAt'].includes(k)),[],'only settings are written outside P.*');
+ const mods={P,L,G:await import('../src/guide.js'),A:await import('../src/ambience.js')};
+ for(const [name,mod] of Object.entries(mods))for(const k of new Set([...app.matchAll(new RegExp(`\\b${name}\\.([A-Za-z_]+)`,'g'))].map(m=>m[1])))assert.ok(k in mod,`app.js uses ${name}.${k}, which does not exist`);
+});
+test('every button of the interface has its handler and every icon it draws exists',async()=>{
+ const app=src('app.js'),{ICONS}=await import('../src/icons.js');
+ const actions=new Set([...app.matchAll(/btn\('([a-z-]+)'/g),...app.matchAll(/data-action="([a-z-]+)"/g),...app.matchAll(/dataset\.action='([a-z-]+)'/g)].map(m=>m[1]));
+ const cases=new Set([...app.matchAll(/case'([a-z-]+)'/g)].map(m=>m[1]));
+ assert.deepEqual([...actions].filter(a=>!cases.has(a)),[],'an action without a handler');assert.ok(actions.size>60,`${actions.size} actions`);
+ const icons=new Set([...app.matchAll(/icon\('([a-z-]+)'/g)].map(m=>m[1]));for(const i of icons)assert.ok(ICONS.includes(i),`icon «${i}» is not drawn`);
+ for(const i of['door','book','flask','scale','scroll','candle','snuff','quill','cauldron','mortar','hourglass','bandage','fang','blade','amulet','hand','claw','people','pin'])assert.ok(ICONS.includes(i),`art.md 1.6: ${i}`);
+ for(const c of L.CATEGORIES)assert.ok(ICONS.includes(c.icon),c.icon);
+});

@@ -51,12 +51,15 @@ test('a one-off hint steps out of the line while a dialog is open and the rest k
  const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
  assert.match(app,/if\(!dialog\.open\)\{holdHints\(\);dialog\.showModal\(\)/);assert.match(app,/modals\.next\(\)\?\.\(\);if\(!dialog\.open\)releaseHints\(\);/);
 });
-test('dialogs that wait open in the fixed order: welcome, update, ceremony, rank, letters, morning',()=>{
- assert.deepEqual(MODAL_ORDER,['welcome','update','ceremony','rank','letter','morning']);
- const q=new ModalQueue(),seen=[],add=kind=>q.add(()=>seen.push(kind),kind);
- for(const kind of['morning','letter','rank','ceremony','update','welcome','letter','surprise'])add(kind);
+test('dialogs that wait open in the fixed order of GDD 1.1: welcome, the previous game, reports, rank, story, morning',()=>{
+ assert.deepEqual(MODAL_ORDER,['welcome','legacy','report','rank','story','morning']);
+ const q=new ModalQueue(),seen=[],add=(kind,n='')=>q.add(()=>seen.push(kind+n),kind);
+ for(const [kind,n] of[['morning'],['report',1],['story'],['rank'],['legacy'],['welcome'],['report',2],['surprise']])add(kind,n??'');
  assert.equal(q.size,8);let fn;while((fn=q.next()))fn();
- assert.deepEqual(seen,['welcome','update','ceremony','rank','letter','letter','morning','surprise']);assert.equal(q.next(),null);
+ assert.deepEqual(seen,['welcome','legacy','report1','report2','rank','story','morning','surprise'],'two reports keep their own order');assert.equal(q.next(),null);
+ // The interface queues every window of a morning by its kind.
+ const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
+ for(const kind of['report','rank','story','morning','welcome','legacy'])assert.match(app,new RegExp(`queueModal\\([^\\n]*?,'${kind}'\\)`),kind);
 });
 test('the interface closes dialogs at once and keeps the history in step on their close event',()=>{
  const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
@@ -68,6 +71,8 @@ test('the interface closes dialogs at once and keeps the history in step on thei
 test('over an open dialog the toast docks at the bottom, clear of the title and the close button, and errors are urgent',()=>{
  const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8'),app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
  assert.match(css,/dialog>\.toast\{top:auto;bottom:/,'at the top a tap meant for «×» landed on «Вернуть» at 320 and 360 px');
+ // Review of Г2: a shown toast let no tap through to the segment tabs under it on a short phone, nor to «Вписать в бестиарий».
+ assert.match(css,/\.toast\.show\{[^}]*pointer-events:none\}\.toast\.show \.toast-action\{pointer-events:auto\}/);
  assert.match(app,/setAttribute\('aria-live',t\.kind==='error'\?'assertive':'polite'\)/,'the polite live region of index.html would outrank role=alert');
 });
 test('every fixed grid shares its width with minmax(0,…), so a long label cannot push a column off a narrow screen',()=>{

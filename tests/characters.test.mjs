@@ -32,3 +32,12 @@ test('working tools contact their station surfaces at the impact frame',()=>{
   ];
   for(const p of positions){const rig=characterRig(p.facing,p.pose,p.frame),[tx,ty]=rig.tool,x=p.x+(tx-32)*1.6*(p.facing==='left'?-1:1),y=p.y+(ty-76)*1.6;assert.ok(Math.hypot(x-p.target[0],y-p.target[1])<3,p.pose+' reaches its workpiece');}
 });
+// Review of Г2: characters.js fills what a look leaves out from its old preset «smith», who wears a beard; the people of
+// the bestiary say it all themselves, so a keeper, a huntress or a townswoman is never drawn bearded.
+test('the people of the bestiary wear only what their look says',async()=>{
+ const {personOf,guestPerson,keeperPerson}=await import('../src/scriptorium-scene.js'),L=await import('../src/lore.js');
+ const people=[...L.KEEPER_LOOKS.map(k=>personOf(k.id,k.look)),...L.HUNTERS.map(h=>personOf(h.id,h.look,h.lookFallback)),...L.VISITORS.filter(v=>v.look).map(v=>personOf(v.id,v.look,v.lookFallback)),...L.TOWN_TYPES.map(t=>guestPerson({kind:'town',who:t.id}))];
+ for(const p of people){assert.equal(p.beard,!!(L.HUNTER.get(p.id)?.look.beard||L.VISITOR.get(p.id)?.look?.beard||L.KEEPER.get(p.id)?.look.beard||L.TOWN_TYPE.get(String(p.id).replace('town-',''))?.look?.beard),p.id);if(p.female)assert.equal(p.beard,false,p.id+' is a woman');}
+ assert.equal(keeperPerson({keeper:'keeper_b'}).beard,false);assert.equal(keeperPerson({keeper:'keeper_b'}).female,true);assert.equal(keeperPerson({keeper:'nobody'}).id,'keeper_a');
+ for(const p of people){assert.ok(['smith','miner','farmer','officer','gentleman','rider','surveyor','merchant','apothecary'].includes(p.outfit),`${p.id}: ${p.outfit}`);assert.ok(!p.hat||['tricorn','felt','bonnet'].includes(p.hat),`${p.id}: ${p.hat}`);}
+});

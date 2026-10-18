@@ -13,7 +13,8 @@ export const W=480,H=260;
 const OUTFITS=new Set(['smith','miner','farmer','officer','gentleman','rider','surveyor','merchant','apothecary']),HATS=new Set(['tricorn','felt','bonnet']);
 // A look from the content, with the fallback for clothes the people of characters.js cannot wear yet (the cassock and
 // the skufia come with Г3).
-export function personOf(id,look,fallback){let p={id,...look};if(!OUTFITS.has(p.outfit))p={...p,...(fallback||{}),outfit:OUTFITS.has(fallback?.outfit)?fallback.outfit:'surveyor'};if(p.hat&&!HATS.has(p.hat))p.hat=HATS.has(fallback?.hat)?fallback.hat:undefined;return p;}
+// characters.js fills what a look leaves out from its old «smith» (bearded); a person of the content says it all itself.
+export function personOf(id,look,fallback){let p={beard:false,female:false,mature:false,cap:false,carry:false,...look,id};if(!OUTFITS.has(p.outfit))p={...p,...(fallback||{}),outfit:OUTFITS.has(fallback?.outfit)?fallback.outfit:'surveyor'};if(p.hat&&!HATS.has(p.hat))p.hat=HATS.has(fallback?.hat)?fallback.hat:undefined;return p;}
 // The person who stands for a guest of the day: a hunter, a townsperson or one of the visitors.
 export function guestPerson(v){if(v.kind==='hunter'){const h=L.HUNTER.get(v.who);return personOf(h.id,h.look,h.lookFallback);}if(v.kind==='town'){const t=L.TOWN_TYPE.get(v.who);return personOf('town-'+t.id,t.look);}
  const x=L.VISITOR.get(v.kind);return personOf(x.id,x.look,x.lookFallback);}

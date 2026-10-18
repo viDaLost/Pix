@@ -1,9 +1,9 @@
 {
-  "name": "pix-jewel-atelier",
-  "version": "10.0.0",
+  "name": "pix-bestiary",
+  "version": "11.0.0",
   "private": true,
   "type": "module",
-  "description": "A mobile pixel-art jewelry atelier with a freehand design editor and a demand-driven shop",
+  "description": "«Бестиарий Велена»: an offline mobile game about a keeper of a bestiary who gives monster hunters three pieces of advice",
   "scripts": {
     "start": "node scripts/serve.mjs",
     "build": "node scripts/build.mjs",
