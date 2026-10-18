@@ -58,3 +58,8 @@ test('the content rules catch a broken content (a mutation check of scripts/cont
  const p=D.POTIONS.find(x=>x.id==='courage');with_(()=>{p.bonus=12;},()=>{p.bonus=5;},/best general \+ best family > 20/);
  assert.deepEqual(contentErrors(),[],'restored');
 });
+test('a bare number never stands before a noun that would have to agree with it: «записей — {n}», not «{n} записей»',()=>{
+ const bad=[];const walk=(where,v)=>{if(typeof v==='string'){if(/\{n\}\s+[а-яё]/i.test(v))bad.push(`${where}: ${v}`);}else if(Array.isArray(v))v.forEach((x,i)=>walk(`${where}[${i}]`,x));else if(v&&typeof v==='object')for(const [k,x] of Object.entries(v))walk(`${where}.${k}`,x);};
+ for(const [k,v] of Object.entries(D))walk(k,v);assert.deepEqual(bad,[]);
+ assert.equal(L.say(L.VISITOR.get('otto').lines.page,{...L.words({monster:'werewolf'}),n:3}),'Лист о волколаке: проверенных записей — 3. Плачу за проверенное, за слухи — ни гроша. Наука, вы понимаете.');
+});

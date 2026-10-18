@@ -194,3 +194,21 @@ test('the morning card: weather and season, who came back, who heals and sulks, 
  assert.deepEqual([m.day,m.season,m.hold],[2,0,false]);assert.ok(m.weather in{clear:1,rain:1,fog:1,snow:1});assert.equal(m.returns.length,1);assert.deepEqual(m.healing,[{hunter:'gordey',days:3}]);
  assert.ok(L.LINES.morning.returns.includes(m.line));const q=P.endDay(s).morning;assert.ok(L.LINES.morning.none.includes(q.line));
 });
+// Review of G1: the words of a report must never contradict its seals.
+test('a hunter says «три из трёх» (lines.full) only when all three pieces of advice helped',()=>{
+ let full=0;const FULL=['werewolf.silver','werewolf.aconite','werewolf.moonrise'];
+ for(let seed=1;seed<=24;seed++)for(const sheet of[LESSON,FULL]){const s=game(seed);clear(s);P.endDay(s);clear(s);know(s,'werewolf.moonrise','confirmed');
+  const hunter=seed%2?'gordey':'agata',h=L.HUNTER.get(hunter),c=place(s,{monster:'werewolf',hunter,win:true,at:60});assert.ok(P.advise(s,c.id,sheet).ok);
+  const r=P.endDay(s).reports[0];assert.equal(r.win,true);const greet=P.reportText(s,r.id).greet,said=list=>list.some(t=>L.say(t,{},hunter)===greet);
+  if(sheet===FULL&&r.items.every(x=>x.seen)){assert.ok(said([...h.lines.thanks,...h.lines.full]),greet);if(said(h.lines.full))full++;}
+  else assert.ok(said(h.lines.thanks),`${hunter}: «${greet}» after a win where not all three were seen to help`);}
+ assert.ok(full>0,'the lines of a full win are heard');
+ for(const h of L.HUNTERS){assert.ok(h.lines.thanks.length>0,h.id);for(const t of h.lines.full||[])assert.ok(!h.lines.thanks.includes(t),t);}
+});
+test('the tale of a keen eye is told as it was seen: a helping, an empty and a harmful tale each match the new seal',()=>{
+ for(const [left,o,key] of[['werewolf.moonrise','ok','factSure'],['werewolf.torch','none','factNone'],['werewolf.dawn','worse','factWorse']]){
+  const s=game(44);clear(s);P.endDay(s);clear(s);for(const f of L.MON.get('werewolf').facts)if(!s.know[f.id])know(s,f.id,'rumour');delete s.know[left];
+  const c=place(s,{monster:'werewolf',hunter:'agata',win:true,at:60});assert.ok(P.advise(s,c.id,LESSON).ok);const r=P.endDay(s).reports[0];
+  assert.deepEqual([r.win,r.offer.tale,r.offer.sure],[true,left,true]);assert.ok(P.claim(s,r.id,'know').ok);assert.equal(s.know[left].st,R.STATE_OF[o]);
+  assert.equal(P.reportText(s,r.id).after[0],L.say(L.LINES.reward[key][0],L.words({fact:left}),'agata'),`${left}: the line follows «${o}»`);}
+});

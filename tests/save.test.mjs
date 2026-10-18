@@ -86,3 +86,16 @@ test('normalize, chronicle, tutorial and settings; a state that lacks a field is
  assert.deepEqual(s.hintsSeen,['first_rumour']);assert.deepEqual(s.prefs,{large:false,calm:true});assert.equal(s.volume,1);assert.equal(s.keeper,'keeper_a');assert.equal(s.sound,false);
  const t=game(90);delete t.daily;delete t.stats;delete t.visitors;const r=P.listen(t,'v-1');assert.equal(r.ok,false);assert.ok(t.daily&&t.stats&&Array.isArray(t.visitors),'ready() normalized the state first');
 });
+test('a reload never reorders the story: an event that comes back takes its place in the order of the story',()=>{
+ const s=game(83);for(const id of['S1','S2','S3'])P.applyStory(s,L.STORY.get(id));const o=raw(s);o.day=5;o.story.seen=['S0','S2','S3'];delete o.story.days.S1;
+ const t=load(o);assert.deepEqual(t.story.seen,['S0','S2','S3']);const r=P.endDay(t);assert.equal(r.story.id,'S1');
+ assert.deepEqual(t.story.seen,['S0','S1','S2','S3']);assert.equal(snap(P.load(snap(t))),snap(t));
+ // A file with the events out of order is put in the order of the story once, and stays so.
+ const u=raw(s);u.day=9;u.story.seen=['S3','S0','S2','S1'];u.story.days={S3:4,S0:1,S2:3,S1:2};const a=load(u);
+ assert.deepEqual(a.story.seen,['S0','S1','S2','S3']);assert.deepEqual(Object.keys(a.story.days),a.story.seen);assert.equal(a.story.days.S3,4);assert.equal(snap(P.load(snap(a))),snap(a));
+});
+test('normalize, reports: a place that is not the monster’s is repaired, so no line shows a bare placeholder',()=>{
+ const s=game(84);assert.ok(P.advise(s,'c-1',['werewolf.silver','werewolf.garlic','werewolf.dawn']).ok);P.endDay(s);const o=raw(s);o.reports[0].contract.place='nowhere';
+ const t=load(o),r=t.reports[0];assert.ok(L.MON.get('werewolf').places.includes(r.contract.place));const text=P.reportText(t,r.id);
+ assert.doesNotMatch([text.greet,text.first,...text.items.map(x=>x.text),...text.after].join(' '),/[{}]|undefined/);
+});

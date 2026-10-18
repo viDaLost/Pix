@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {P,L,R,B,roll,game,snap,place,clear,know,ctx,join} from './bestiary-helpers.mjs';
+import {play} from '../scripts/bot.mjs';
 const src=f=>readFileSync(new URL('../src/'+f,import.meta.url),'utf8');
 
 test('every wrapper of GDD 12.5 is there',()=>{
@@ -37,6 +38,14 @@ test('every action checks first and changes nothing when it refuses (GDD 12.4): 
    if(i%60===59){P.endDay(s);assert.equal(snap(P.load(snap(s))),snap(s),'the state stays loadable');}
    assert.ok(s.gold>=0&&Object.values(s.stock).every(n=>n>=0)&&Object.values(s.potions).every(n=>n>=0&&n<=9)&&s.daily.candles<=R.candleMax(s));}}
  assert.ok(refused>2000&&done>300,`${refused} refused, ${done} done`);
+});
+// Review of G1: the same careless calls on late states — the sorcerer's case, the Academy, the press, the seal.
+test('every action stays atomic late in the game: 2400 careless calls on states the bot played to days 26–70',()=>{
+ let refused=0,done=0;
+ for(const [seed,at] of[[1,26],[2,45],[3,70]]){const s=P.load(play(seed,'learning',at,{stopAt:at}).state);s.gold+=2000;
+  for(let i=0;i<800;i++){const before=snap(s),r=call(s,seed*1000+at,i);assert.ok(r&&typeof r.ok==='boolean');
+   if(!r.ok){refused++;assert.equal(snap(s),before,`day ${at} call ${i}: refused («${r.why}») but changed the state`);}else done++;if(i%100===99)P.endDay(s);}}
+ assert.ok(refused>1000&&done>200,`${refused} refused, ${done} done`);
 });
 test('the wrappers repair a state that lacks a field before they act, then do one thing',()=>{
  const s=game(91);delete s.trader;delete s.editions;const r=P.buyCandle(s);assert.ok(r.ok);assert.ok(s.trader&&Array.isArray(s.editions));

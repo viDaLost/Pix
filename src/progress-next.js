@@ -23,7 +23,10 @@ function needMet(s,n){if(n.any)return n.any.some(x=>needMet(s,x));return Object.
 // An event comes on the first morning its day, its predecessor and its need allow; after the fallback day the need is
 // forgiven, so the story never sticks.
 export function storyReady(s,ev){const seen=s.story.seen;if(ev.on||seen.includes(ev.id)||s.day<(ev.day||1)||ev.after&&!seen.includes(ev.after))return false;return !ev.need||needMet(s,ev.need)||!!ev.fallback&&s.day>=ev.fallback;}
-export function applyStory(s,ev){if(s.story.seen.includes(ev.id))return null;const e=ev.effect||{};s.story.seen.push(ev.id);s.story.days[ev.id]=s.day;
+const ORDER=new Map(L.EVENTS.map((e,i)=>[e.id,i]));
+export function applyStory(s,ev){if(s.story.seen.includes(ev.id))return null;const e=ev.effect||{};
+ // The seen events keep the order of the story, as normalize keeps them, so a reload never reorders the list.
+ s.story.seen.push(ev.id);s.story.seen.sort((a,b)=>ORDER.get(a)-ORDER.get(b));s.story.days=Object.fromEntries(s.story.seen.map(id=>[id,id===ev.id?s.day:s.story.days[id]]));
  for(const id of e.books||[])B.addBook(s,id);
  for(const id of e.open||[])B.openMonster(s,id);if(e.page)B.openMonster(s,e.page);
  for(const id of e.hunters||[])B.joinHunter(s,id);
@@ -81,7 +84,7 @@ function huntOk(s,h){if(!obj(h)||!contractOk(s,h.contract,true)||h.contract.kind
  const kinds=pots.map(p=>L.POT.get(p).kind);if(kinds.filter(k=>k==='general').length>1||kinds.filter(k=>k==='family').length>1)return false;
  if(!obj(h.shown))h.shown={low:0,mid:0,high:0};for(const k of['low','mid','high'])h.shown[k]=num(h.shown[k],0,100,0);h.day=num(h.day,1,s.day,s.day);return true;}
 function reportOk(s,r){if(!obj(r)||typeof r.id!=='string'||!/^r-[1-9][0-9]*$/.test(r.id)||!obj(r.contract)||!int(r.day,1,s.day))return false;const c=r.contract,m=L.MON.get(c.monster);
- if(!m||!KINDS.includes(c.kind)||!m.variants.some(v=>v.id===c.variant)||!(c.weather in WEATHER)||!int(c.season,0,3)||typeof c.id!=='string')return false;
+ if(!m||!KINDS.includes(c.kind)||!m.variants.some(v=>v.id===c.variant)||!(c.weather in WEATHER)||!int(c.season,0,3)||typeof c.id!=='string')return false;if(!m.places.includes(c.place))c.place=m.places[0];
  if(r.hunter!==null&&!L.HUNTER.has(r.hunter)||r.town!==null&&!L.TOWN_TYPE.has(r.town)||(r.hunter===null)===(r.town===null))return false;
  if(!Array.isArray(r.items)||r.items.length!==3||r.items.some(x=>!obj(x)||!L.FACT.get(x.f)?.id.startsWith(m.id+'.')||!L.OUTCOMES.includes(x.o)||typeof x.seen!=='boolean'))return false;
  for(const x of r.items){if(x.from!==null&&!L.STATES.includes(x.from))x.from=null;if(x.to!==null&&!L.STATES.includes(x.to))x.to=x.from;x.rev=x.rev===1?1:0;}
@@ -102,9 +105,9 @@ export function normalize(s){
  guard(()=>{const o=obj(s.story)?s.story:{};let seen=list(o.seen,id=>L.STORY.has(id),L.STORY.length);if(!seen.includes('S0'))seen.unshift('S0');
   for(let changed=true;changed;){changed=false;for(const id of seen){const a=L.STORY.get(id).after;if(a&&!seen.includes(a)){seen=seen.filter(x=>x!==id);changed=true;break;}}}
   if(seen.includes('S12')&&!seen.includes('S10'))seen=seen.filter(x=>x!=='S12'&&x!=='S13');if(seen.includes('S13')&&!seen.includes('S12'))seen=seen.filter(x=>x!=='S13');
-  const days={};for(const id of seen)days[id]=num(o.days?.[id],1,s.day,id==='S0'?1:s.day);
+  seen=L.EVENTS.map(e=>e.id).filter(id=>seen.includes(id));const days={};for(const id of seen)days[id]=num(o.days?.[id],1,s.day,id==='S0'?1:s.day);
   const koldun=seen.includes('S10')?num(o.koldun,0,s.day,0):0;
-  s.story={seen:L.EVENTS.filter(e=>seen.includes(e.id)).map(e=>e.id),days,hold:seen.includes('S5')&&!seen.includes('S12'),thaw:seen.includes('S12')?num(o.thaw,0,3,0):0,koldun:koldun||(seen.includes('S12')?days.S12:0)};});
+  s.story={seen,days,hold:seen.includes('S5')&&!seen.includes('S12'),thaw:seen.includes('S12')?num(o.thaw,0,3,0):0,koldun:koldun||(seen.includes('S12')?days.S12:0)};});
  // Pages: what is open is never lost; missing start records are written in, nothing is overwritten.
  guard(()=>{const o=obj(s.monsters)?s.monsters:{},mons={},storyOpen=new Map();
   for(const id of s.story.seen){const e=L.STORY.get(id).effect;for(const m of[...(e.open||[]),...(e.page?[e.page]:[])])storyOpen.set(m,s.story.days[id]||1);}
@@ -173,7 +176,9 @@ export function endDay(s){ready(s);
  for(const r of night.reports){if(r.contract.kind==='personal'&&s.personal[r.hunter]){const p=s.personal[r.hunter];p.tries++;if(r.win)p.state='won';personal[r.hunter]=r.win?'won':'lost';}
   if(r.contract.kind==='story')applyStory(s,L.STORY.get('S11'));
   const m=L.MON.get(r.contract.monster),who=r.hunter||r.town;B.note(s,L.say(r.win?L.LINES.log.win:L.LINES.log.lose,{...L.words({monster:m,place:r.contract.place,day:s.day-1}),hunter:r.hunter?L.HUNTER.get(r.hunter).short:L.TOWN_TYPE.get(r.town).label},who),'hunt');}
- const shelf=R.shelfTier(s),joined=joinHunters(s),story=storyStep(s);joined.push(...joinHunters(s));const ctx={personal};const arcs=arcStep(s,ctx);
+ // Newcomers of the morning: by their day and by the event (Ерофей with S3, Арман with S5).
+ const shelf=R.shelfTier(s),before=new Set(Object.keys(s.hunters));joinHunters(s);const story=storyStep(s);joinHunters(s);
+ const joined=L.HUNTERS.map(h=>h.id).filter(id=>s.hunters[id]&&!before.has(id)),ctx={personal},arcs=arcStep(s,ctx);
  B.makeDay(s);arcs.push(...arcStep(s,ctx));
  const rank=R.rankOf(s.rep);let rankUp=null;if(rank>s.rankSeen){rankUp={rank,from:s.rankSeen,name:L.RANKS[rank].name,opens:L.RANKS[rank].opens};s.rankSeen=rank;B.note(s,`День ${s.day}: звание «${L.RANKS[rank].name}».`,'rank');}
  return {reports:night.reports,rank:rankUp,story,arcs,morning:morning(s,night,joined,shelf)};}
@@ -195,14 +200,17 @@ export function noteText(n){const f=L.FACT.get(n.fact),m=L.monsterOf(n.fact),nam
 export function reportText(s,rid){const r=s.reports.find(r=>r.id===rid);if(!r)return null;const seed=s.worldSeed,m=L.MON.get(r.contract.monster),hd=r.hunter&&L.HUNTER.get(r.hunter),who=r.hunter||r.town;
  const w=x=>({...L.words({monster:m,place:r.contract.place,hunter:hd,variant:r.contract.variant,...x})}),say=(t,x={})=>L.say(t,w(x),who),one=(k,list,x)=>say(L.line(seed,r.id,k,list),x);
  const story=r.contract.kind==='story'?L.STORY.get('S11').text:null,name=hd?hd.name:L.TOWN_TYPE.get(r.town).label;
- const greet=story?one('greet',r.win?story.win:story.lose):hd?one('greet',r.win?hd.lines.thanks:hd.lines.ragged):one('greet',L.VISITOR.get('townsfolk').lines.thanks);
+ // A hunter says «три из трёх» (lines.full) only when all three pieces of advice helped and he saw them help.
+ const full=r.items.every(x=>x.seen&&x.o==='ok'),greet=story?one('greet',r.win?story.win:story.lose):hd?one('greet',r.win?(full?[...hd.lines.thanks,...hd.lines.full||[]]:hd.lines.thanks):hd.lines.ragged):one('greet',L.VISITOR.get('townsfolk').lines.thanks);
  const first=story?'':one('first',r.win?m.victory:m.rout);
  const items=r.items.map((x,i)=>{const f=L.FACT.get(x.f);return {f:x.f,title:f.title,o:x.o,seen:x.seen,stamp:L.STAMPS[x.seen?x.o:'unseen'],from:x.from,to:x.to,rev:x.rev,
   text:x.seen?say(f.lines[x.o]):say(L.line(seed,r.id,'unseen'+i,L.LINES.unseen),{fact:f}),contradiction:x.rev?say(L.LINES.contradiction,{fact:f}):null};});
  const after=[];
  if(!r.win){if(hd&&r.injury)after.push(one('wound',r.injury<=1?L.LINES.wound.light:hd.lines.injured?.length?hd.lines.injured:L.LINES.wound.heavy,{days:r.injury}));}
  else{if(r.offer){const o=r.offer;if(r.choice==='coins')after.push(one('coins',L.LINES.reward.coins,{coins:o.coins}));else if(r.choice==='loot')after.push(one('loot',L.LINES.reward.loot,{loot:o.loot.map(x=>L.partName(x.id).toLowerCase()+(x.n>1?' ×'+x.n:'')).join(', ')}));
-   else if(r.choice==='know'&&o.tale)after.push(one('fact',o.sure?L.LINES.reward.factSure:L.LINES.reward.fact,{fact:o.tale}));}
+   else if(r.choice==='know'&&o.tale){
+   // A keen eye saw the tale at work: the line follows what it did there, as the seal does (empty or harmful too).
+   const seen=o.sure&&R.outcome(L.FACT.get(o.tale),r.contract);after.push(one('fact',seen?L.LINES.reward[seen==='ok'?'factSure':seen==='none'?'factNone':'factWorse']:L.LINES.reward.fact,{fact:o.tale}));}}
   if(r.paid)after.push(one('coins',L.LINES.reward.coins,{coins:r.paid}));if(r.trophy)after.push(one('trophy',L.LINES.reward.trophy,{trophy:m.trophy.name}));}
  return {title:`Отчёт · ${name} · день ${r.day}`,name,win:r.win,greet,first,items,after,shown:r.shown,
   offer:r.offer&&!r.choice?{coins:`Монеты · ${r.offer.coins}`,loot:`Добыча · ${r.offer.loot.map(x=>L.partName(x.id).toLowerCase()+(x.n>1?' ×'+x.n:'')).join(', ')}`,know:r.offer.tale?'Знание · новое сведение и записи':'Знание · полевые записи'}:null};}

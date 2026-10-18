@@ -95,3 +95,8 @@ test('hunters come on their days and with their events; the story never sticks f
  assert.deepEqual([days.gordey,days.agata,days.timofey,days.marta,days.illarion,days.zoryana],[1,1,3,4,5,9]);assert.ok(days.erofey===s.story.days.S3);assert.ok(days.armand===s.story.days.S5);
  assert.ok(s.story.days.S3<=10&&s.story.days.S5<=18&&s.story.days.S10<=30,'the fallback days hold even for a keeper who does nothing');
 });
+test('the morning card names every newcomer: by the day and by the event (Ерофей with S3, Арман with S5)',()=>{
+ const s=game(5),joined={};for(let d=1;d<=20;d++){const r=P.endDay(s);for(const id of r.morning.joined){assert.equal(joined[id],undefined,id);joined[id]=s.day;}}
+ assert.deepEqual(Object.keys(joined).sort(),['armand','erofey','illarion','marta','timofey','zoryana']);
+ assert.equal(joined.timofey,3);assert.equal(joined.zoryana,9);assert.equal(joined.erofey,s.story.days.S3);assert.equal(joined.armand,s.story.days.S5);
+});
