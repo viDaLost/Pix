@@ -1,103 +1,189 @@
+// The balance check of the bestiary (GDD 12.6): 60 seeds × 5 strategies × 90 days, plus careful and learning × 150 days,
+// on worker threads. Every check A1–I2 is an assertion; `--write` regenerates docs/BALANCE.md. The bot plays only
+// through P.* (scripts/bot.mjs). Reference numbers are the calibration of pix-tools/bestiary/gdd-sim.mjs (GDD 12.7).
 import assert from 'node:assert/strict';
 import {writeFile,mkdir} from 'node:fs/promises';
-import * as J from '../src/jewelry.js';
-import * as P from '../src/progress.js';
-import {addPolish} from '../src/jewel-art.js';
-import {layoutGems} from '../src/patterns.js';
+import {Worker,isMainThread,parentPort,workerData} from 'node:worker_threads';
+import {availableParallelism} from 'node:os';
+import {play} from './bot.mjs';
+import * as P from '../src/progress-next.js';
+import * as L from '../src/lore.js';
+import * as R from '../src/rules.js';
+import {roll} from '../src/rng.js';
+import {contentErrors} from './content-rules.mjs';
 
-const grid=d=>Array.from({length:144},(_,i)=>({x:(i%12+.5)*100/12,y:(Math.floor(i/12)+.5)*100/12})).filter(p=>J.onMetal(p,d));
-// Luxury probe: the top of the skill tree must stay sellable, so buyers' budgets keep growing with the work done.
-// A polished piece with diamonds goes to a copy of the game that gets the skills and materials it needs;
-// it passes when some guest takes it at the full price within four days.
-function luxury(src,type,metal,layout){
- const s=J.deserialize(J.serialize(src));for(const id of['gold','facets','alchemy'])if(!s.skills.includes(id))s.skills.push(id);
- J.startDesign(s,type,'oval',metal);const d=s.draft.design;d.gems=layoutGems(d,layout,{kind:'diamond',size:3});addPolish(d,grid(d),.1);
- for(const[id,n]of Object.entries(J.costs(d).resources))s.materials[id]=Math.max(s.materials[id],n);s.stock=[];const item=J.complete(s);
- for(let day=1;day<=4;day++){const offers=s.customers.filter(c=>!c.served).map(c=>J.quote(s,item,c,'fair'));if(offers.some(q=>q.accepted))return {day,fair:Math.max(...offers.map(q=>q.fair))};J.nextDay(s);}
- return {day:0,fair:0};
-}
+const STRATS=['naive','careful','learning','random','merchant'],SEEDS=+process.env.SEEDS||60,DAYS=90,LONG=150;
+const EPS=1e-9,MAX_P=200/3+R.BONUS_CAP;
+// Checks that watch every hunt, day and hunter of a run; a violation is kept as text.
+function watcher(strat){const bad=[],b1={n:0,ok:0},say=t=>{if(bad.length<20)bad.push(t);};
+ return {bad,b1,hunt({s,c,ids,pots,pv,truth,K}){
+   if(K===3&&truth!==100)say(`H3 ${c.id}: three helping but P=${truth}`);if(K<3&&(truth<0||truth>MAX_P+EPS))say(`H3 ${c.id}: P=${truth} without the third`);if(pv.potion>R.POTION_CAP)say(`H3 ${c.id}: potion bonus ${pv.potion}`);
+   if(P.pageDone(s,c.monster)&&Math.abs(pv.raw.mid-truth)>EPS)say(`H5 ${c.id}: full page but mid ${pv.raw.mid} ≠ ${truth}`);
+   if(strat==='naive'&&s.day<=10){b1.n++;if(pv.raw.mid>=200/3-EPS&&truth>=pv.raw.mid-EPS)b1.ok++;else say(`B1 day ${s.day} ${c.id}: shown ${pv.raw.mid} true ${truth}`);}},
+  day(s){if(!(Number.isInteger(s.gold)&&s.gold>=0))say(`G1 day ${s.day}: gold ${s.gold}`);
+   for(const [k,v] of Object.entries(s.stock))if(!(v>=0&&v<=R.LIMITS.stock))say(`G1 day ${s.day}: stock ${k}=${v}`);
+   for(const [k,v] of Object.entries(s.potions))if(!(v>=0&&v<=R.LIMITS.doses))say(`G1 day ${s.day}: potion ${k}=${v}`);
+   for(const [k,v] of Object.entries(s.notes))if(!(v>=0&&v<=R.LIMITS.notes))say(`G1 day ${s.day}: notes ${k}=${v}`);
+   if(s.daily.candles>R.candleMax(s))say(`G1 day ${s.day}: candles ${s.daily.candles}/${R.candleMax(s)}`);
+   for(const id of Object.keys(s.monsters)){const o=P.academyOffer(s,id);if(o.keys.some(k=>s.monsters[id].sold.includes(k)))say(`G5 day ${s.day}: ${id} offers a sold record`);}},
+  hunter(id,h,away){if(h.out>R.WOUND.max||h.sulk>R.TRUST.sulk||h.trust<0||h.trust>R.TRUST.max||h.rag>3)say(`H4 ${id}: out ${h.out} sulk ${h.sulk} trust ${h.trust}`);if(away>10)say(`H4 ${id}: away ${away} days`);}};}
+function run({seed,strat,days}){const w=watcher(strat),r=play(seed,strat,days,{checks:w}),pool=(a,b)=>{const x=r.series.filter(v=>v.day>=a&&v.day<=b);return [x.filter(v=>v.win).length,x.length,x.filter(v=>v.full).length];};
+ return {seed,strat,days,bad:w.bad,b1:w.b1,w1:r.w1,w2:r.w2,w3:r.w3,all:r.all,full2:r.full2,full3:r.full3,p1:pool(1,10),p2:pool(11,30),p3:pool(31,60),pa:pool(1,days),p21:pool(21,40),p41:pool(41,days),
+  rankDay:r.rankDay,gold:r.gold,low:r.low,windows:r.windows,s3:r.s3,s5:r.s5,s10:r.s10,koldun:r.koldun,doneDay:r.doneDay,printed:r.printed,start100:r.start100,earned:r.earned,spent:r.spent,academy:r.academy,
+  rank:r.rank,hunts:r.hunts,fails:r.fails,injury:r.injury,sulks:r.sulks,cosmetic:r.cosmetic,ledger:r.ledger,rep:r.rep[days]??r.state.rep,firstFail:r.firstFail,firstWorse:r.firstWorse};}
 
-// The bot plays through the progress wrappers, like the interface: the book, reputation, ranks, the connoisseur
-// and the rank budgets all take part.
-function design(s,turn){const type=J.TYPES[turn%J.TYPES.length].id,actual=J.typeAvailable(s,type)?type:'amulet',template=['oval','leaf','heart','diamond'][Math.floor(turn/6)%4],metal=s.skills.includes('gold')&&turn%5===0?'gold':turn%3===0?'silver':'copper';
-  J.startDesign(s,actual,template,metal);const d=s.draft.design,center=actual==='ring'?{x:50,y:24}:actual==='sword'?{x:50,y:75}:actual==='staff'?{x:50,y:24}:{x:50,y:48};d.gems.push({kind:turn%2?'garnet':'amethyst',...center,size:2.5,cut:'round'});
-  const y=center.y;d.strokes.push({kind:'rune',width:1,points:[{x:center.x-3,y:y-4},{x:center.x-2,y:y-2},center]});
-  const points=[];for(let i=0;i<6;i++){const p={x:center.x+Math.cos(i)*7,y:y+Math.sin(i)*7};if(J.onMetal(p,d))points.push(p);}if(points.length>=2)d.strokes.push({kind:'engrave',width:1,points});return d;}
-// The best offer at the fair price within four days; null when nobody takes it.
-function offer(s,item){for(let day=0;day<4;day++){const o=s.customers.filter(c=>!c.served).map(c=>({c,q:J.quote(s,item,c,'fair')})).filter(v=>v.q.accepted).sort((a,b)=>b.q.price-a.q.price)[0];if(o)return o;P.nextDay(s);}return null;}
-function play(seed,finish){
- const s=P.newGame(seed);let lowestGold=s.gold,buys=0,saturation=0,early=null,rankDay=0;
- const material=(id,n)=>{if(s.materials[id]<n){const count=n-s.materials[id];assert.ok(s.gold>=(J.METALS[id]||J.GEMS[id]).price*count,'replacement materials affordable');P.buy(s,id,count);buys++;}};
- for(let turn=0;turn<60;turn++){
-  for(const a of J.AREAS)if(s.crafted>=a.need&&!s.daily.areas.includes(a.id)&&s.energy)P.gather(s,a.id);
-  for(const t of J.TOOLS)if(!s.skills.includes(t.id)&&s.xp>=t.xp&&s.gold>=t.cost+100&&t.parents.every(p=>s.skills.includes(p)))P.learn(s,t.id);
-  const d=design(s,turn),polishCells=grid(d);addPolish(d,polishCells.slice(0,Math.ceil(polishCells.length*finish)),.1);
-  for(const[id,n]of Object.entries(J.costs(d).resources))material(id,n);const {item}=P.complete(s),o=offer(s,item);
-  assert.ok(o,'some buyer can afford the work');const q=P.sell(s,item.id,o.c.id);if(q.demand.factor<1)saturation++;
-  assert.ok(s.gold>=0);assert.ok(Object.values(s.materials).every(n=>n>=0));lowestGold=Math.min(lowestGold,s.gold);
-  if(!rankDay&&J.rankOf(s)>=1)rankDay=s.day;
-  if(s.customers.every(c=>c.served)||turn%3===2)P.nextDay(s);
-  // The luxury probe runs as soon as the second rank is reached.
-  if(!early&&J.rankOf(s)>=2)early={...luxury(s,"ring","gold","pair"),crafted:s.crafted,at:s.day};
-  P.load(J.serialize(s));
- }
- assert.equal(s.crafted,60);assert.equal(s.sold,60);assert.equal(s.skills.length,J.TOOLS.length,'every atelier skill reachable without grants');assert.ok(s.gold>180);
- assert.ok(s.rep>=100,`reputation after 60 varied pieces is ${s.rep}`);assert.ok(rankDay&&rankDay<=3,`the first rank came on day ${rankDay}`);assert.ok(early,'the second rank is reached');
- return {seed,finish,day:s.day,gold:s.gold,lowestGold,buys,saturation,rep:s.rep,rank:J.rankOf(s),rankDay,friend:Math.max(...J.CLIENTS.map(p=>J.bondLevel(s,p.id))),helpers:J.CLIENTS.filter(p=>J.privileged(s,p.id)).length,letters:s.mail.length,book:Object.keys(s.book.e).length,marks:Object.keys(s.book.m).length,early,late:luxury(s,'pendant','lunar','trio')};
-}
-// The same saved model, restored and sold sixty times: reputation must not be farmed by repetition.
-// Only this probe gets coins for its materials.
-function monotone(seed){
- const s=P.newGame(seed);const d=design(s,0);addPolish(d,grid(d),.1);const model=J.remember(s);s.draft=null;
- for(let i=0;i<60;i++){J.restoreModel(s,model.id);s.gold=Math.max(s.gold,500);for(const[id,n]of Object.entries(J.costs(s.draft.design).resources))if(s.materials[id]<n)P.buy(s,id,n-s.materials[id]);
-  const {item}=P.complete(s),o=offer(s,item);if(o)P.sell(s,item.id,o.c.id);if(s.customers.every(c=>c.served)||i%3===2)P.nextDay(s);}
- return s.rep;
-}
-const runs=[];for(const finish of [.25,.6,.95])for(let seed=1;seed<=40;seed++)runs.push(play(seed,finish));
-const repeat=Array.from({length:20},(_,i)=>monotone(i+1));assert.ok(Math.max(...repeat)<70,`one model repeated sixty times earns ${Math.max(...repeat)} reputation`);
-// A repeatable design is profitable when fresh, but loses its replacement margin once saturated.
-const s=J.newGame(11),d=J.makeDesign('pendant','oval','silver');d.gems.push({kind:'amethyst',x:50,y:49,size:3,cut:'round'});addPolish(d,[{x:50,y:50}],60);
-const item={id:'probe',design:d},buyer={client:'bren',budget:10000},raw=J.rawValue(d),fresh=J.quote(s,item,buyer).price;s.demand.push({signature:J.fingerprint(d),sales:4,until:s.tradeDay+7});const tired=J.quote(s,item,buyer).price;assert.ok(fresh>raw);assert.ok(tired<raw);assert.equal(tired,Math.round(fresh*.25));
-const dayRange=[Math.min(...runs.map(r=>r.day)),Math.max(...runs.map(r=>r.day))],goldRange=[Math.min(...runs.map(r=>r.gold)),Math.max(...runs.map(r=>r.gold))];
-const span=fn=>{const v=runs.map(fn);return [Math.min(...v),Math.max(...v)];},ranks={rep:span(r=>r.rep),firstRankDay:span(r=>r.rankDay),secondRank:{pieces:span(r=>r.early.crafted),day:span(r=>r.early.at)},finalRank:span(r=>r.rank),book:span(r=>r.book),marks:span(r=>r.marks),repeated:[Math.min(...repeat),Math.max(...repeat)]},friends={top:span(r=>r.friend),helpers:span(r=>r.helpers),letters:span(r=>r.letters)};
-// Each probe must sell in at least 90% of the runs: a gold ring as soon as the second rank is reached, a moon-alloy pendant after 60 pieces.
-const share=key=>runs.filter(r=>r[key].day).length/runs.length,range=key=>{const v=runs.map(r=>r[key].fair).filter(Boolean);return [Math.min(...v),Math.max(...v)];};
-const lux={early:{share:share('early'),fair:range('early')},late:{share:share('late'),fair:range('late')}};
-assert.ok(lux.early.share>=.9,`a gold ring with two diamonds sells at the full price in ${lux.early.share*100}% of runs`);assert.ok(lux.late.share>=.9,`a moon-alloy pendant with three diamonds sells at the full price in ${lux.late.share*100}% of runs`);
-// A range of one value reads as that value: «в день 1», not «в день 1–1».
-const fmt=([a,b])=>a===b?String(a):`${a}–${b}`;
-const names=J.RANKS.map(r=>`${r.name} — ${r.rep}`).join(', '),bonus=J.RANKS.map(r=>r.budget).join('/');
-const report=`# Экономика ювелирной мастерской v10
+async function main(){
+ const t0=Date.now(),jobs=[];for(const strat of STRATS)for(let seed=1;seed<=SEEDS;seed++)jobs.push({seed,strat,days:DAYS});for(const strat of['careful','learning'])for(let seed=1;seed<=SEEDS;seed++)jobs.push({seed,strat,days:LONG});
+ const n=Math.max(1,Math.min(8,availableParallelism())),parts=Array.from({length:n},(_,i)=>jobs.filter((_,j)=>j%n===i));
+ const results=(await Promise.all(parts.map(part=>new Promise((ok,no)=>{const w=new Worker(new URL(import.meta.url),{workerData:{jobs:part}});w.once('message',ok);w.once('error',no);})))).flat();
+ const ms=Date.now()-t0,of=(strat,days=DAYS)=>results.filter(r=>r.strat===strat&&r.days===days).sort((a,b)=>a.seed-b.seed);
+ const q=(v,p)=>{const x=v.filter(Number.isFinite).sort((a,b)=>a-b);return x[Math.min(x.length-1,Math.floor(x.length*p))];},med=v=>q(v,.5),min=v=>Math.min(...v.filter(Number.isFinite)),max=v=>Math.max(...v.filter(Number.isFinite));
+ const pooled=(rs,k)=>{const w=rs.reduce((n,r)=>n+r[k][0],0),t=rs.reduce((n,r)=>n+r[k][1],0);return t?w/t:NaN;},fullPooled=(rs,k)=>{const f=rs.reduce((n,r)=>n+r[k][2],0),t=rs.reduce((n,r)=>n+r[k][1],0);return t?f/t:NaN;};
+ const share=(rs,fn)=>rs.filter(fn).length/rs.length,rankAt=(r,k)=>r.rankDay[k]??999;
+ const checks=[],check=(id,what,pass,value)=>{checks.push({id,what,pass:!!pass,value});};
+ // A1–A3: the content and the safe two thirds from the start.
+ const errors=contentErrors();check('A1','Правила содержания 8.7 (+ D3, D5)',!errors.length,errors.length?errors.slice(0,3).join('; '):'все');
+ const a2=L.START.map(id=>safeStart(id)),a3=L.MONSTERS.filter(m=>m.tier>=2).map(m=>safeWithBook(m.id));
+ check('A2','Ярус I, день 1: проверенный набор, истинный P = показанному ≥ 66⅔',a2.every(Boolean),`${a2.filter(Boolean).length} из ${a2.length}`);
+ check('A3','Ярусы II–IV: старт (+ сюжет) + надёжная книга → ≥ 66⅔',a3.every(Boolean),`${a3.filter(Boolean).length} из ${a3.length}`);
+ const naive=of('naive'),careful=of('careful'),learning=of('learning'),random=of('random'),merchant=of('merchant');
+ const b1n=naive.reduce((n,r)=>n+r.b1.n,0),b1ok=naive.reduce((n,r)=>n+r.b1.ok,0);
+ check('B1','naive, дни 1–10: показано ≥ 66 и истинный P ≥ показанного',b1n>0&&b1ok===b1n,`${b1ok} из ${b1n}`);
+ check('B2','naive: доля побед дней 1–10 ≥ 0,66',pooled(naive,'p1')>=.66,fix(pooled(naive,'p1')));
+ check('C1','careful: доля побед дней 1–10 ≥ 0,80 / 11–30 ≥ 0,90',pooled(careful,'p1')>=.8&&pooled(careful,'p2')>=.9,`${fix(pooled(careful,'p1'))} / ${fix(pooled(careful,'p2'))}`);
+ check('C2','careful: звание 5 к дню 60 у ≥ 90% сидов',share(careful,r=>rankAt(r,5)<=60)>=.9,pc(share(careful,r=>rankAt(r,5)<=60)));
+ check('D1','learning: доля побед дней 11–30 ≥ 0,90',pooled(learning,'p2')>=.9,fix(pooled(learning,'p2')));
+ check('D2','learning: три верных, дни 21–40 ≥ 0,85 / 41–90 ≥ 0,95',fullPooled(learning,'p21')>=.85&&fullPooled(learning,'p41')>=.95,`${fix(fullPooled(learning,'p21'))} / ${fix(fullPooled(learning,'p41'))}`);
+ check('D3','learning: звание 1 ≤ дня 4 (100%), звание 5 ≤ дня 50 (≥ 90%)',share(learning,r=>rankAt(r,1)<=4)===1&&share(learning,r=>rankAt(r,5)<=50)>=.9,`${pc(share(learning,r=>rankAt(r,1)<=4))} / ${pc(share(learning,r=>rankAt(r,5)<=50))}`);
+ check('D4','learning: 14 трактатов к дню 60 (≥ 90%) / к дню 90 (100%)',share(learning,r=>r.doneDay<=60)>=.9&&share(learning,r=>r.doneDay<=90)===1,`${pc(share(learning,r=>r.doneDay<=60))} / ${pc(share(learning,r=>r.doneDay<=90))}`);
+ const rAll=pooled(random,'pa'),lAll=pooled(learning,'pa');
+ check('E1','random: побед за 90 дней ≤ 0,66 и ≤ learning − 0,30; дни 1–10 ≤ 0,55',rAll<=.66&&rAll<=lAll-.3&&pooled(random,'p1')<=.55,`${fix(rAll)} (learning ${fix(lAll)}) / ${fix(pooled(random,'p1'))}`);
+ check('E2','random: звание 1 ≤ дня 8 у ≥ 90% сидов',share(random,r=>rankAt(r,1)<=8)>=.9,pc(share(random,r=>rankAt(r,1)<=8)));
+ const mAll=pooled(merchant,'pa');check('F1','merchant: доля побед 0,60–0,85',mAll>=.6&&mAll<=.85,fix(mAll));
+ check('F2','merchant: звание ≤ 3 на 90-й день у ≥ 90% сидов',share(merchant,r=>r.rank<=3)>=.9,pc(share(merchant,r=>r.rank<=3)));
+ const bad=results.flatMap(r=>r.bad.map(t=>`${r.strat}#${r.seed}/${r.days}: ${t}`));
+ check('G1','Монеты ≥ 0, запасы ≥ 0, поля в пределах 12.2 (все стратегии, 90 и 150 дней)',!bad.some(t=>/ G1 /.test(t))&&results.every(r=>r.low>=0),`мин. монет ${min(results.map(r=>r.low))}`);
+ const win=[...careful,...learning,...merchant].flatMap(r=>r.windows);check('G2','careful/learning/merchant: доход − травы − листки − свечи − лекарь > 0 в каждом 10-дневном окне с 11-го дня',win.every(v=>v>0),`${win.filter(v=>v>0).length} из ${win.length}, мин. ${min(win)}`);
+ const g30=[...careful,...learning].map(r=>r.gold[30]);check('G3','careful/learning: монет на 30-й день — медиана ≥ 150, каждый сид ≥ 50',med(careful.map(r=>r.gold[30]))>=150&&med(learning.map(r=>r.gold[30]))>=150&&min(g30)>=50,`медианы ${med(careful.map(r=>r.gold[30]))} / ${med(learning.map(r=>r.gold[30]))}, мин. ${min(g30)}`);
+ check('G4','learning: потрачено к 90-му дню ≥ 25% заработанного (медиана)',med(learning.map(r=>r.spent/r.earned))>=.25,pc(med(learning.map(r=>r.spent/r.earned))));
+ const amax=R.academyMax();check('G5',`Доход Академии ≤ ACADEMY_MAX (${amax}); второй лист тех же записей = 0`,amax===2390&&results.every(r=>r.academy<=amax)&&!bad.some(t=>/ G5 /.test(t))&&secondSheetZero(),`макс. ${max(results.map(r=>r.academy))}`);
+ check('H1','Детерминизм: два прогона одного сида = одинаковый serialize на 30-й день; load(serialize) каждый день = без него',determinism(),'15 сидов × 5 стратегий');
+ const h2=monotone(2000);check('H2','Монотонность: замена «без толку»/«во вред» на «помогло» не уменьшает P и не превращает победу в провал',h2.bad===0,`${h2.n} пар`);
+ check('H3','K = 3 → 100 при любом облике; иначе 0 ≤ P ≤ 91⅔; P-бонус снадобий ≤ 20',!bad.some(t=>/ H3 /.test(t))&&h2.h3,'все охоты бота и 2000 пар');
+ check('H4','Охотники: out ≤ 4, sulk ≤ 5, возвращаются не позже чем через 10 дней',!bad.some(t=>/ H4 /.test(t)),'все');
+ check('H5','Полностью разрешённая страница: «Надёжно» = истинный P',!bad.some(t=>/ H5 /.test(t)),'все');
+ const story=results.filter(r=>r.days===DAYS);check('I1','Сюжет: S3 ≤ 10, S5 ≤ 18, S10 ≤ 30 у всех стратегий',story.every(r=>r.s3<=10&&r.s5<=18&&r.s10<=30),`макс. ${max(story.map(r=>r.s3))} / ${max(story.map(r=>r.s5))} / ${max(story.map(r=>r.s10))}`);
+ check('I2','learning: колдун ≤ дня 40, «Великий бестиарий» ≤ дня 60 у ≥ 90% сидов',share(learning,r=>r.koldun<=40)>=.9&&share(learning,r=>r.printed<=60)>=.9,`${pc(share(learning,r=>r.koldun<=40))} / ${pc(share(learning,r=>r.printed<=60))}`);
+ // The reference: pooled rates of gdd-sim.mjs on the same 60 seeds (asserted within 3 points) and the medians of its table
+ // in GDD 12.7 (reported). A median of ~13 hunts a seed moves in steps of 7–8 points, so the pooled rate is the check.
+ const REF={naive:{w1:.726,w2:.733,w3:.738,all:.735,full2:0},careful:{w1:.908,w2:.962,w3:.999,all:.984,full2:.926},learning:{w1:.878,w2:.987,w3:1,all:.987,full2:.997},random:{w1:.464,w2:.576,w3:.614,all:.606,full2:.13},merchant:{w1:.748,w2:.731,w3:.734,all:.736,full2:0}};
+ const MEDIAN={naive:{w1:.71,w2:.72,w3:.75,all:.74,full2:0},careful:{w1:.92,w2:.97,w3:1,all:.98,full2:.93},learning:{w1:.88,w2:.98,w3:1,all:.99,full2:1},random:{w1:.44,w2:.58,w3:.61,all:.61,full2:.13},merchant:{w1:.73,w2:.73,w3:.74,all:.74,full2:0}};
+ const POOL={w1:'p1',w2:'p2',w3:'p3',all:'pa',full2:'p21'};
+ const drift=STRATS.flatMap(st=>['w1','w2','w3','all','full2'].map(k=>{const rs=of(st),got=k==='full2'?fullPooled(rs,POOL[k]):pooled(rs,POOL[k]);return {st,k,ref:REF[st][k],got,d:Math.abs(got-REF[st][k]),med:med(rs.map(r=>r[k])),refMed:MEDIAN[st][k]};}));
+ const worst=drift.reduce((a,b)=>b.d>a.d?b:a);check('Э','Доли побед и трёх верных (по всем охотам 60 сидов) в пределах 3 п. от gdd-sim.mjs',worst.d<=.03+EPS,`наибольшее расхождение ${(worst.d*100).toFixed(1).replace('.',',')} п. (${worst.st} ${worst.k})`);
+ check('T','Прогон 90 дней × 5 стратегий × 60 сидов (+ 2 × 150 дней) ≤ 60 с',SEEDS<60||ms<=60000,`${(ms/1000).toFixed(1)} с, потоков ${n}`);
+ const report=writeReport({results,of,q,med,min,max,pooled,fullPooled,share,rankAt,checks,drift,ms,n});
+ if(process.argv.includes('--write')){await mkdir(new URL('../docs/',import.meta.url),{recursive:true});await writeFile(new URL('../docs/BALANCE.md',import.meta.url),report);}
+ for(const c of checks)console.log(`${c.pass?'ok  ':'FAIL'} ${c.id.padEnd(2)} ${c.what} — ${c.value}`);
+ if(bad.length)console.log(bad.slice(0,20).join('\n'));
+ assert.ok(checks.every(c=>c.pass),'balance checks failed: '+checks.filter(c=>!c.pass).map(c=>c.id).join(', '));
+ console.log(`All ${checks.length} balance checks passed in ${(ms/1000).toFixed(1)} s.`);}
+function fix(v){return Number.isFinite(v)?v.toFixed(2).replace('.',','):'—';}
+function pc(v){return Number.isFinite(v)?Math.round(v*100)+'%':'—';}
+// A2: on day 1, a grown monster of tier I, skill 0 and no potions: a sheet of confirmed/refuted cards whose true chance
+// equals the shown one and is at least two thirds.
+function safeStart(id){const s=P.newGame(11),m=L.MON.get(id),ctx={variant:'grown',weather:'clear',season:0};return bestVerified(s,m,ctx);}
+function bestVerified(s,m,ctx){const cards=m.facts.filter(f=>s.know[f.id]&&s.know[f.id].st!=='rumour'&&P.usable(s.know[f.id],f,ctx));let best=false;
+ for(let a=0;a<cards.length;a++)for(let b=a+1;b<cards.length;b++)for(let c=b+1;c<cards.length;c++){const x=[cards[a],cards[b],cards[c]];if(new Set(x.map(f=>f.cat)).size<3)continue;
+  const shown=P.estimate(x.map(f=>P.believed(s.know[f.id],f,ctx)),{}).mid,K=x.filter(f=>P.outcome(f,ctx)==='ok').length,H=x.filter(f=>P.outcome(f,ctx)==='worse').length,truth=P.chance(K,H,{});
+  if(shown>=200/3-EPS&&Math.abs(shown-truth)<EPS)best=true;}return best;}
+// A3: tiers II–IV — the start of the page (and the rumours of the story for the sorcerer) with its reliable book.
+function safeWithBook(id){const s=P.newGame(12),m=L.MON.get(id),ctx={variant:'grown',weather:'clear',season:1};
+ for(const ev of L.EVENTS){const e=ev.effect;if((e.open||[]).includes(id)||e.page===id||m.tier===4&&['S7','S8'].includes(ev.id))P.applyStory(s,ev);}
+ s.gold=1000;for(const b of L.BOOKS)if(b.reliable&&b.seller!=='gift'&&Object.keys(b.sets).some(f=>f.startsWith(id+'.')))assert.ok(P.buyBook(s,b.id).ok,b.id);
+ return bestVerified(s,m,ctx);}
+function secondSheetZero(){const s=P.newGame(5);s.story.seen.push('S1');s.day=3;s.monsters.werewolf.troph.push('grown');const a=P.copyPage(s,'werewolf'),b=P.copyPage(s,'werewolf');return a.ok&&a.coins>0&&!b.ok&&P.academyOffer(s,'werewolf').coins===0;}
+function determinism(){for(let seed=1;seed<=15;seed++)for(const strat of STRATS){const a=play(seed,strat,31,{stopAt:31}).state,b=play(seed,strat,31,{stopAt:31}).state,c=play(seed,strat,31,{stopAt:31,reload:false}).state;if(a!==b||a!==c)return false;}return true;}
+// H2/H3 on the rules themselves: random facts, circumstances and bonuses; one helping card in place of a useless or harmful
+// one never lowers the chance, and with the roll of the case a win stays a win.
+function monotone(n){let bad=0,h3=true;const facts=[...L.FACT.values()],W=['clear','rain','fog','snow'];
+ for(let i=0;i<n;i++){const m=L.MONSTERS[Math.floor(roll(1,'m',i)*L.MONSTERS.length)],v=m.variants[Math.floor(roll(1,'v',i)*m.variants.length)].id,ctx={variant:v,weather:W[Math.floor(roll(1,'w',i)*4)],season:Math.floor(roll(1,'k',i)*4)};
+  const b={skill:Math.floor(roll(1,'s',i)*15),potion:[0,5,10,15,20][Math.floor(roll(1,'p',i)*5)],vmod:R.VMOD[v],forgive:roll(1,'f',i)<.2?1:0};
+  const cats=new Map();for(const f of m.facts){const o=P.outcome(f,ctx);(cats.get(f.cat)||cats.set(f.cat,[]).get(f.cat)).push({f,o});}
+  const keys=[...cats.keys()];if(keys.length<3)continue;const pickC=keys.sort((a,b)=>roll(1,'c',i,a)-roll(1,'c',i,b)).slice(0,3),sheet=pickC.map((c,j)=>{const l=cats.get(c);return l[Math.floor(roll(1,'x',i,j)*l.length)];});
+  const P0=chanceOf(sheet,b),u=roll(1,'u',i),K=sheet.filter(x=>x.o==='ok').length;if(K===3&&P0!==100||K<3&&(P0<0||P0>MAX_P+EPS))h3=false;
+  for(let j=0;j<3;j++){if(sheet[j].o==='ok')continue;const better=cats.get(sheet[j].f.cat).find(x=>x.o==='ok');if(!better)continue;const next=sheet.map((x,k)=>k===j?better:x),P1=chanceOf(next,b);if(P1<P0-EPS||100*u<P0&&!(100*u<P1))bad++;}}
+ for(const v of L.VARIANTS)if(P.chance(3,0,{skill:0,potion:0,vmod:R.VMOD[v]})!==100)h3=false;return {n,bad,h3};}
+const chanceOf=(sheet,b)=>P.chance(sheet.filter(x=>x.o==='ok').length,sheet.filter(x=>x.o==='worse').length,b);
+function writeReport({of,q,med,min,max,pooled,fullPooled,share,rankAt,checks,drift,ms,n}){
+ const t3=v=>`${fix(min(v))} / ${fix(med(v))} / ${fix(max(v))}`,rk=rs=>[1,2,3,4,5].map(k=>{const v=rs.map(r=>rankAt(r,k));const a=med(v),b=q(v,.9);return `${a>=999?'—':a}/${b>=999?'—':b}`;}).join(' · ');
+ const dd=v=>{const x=med(v);return x>=999?'—':x;},p90=v=>{const x=q(v,.9);return x>=999?'—':x;};
+ const rows=STRATS.map(st=>{const rs=of(st);return `| ${st} | ${t3(rs.map(r=>r.w1))} | ${t3(rs.map(r=>r.w2))} | ${t3(rs.map(r=>r.w3))} | ${t3(rs.map(r=>r.all))} | ${t3(rs.map(r=>r.full2))} | ${rk(rs)} |`;}).join('\n');
+ const money=STRATS.map(st=>{const rs=of(st);return `| ${st} | ${med(rs.map(r=>r.gold[10]))} | ${med(rs.map(r=>r.gold[30]))} | ${med(rs.map(r=>r.gold[60]))} | ${med(rs.map(r=>r.gold[90]))} | ${med(rs.map(r=>r.earned))} / ${med(rs.map(r=>r.spent))} | ${med(rs.map(r=>r.academy))} | ${med(rs.map(r=>r.cosmetic))} |`;}).join('\n');
+ const long=['careful','learning'].map(st=>{const rs=of(st,LONG);return `| ${st} | ${med(rs.map(r=>r.gold[90]))} | ${med(rs.map(r=>r.gold[150]))} | ${med(rs.map(r=>r.earned))} / ${med(rs.map(r=>r.spent))} | ${med(rs.map(r=>r.cosmetic))} из ${L.DECOR.length+L.MONSTERS.length} | ${fix(med(rs.map(r=>r.all)))} |`;}).join('\n');
+ const pace=STRATS.map(st=>{const rs=of(st);return `| ${st} | ${dd(rs.map(r=>r.s3))} | ${dd(rs.map(r=>r.s5))} | ${dd(rs.map(r=>r.s10))} | ${dd(rs.map(r=>r.koldun))} / ${p90(rs.map(r=>r.koldun))} | ${dd(rs.map(r=>r.doneDay))} / ${p90(rs.map(r=>r.doneDay))} | ${dd(rs.map(r=>r.printed))} / ${p90(rs.map(r=>r.printed))} | ${dd(rs.map(r=>r.start100))} | ${med(rs.map(r=>r.hunts))} | ${fix(med(rs.map(r=>r.fails?r.injury/r.fails:0)))} | ${med(rs.map(r=>r.sulks))} |`;}).join('\n');
+ const cmp=STRATS.map(st=>`| ${st} | ${['w1','w2','w3','all','full2'].map(k=>{const x=drift.find(d=>d.st===st&&d.k===k);return `${fix(x.got)} (${fix(x.ref)}) · медиана ${fix(x.med)} (${fix(x.refMed)})`;}).join(' | ')} |`).join('\n');
+ const list=checks.map(c=>`| ${c.id} | ${c.what} | ${c.value} | ${c.pass?'да':'**нет**'} |`).join('\n');
+ return `# Баланс «Бестиария Велена»
 
-Команда: \`npm run balance\`. Это проверка правил и достижимости развития; интерес и удобство рисования нужно проверять с игроками.
+Команда: \`npm run balance\` (проверка; \`-- --write\` пересобирает этот файл). Бот играет только через обёртки \`P.*\`
+(\`src/progress-next.js\`), как интерфейс, и после каждого дня перечитывает сохранение: \`P.load(P.serialize(s))\`.
+Прогон: ${SEEDS} сидов × 5 стратегий × ${DAYS} дней и careful/learning × ${LONG} дней — ${(ms/1000).toFixed(1)} с на ${n} потоках.
+Эталон поведения — \`pix-tools/bestiary/gdd-sim.mjs\` (GDD 12.7); правила — GDD 3–7 и решения D3, D5.
 
-120 сценариев: 40 начальных seed и обработка 25%, 60%, 95% поверхности. В каждом создано и продано 60 изделий, открыты все шесть навыков, оружейные оправы и три места находок. Бот играет через те же обёртки \`P.*\`, что и интерфейс, поэтому в сценариях работают книга мастера, репутация, звания, знаток дня, бюджеты званий, дружба и помощь жителей. Монеты, материалы и опыт не добавлялись напрямую: использованы реальные закупки, сбор, изготовление и продажи. После каждого изделия сохранение перечитано валидатором и нормализацией. Дни: ${fmt(dayRange)}; итоговые монеты: ${fmt(goldRange)}. Все запасы и остаток монет остаются неотрицательными.
+Стратегии (GDD 12.6): **naive** — только проверенное, лучший по «Надёжно», отказ ниже 66, ничего не исследует и не
+покупает, награда — монеты; **careful** — так же советует, но вечером исследует (образцы, трофеи, архив, «порыться»),
+покупает надёжные книги, варит снадобья, продаёт листы и листки, пишет трактаты, обустраивается и снаряжает охотников;
+**learning** — как careful, но рискует слухами (ценность \`mid + (mid ≥ 66 ? 7 : 2) × слухов\`, отказ ниже 34), покупает
+листки Янека и все книги и печатает «Великий бестиарий»; **random** — случайный допустимый лист без снадобий и
+исследований, награда наугад; **merchant** — проверенный совет без слухов, никогда не исследует, берёт монеты, продаёт
+все части. Бот перепроверяет в опытах только условные записи — живой игрок узнаёт их по противоречиям в отчётах и строке
+«последний раз»; поэтому его темп — верхняя граница, живой игрок ожидаемо в 1,5–2 раза медленнее.
 
-Контрольный серебряный кулон: материалы ${raw} монет, полная цена для подходящего покупателя ${fresh}, после насыщения ${tired}. Продажа одного и того же изделия после четвёртой полной продажи не покрывает закупку материалов. Спрос оценивает нормализованную форму, вырезы, композицию гравировки, рун и расположение камней. Смена названия, толщины, материала, цвета, зеркальное отражение и малое смещение не сбрасывают семью дизайна.
+## Победы и звания (${DAYS} дней; мин / медиана / макс)
 
-Насыщение длится семь **торговых дней с продажами**. Пропуск пустых дней его не сокращает. Полные цены и личные заказы учитываются вместе; две продажи со скидкой или по встречной цене ниже 95% от полной считаются одной полной, поэтому скидками нельзя продавать один рисунок бесконечно. Для порта дизайн остаётся новым до первой продажи по полной цене. Новый тип или существенно новая композиция получают отдельный спрос.
+| Стратегия | Победы д. 1–10 | д. 11–30 | д. 31–60 | за ${DAYS} дней | 3 верных д. 21–40 | Звания 1/2/3/4/5 (медиана / 90%) |
+|---|---|---|---|---|---|---|
+${rows}
 
-Мастерство умножает всю цену: множитель 0,7 + 0,006 × мастерство, то есть ×1,00 при 50, ×1,15 при 75 и ×1,24 при 90. Полировка золотого изделия поэтому приносит больше, чем медного.
+Сравнение с эталоном \`gdd-sim.mjs\` (в скобках): доля по всем охотам 60 сидов — проверка «в пределах 3 п.», и медиана по
+сидам — как в таблице GDD 12.7 (у медианы из ~13 охот сида шаг 7–8 п., поэтому она только для сведения):
 
-## Репутация и звания
+| Стратегия | д. 1–10 | д. 11–30 | д. 31–60 | за ${DAYS} дней | 3 верных д. 21–40 |
+|---|---|---|---|---|---|
+${cmp}
 
-Звания и пороги репутации: ${names}. Репутация только растёт и приходит только за полные продажи (+1, ещё +1 при совпадении со вкусом от 70, +2 за дизайн, новый для порта, +2 за первую полную продажу этому жителю, +2 за продажу знатоку дня), заказы (+4), первые записи в книге мастера (+1, не больше 4 за изделие), клейма (+3) и собранные главы (+10). Скидки, встречные цены ниже 95% и насыщенные продажи репутации не дают.
+## Сюжет и темп (медиана / 90%)
 
-В разнообразной игре бота репутация после 60 изделий — ${fmt(ranks.rep)} (порог проверки — не меньше 100); первое звание приходит в день ${fmt(ranks.firstRankDay)} (порог — не позже третьего), второе — после ${fmt(ranks.secondRank.pieces)} изделий, в день ${fmt(ranks.secondRank.day)}. Книга мастера к концу: записей — ${fmt(ranks.book)}, клейм — ${fmt(ranks.marks)}. Монотонный пробник (seed 1–20) сохраняет первую модель и 60 раз восстанавливает и продаёт её по полной цене; монеты на материалы выдаются только ему. Он набирает ${fmt(ranks.repeated)} репутации (порог — меньше 70), то есть повтором звание «Мастер цеха» не получить.
+| Стратегия | S3 | S5 | S10 | Колдун побеждён | 14 трактатов | Печать | 5 стартовых на 100% | Охот | Рана при неудаче, дней | Обид |
+|---|---|---|---|---|---|---|---|---|---|---|
+${pace}
 
-Бюджеты покупателей растут на 8 монет за каждое созданное изделие без верхнего предела, и к ним прибавляется бонус звания ${bonus}, чтобы вершина развития окупалась. Знаток дня (со звания «Ювелир лавки») получает кошелёк ×1,6 и платит за свежий для порта дизайн полную цену ×1,2; общий множитель всех таких надбавок ограничен ×1,4. Пробник роскоши проверяет продажи дорогих вещей на копии игры с нужными навыками и материалами: золотое кольцо с двумя алмазами, сделанное сразу по достижении второго звания, кто-то из гостей берёт по полной цене не позже чем за четыре дня в ${Math.round(lux.early.share*100)}% прогонов (полная цена от ${lux.early.fair[0]} до ${lux.early.fair[1]} монет); лунный кулон с тремя алмазами после 60 изделий — в ${Math.round(lux.late.share*100)}% (от ${lux.late.fair[0]} до ${lux.late.fair[1]} монет). Порог проверки — 90%.
+## Деньги (медианы)
 
-## Дружба и цеховой смотр
+| Стратегия | Монеты д. 10 | д. 30 | д. 60 | д. 90 | Заработано / потрачено | Академия и трактаты | Убранство и вторые издания |
+|---|---|---|---|---|---|---|---|
+${money}
 
-Бот продаёт тем, кто больше заплатит, и не выполняет заказов, поэтому дружба у него растёт только за полные продажи по вкусу (+1 от 60%, +2 от 80%). К 60-му изделию самая крепкая дружба — ${fmt(friends.top)}-я ступень из пяти; третьей ступени, на которой житель начинает помогать мастерской, достигают ${fmt(friends.helpers)} из восьми жителей; писем к концу — ${fmt(friends.letters)}. Помощь жителей только добавляет: скидки Ады (−10% на металлы) и Серы (−15% на изумруды и сапфиры), камни Миры у двери, лишнее серебро, медь и пара камней на поисках. Проверка доступности замены материалов в прогонах по-прежнему считает полную цену поставщика, поэтому она осталась строже, чем сама игра. Цеховой смотр бот не посещает: медали и ленты проверяются тестами (\`tests/guild.test.mjs\`), лента прибавляет к цене 5% за ступень в общем потолке ×1,4.
+Поздние деньги уходят в чисто косметический сток (решение D3): «Убранство скриптория» — ${L.DECOR.map(d=>`${d.name.toLowerCase()} ${d.price}`).join(', ')} —
+и «Второе издание» трактата (${L.EDITION.price.slice(1).join(' / ')} монет по ярусам I–IV). Бот careful/learning покупает их, только
+когда в кошельке остаётся больше 1500 монет сверх цены, поэтому они не задерживают ни обустройства, ни печати. Цены,
+шансы и доход от этих вещей не меняются. Невыслушанный гость не теряет слух (D5): утром он лежит запиской на столе.
 
-## Оценка и запасной путь
+| Стратегия (${LONG} дней) | Монеты д. 90 | д. ${LONG} | Заработано / потрачено | Убранство и издания | Победы за ${LONG} дней |
+|---|---|---|---|---|---|
+${long}
 
-Мастерство зависит от целостности контура, устойчивости камней, гравировки и обработанной площади. Художественная оценка описывает симметрию, сдержанность, насыщенность, текучесть формы и сочетание камней; вкусы жителей различаются. Магические свойства возникают при связи поддерживаемого камня с руной. Это правила игры, а не универсальная оценка красоты.
+## Проверки
 
-При пустом кошельке берег доступен бесплатно и даёт три порции меди и камень. Небольшую свободную оправу можно сделать из одной порции меди и продать, затем покупать материалы или продолжать собирать находки.
+| # | Что | Значение | Выполнено |
+|---|---|---|---|
+${list}
 
-Патина металла, свет камней, церемония «Готово», погода, сезоны и время суток только рисуются: оценка, стоимость, спрос, гости и находки их не читают, поэтому числа этой проверки от них не зависят. Погода дня определяется \`worldSeed\` и номером дня, а не генератором гостей и находок.
-`;
-if(process.argv.includes('--write')){await mkdir(new URL('../docs/',import.meta.url),{recursive:true});await writeFile(new URL('../docs/BALANCE.md',import.meta.url),report);}
-console.log(JSON.stringify({playthroughs:runs.length,creations:runs.length*60,finish:[.25,.6,.95],dayRange,goldRange,control:{replacement:raw,fresh,saturated:tired},ranks,friends,luxury:lux,allPassed:true},null,1));
+Лист Академии платит за каждую запись один раз (ключ \`факт:состояние:условие\` или \`troph:облик\`); трактат пишется один
+раз, листок печатни — раз в 10 дней; слухи не продаются. Потолок науки за игру ACADEMY_MAX = ${R.academyMax()} монет
+выведен из контента. Звание растёт только от знания, побед и трофеев: купец к 90-му дню не выше звания 3.
+`;}
+
+if(!isMainThread)parentPort.postMessage(workerData.jobs.map(run));
+else await main();

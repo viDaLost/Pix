@@ -6,22 +6,33 @@ export const WEATHER={clear:'ясно',rain:'дождь',fog:'туман',snow:'
 export const WEATHER_ICON={clear:'sun',rain:'rain',fog:'cloud',snow:'snow'};
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 // The day turns to evening as the work of the day is done; night falls only when the day is ended.
-export function dayPhase(s){const d=s?.daily||{},n=v=>Number.isFinite(v)&&v>0?v:0;return clamp(.12+n(d.sales)*.12+n(d.made)*.08+(Array.isArray(d.areas)?d.areas.length:0)*.06,0,.8);}
+// The workshop counts sales, pieces made and searches; the scriptorium counts guests heard and candles burnt (GDD 1.1).
+// Each day carries only its own fields, so both games keep their light.
+export function dayPhase(s){const d=s?.daily||{},n=v=>Number.isFinite(v)&&v>0?v:0;return clamp(.12+n(d.sales)*.12+n(d.made)*.08+(Array.isArray(d.areas)?d.areas.length:0)*.06+n(d.talks)*.10+n(d.candles)*.12,0,.8);}
 // Twelve days a season; the story begins after the autumn storm.
 export const season=day=>Math.floor((Math.max(1,Math.floor(day)||1)-1)/12)%4;
 // A well-mixed number in [0,1) for a seed and a day (consecutive days must not share the weather by accident).
 export function dayHash(seed,day){let n=(seed^Math.imul(day|0,0x9e3779b9))>>>0;n^=n>>>16;n=Math.imul(n,0x85ebca6b);n^=n>>>13;n=Math.imul(n,0xc2b2ae35);n^=n>>>16;return (n>>>0)/4294967296;}
-export function weatherFor(seed,day){const h=dayHash(seed>>>0,day),k=season(day);
+// The third parameter is the season of the rules (GDD 1.5): the Black Winter of the bestiary holds winter whatever the
+// calendar says. Without it the weather follows the calendar, as before.
+export function weatherFor(seed,day,k=season(day)){const h=dayHash(seed>>>0,day);
  if(k===0)return h<.35?'rain':h<.5?'fog':'clear';
  if(k===1)return h<.45?'snow':h<.55?'fog':'clear';
  if(k===2)return h<.25?'rain':'clear';
  return h<.1?'rain':'clear';}
 // Everything a scene needs to know about the hour and the sky of the workshop's day.
-export function ambience(s){const day=Number.isInteger(s?.day)&&s.day>0?s.day:1,weather=weatherFor(s?.worldSeed>>>0,day);return {day,season:season(day),weather,phase:dayPhase(s)};}
+// The bestiary keeps winter while its story holds it (s.story.hold); the workshop has no story and follows the calendar.
+export function ambience(s){const day=Number.isInteger(s?.day)&&s.day>0?s.day:1,k=s?.story?.hold===true?1:season(day),weather=weatherFor(s?.worldSeed>>>0,day,k);return {day,season:k,weather,phase:dayPhase(s),moon:moonFor(s?.worldSeed>>>0,day)};}
+// The moon of the night window, a cycle of eight days: 0 new, 4 full. Only a picture: no rule reads it (GDD 1.5).
+export const MOON=['новолуние','молодая луна','первая четверть','прибывающая луна','полнолуние','убывающая луна','последняя четверть','старая луна'];
+export function moonFor(seed,day){return ((Math.max(1,Math.floor(day)||1)+Math.floor(dayHash(seed>>>0,0)*8))%8);}
 // «осень, дождь»: the caption of a scene and the line of the morning.
 export const skyWords=amb=>`${SEASONS[amb.season]}, ${WEATHER[amb.weather]}`;
 const MORNING={clear:'ясное утро над гаванью',rain:'над гаванью дождь',fog:'гавань в тумане',snow:'гавань в снегу'};
 export const morningWords=amb=>{const t=SEASONS[amb.season];return `${t[0].toUpperCase()+t.slice(1)}, ${MORNING[amb.weather]}`;};
+// The morning of the scriptorium in Velen: «Зима, Велен в снегу».
+const TOWN_MORNING={clear:'ясное утро над Веленом',rain:'над Веленом дождь',fog:'Велен в тумане',snow:'Велен в снегу'};
+export const townMorningWords=amb=>{const t=SEASONS[amb.season];return `${t[0].toUpperCase()+t.slice(1)}, ${TOWN_MORNING[amb.weather]}`;};
 const hex=v=>'#'+v.map(n=>Math.round(clamp(n,0,255)).toString(16).padStart(2,'0')).join('');
 const rgb=h=>[0,2,4].map(i=>parseInt(h.slice(1+i,3+i),16));
 export const mix=(a,b,k)=>{const x=rgb(a),y=rgb(b);return hex(x.map((v,i)=>v+(y[i]-v)*clamp(k,0,1)));};
