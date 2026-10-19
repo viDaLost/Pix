@@ -102,3 +102,14 @@ test('soft hyphens keep a long title in its slot: every part has a vowel and two
   for(const x of p.slice(1))assert.doesNotMatch(x,/^[йьъ]/i,`${f.title}: a part begins with ь, ъ or й`);}
  const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');assert.match(app,/esc\(G\.hyphenate\(f\.title\)\)/,'the slot writes the title with its soft hyphens');
 });
+// Found in the second review of Г2: a doctor paid in the window of the report shortened the wound, yet the report still
+// said «Лечится 3 дня» under a toast that said two. The line under a report follows the hunter as he is now.
+test('the wound under a report follows the doctor: what is left of it, back tomorrow, or up at once',()=>{
+ assert.equal(G.woundLine(3,3),'Лечится ещё 3 дня');assert.equal(G.woundLine(3,2),'Лечится ещё 2 дня');
+ assert.equal(G.woundLine(3,1),'Завтра снова в деле');assert.equal(G.woundLine(1,1),'Царапины — завтра снова в деле');assert.equal(G.woundLine(2,0),'Лекарь поставил на ноги — снова в строю');
+ const s=P.newGame(7),c=s.contracts[0];assert.equal(P.advise(s,c.id,['werewolf.silver','werewolf.garlic','werewolf.dawn'],[]).ok,true);
+ const r=P.endDay(s).reports[0],x=s.hunters[r.hunter];assert.equal(r.win,false,'silver, a myth and a harm lose on day 1');
+ assert.equal(G.woundLine(r.injury,x.out),`Лечится ещё ${L.days(r.injury)}`,'the report day is the first day of the wound');
+ assert.equal(P.heal(s,r.hunter).ok,true);assert.equal(G.woundLine(r.injury,x.out),`Лечится ещё ${L.days(r.injury-1)}`,'one day less after the doctor');
+ const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');assert.match(app,/G\.woundLine\(r\.injury,x\.out\)/,'the report window writes it from the hunter');
+});

@@ -62,6 +62,9 @@ export function nextSteps(s){const out=[],add=x=>{if(out.length<3)out.push(x);};
  const full=P.openList(s).find(m=>m.tier<4&&!s.monsters[m.id].treatise&&P.pageDone(s,m.id));if(full)add({id:'treatise',icon:'book',text:`Страница ${L.genOf(full)} полна — можно писать трактат`,view:'shop',tab:'academy'});
  add(left>0?{id:'candles',icon:'candle',text:`Свечей осталось: ${left}`,end:!waiting.length&&!told.length}:{id:'night',icon:'snuff',text:'Свечи догорели — можно задуть свечу',end:true});
  return out;}
+// The wound under a report, as it stands now: the doctor paid in the same window shortens it there too (GDD 4.4, 10.4).
+// The day of the report is the first day of the wound, so one day left means back tomorrow.
+export const woundLine=(injury,out)=>out>1?`Лечится ещё ${L.days(out)}`:out===1?(injury>1?'Завтра снова в деле':'Царапины — завтра снова в деле'):'Лекарь поставил на ноги — снова в строю';
 // The words of a hunter's return: «с победой», «потрёпан», «ранен на 2 дня».
 function returnWords(x){const f=L.female(x.hunter||x.town);if(x.win)return x.rag?`с победой, но ${f?'потрёпана':'потрёпан'}`:'с победой';
  return x.town?'ни с чем':x.injury>1?`${f?'ранена':'ранен'} на ${L.days(x.injury)}`:f?'потрёпана':'потрёпан';}

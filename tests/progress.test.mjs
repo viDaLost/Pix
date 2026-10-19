@@ -117,3 +117,15 @@ test('the interface carries every screen, segment and label of GDD 10',()=>{
  // The morning windows come in the order of GDD 1.1.
  for(const k of['welcome','legacy','report','rank','story','morning'])assert.match(app,new RegExp(`queueModal\\([^;]*,'${k}'\\)`),k);
 });
+// Found in the second review of Г2: a huntress deferred her case «первым»; the scene called Агата «побитый»; the rank pill
+// left the sheet's entry in the history, so «Назад» did nothing once; a button off for want of candles said nothing in the
+// archive and the Academy, and «осталась одна» was written whatever was left.
+test('second review of Г2: words in the right gender, one history entry, a reason for every button off for want of candles',()=>{
+ const app=src('app.js');
+ assert.match(app,/придёт завтра \$\{gendered\(c\.hunter,'первым','первой'\)\}/);assert.match(app,/gendered\(first\.who,', побитый',', побитая'\)/);
+ assert.match(app,/case'rank-path':view='chronicle';chronicleTab='path';leaveSheet\(\);/);assert.equal(app.match(/[^.]sheet=null;render\(\)/g).length,1,'only «Назад» itself drops the sheet without leaveSheet(): its entry is already gone');
+ assert.match(app,/const noCandles=n=>\{const left=P\.candlesLeft\(state\);/);assert.match(app,/осталась одна':`осталось \$\{left\}`/);
+ assert.match(app,/notes&&list\.length\?noCandles\(2\):''/,'«Сверить летописи» needs two candles and says so');
+ assert.match(app,/'страница полна — для трактата нужны 2 свечи'/);assert.match(app,/\$\{rows\}\$\{open\?noCandles\(1\):''\}/);
+ assert.match(app,/Лекарь заплачен\. \$\{hunterOf\(d\.id\)\.short\} \$\{r\.out\?`лечится ещё/);
+});

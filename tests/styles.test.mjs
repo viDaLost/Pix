@@ -49,3 +49,22 @@ test('review of Г2: dialogs within 88dvh everywhere, whole stamps in «Опыт
  assert.match(css,/\.slot\{[^}]*overflow:hidden;/);assert.match(css,/\.slot \.hand\{[^}]*overflow-wrap:anywhere;hyphens:auto/);assert.match(css,/\.slot \.hand\.longword\{font-size:calc\(14px\*var\(--fs\)\)\}/);assert.match(app,/<span class="hand\$\{Math\.max\(/);
  assert.match(app,/c\.kind==='town'\?`плата \$\{c\.fee\} · при победе \$\{P\.TOWN\.pay\*c\.tier\}`/);
 });
+// Found in the second review of Г2: the honest mark of a book was cut to «ПРОВЕРЕНО УЧ» at 320 px; a long toast inside a
+// dialog made the dialog scroll sideways by a few pixels at 320 px with large text; a swipe on a page could be taken by
+// the browser's own gesture; «(−1)» of the trust fell away from its dots; «трактаты 0 / 14» broke before «14».
+test('second review of Г2: whole book marks, toasts within their dialog, a swipe that turns pages, words kept together',()=>{
+ assert.match(css,/\.book-main \.stamp\{height:auto;[^}]*white-space:normal/);assert.match(css,/\.book-main \.stamp>span\{flex:0 1 auto;min-width:0\}/);
+ assert.match(css,/dialog>\.toast\{[^}]*max-width:min\(calc\(100vw - 56px\),500px\)/,'a toast in a dialog is narrower than the narrowest dialog (100vw − 38px) and the plain one (520px)');
+ assert.match(css,/\.view-bestiary article\.folio\{touch-action:pan-y pinch-zoom\}/);
+ assert.match(css,/\.wound \.trust-change\{[^}]*white-space:nowrap/);assert.match(app,/<span class="trust-change">\$\{trust\(x\.trust\)\}/);
+ assert.match(app,/трактаты \$\{n\}&nbsp;\/&nbsp;\$\{L\.MONSTERS\.length\}/);
+});
+// Found in the second review of Г2: a slot broke an eight-letter word between its letters («Скважин|ы и щели» at 360 px,
+// «Курины|й бог» with large text) — the soft hyphens only help words of nine letters. The hand of a slot is now written
+// smaller until its longest word fits; the label keeps 11 px with large text on a landscape phone too.
+test('second review of Г2: a word of a title keeps whole in its slot, the label of a slot fits in landscape',()=>{
+ assert.match(app,/function fitSlots\(root\)\{for\(const el of root\.querySelectorAll\('\.slot \.hand'\)\)\{el\.style\.fontSize='';el\.style\.overflowWrap='normal';/);
+ assert.match(app,/while\(el\.scrollWidth>el\.clientWidth\+\.5&&size>11\)/,'down to 11 px, the smallest label of art.md');
+ assert.match(app,/if\(view==='reception'&&sheet\)fitSlots\(panel\);/,'every render of the sheet fits its slots');assert.match(app,/document\.fonts\?\.addEventListener\?\.\('loadingdone',refit\);addEventListener\('resize',refit\);/);
+ assert.match(css,/@media\(max-width:419px\),\(orientation:landscape\) and \(max-height:500px\)\{\.large-text \.slot em\{font-size:11px\}\}/);
+});

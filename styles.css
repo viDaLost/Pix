@@ -290,7 +290,7 @@ ol.slots li{min-width:0;display:flex}
 .slot .hand.longword{font-size:calc(14px*var(--fs))}
 @media(max-width:359px){.slots-row{grid-template-columns:minmax(0,1fr) 44px;gap:4px}ol.slots{gap:4px}.slot{padding:4px 3px}.slot em{letter-spacing:-.01em}.slot .hand{font-size:calc(15px*var(--fs))}.slot .hand.longword{font-size:calc(13px*var(--fs))}}
 /* The label of a slot («Чем уберечься») stays at its 11 px with large text on a phone, so its longest word fits whole. */
-@media(max-width:419px){.large-text .slot em{font-size:11px}}
+@media(max-width:419px),(orientation:landscape) and (max-height:500px){.large-text .slot em{font-size:11px}}
 /* The mark of a slot repeats the segment right under it; it is drawn only where the slot has room for it. */
 .slot .hand .mini{display:none;vertical-align:-2px;margin-left:3px;width:15px;height:15px}.slot .hand .mini .icon{width:10px;height:10px}
 @media(min-width:600px) and (min-height:501px){.slot .hand .mini{display:inline-grid}}
@@ -382,7 +382,7 @@ button.send small{font-size:calc(11px*var(--fs));font-weight:700;color:rgba(34,2
 .wound{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0 2px;font-size:calc(14px*var(--fs));font-weight:700;color:var(--st-danger)}
 .wound>span{display:inline-flex;align-items:center;gap:6px}
 .wound .icon{width:18px;height:18px}
-.wound small{color:var(--ink-3)}
+.wound small{color:var(--ink-3)}.wound .trust-change{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .tokens{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:10px 0 4px}
 .sheet-dialog button.token{flex-direction:column;gap:3px;min-height:92px;padding:8px 4px;border-radius:8px;border:1.5px solid rgba(143,108,58,.6);background:linear-gradient(180deg,rgba(255,250,235,.5),rgba(214,173,102,.14))}
 .token .icon{width:24px;height:24px;color:var(--brass-lo)}
@@ -491,6 +491,10 @@ button.mon-chip{flex-direction:column;align-items:flex-start;gap:0;min-height:46
 .book-main{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1;line-height:1.25;align-items:flex-start}
 .book-main b{font:700 calc(16px*var(--fs))/1.15 var(--display)}
 .book-main small{font-size:calc(12px*var(--fs))}.book-main .blurb{color:var(--text-2)}
+/* A horizontal swipe on a page turns it: the browser keeps only the vertical scroll, so the gesture is not taken from the page. */
+.view-bestiary article.folio{touch-action:pan-y pinch-zoom}
+/* The honest mark of a book is read whole on the narrowest phone: its words wrap inside the stamp instead of being cut. */
+.book-main .stamp{height:auto;min-height:22px;padding-top:3px;padding-bottom:3px;white-space:normal;line-height:1.15}.book-main .stamp>span{flex:0 1 auto;min-width:0}
 .book-row>.chip{flex:none;align-self:center}
 .rumour-sheets{display:flex;flex-wrap:wrap;gap:6px}
 button.rumour-sheet,.rumour-sheet{flex:1 1 140px;min-height:48px;justify-content:flex-start;gap:8px;padding:6px 10px;border-radius:6px;border:1px solid var(--line-2);background:linear-gradient(180deg,#3a2d1f,#2a2016);font-size:calc(13px*var(--fs));text-align:left;display:flex;align-items:center}
@@ -548,7 +552,9 @@ button.plaque-button,.plaque-button{flex-direction:column;gap:2px;min-height:52p
 .toast .toast-action{min-height:34px;padding:4px 12px;border-radius:999px;font-size:calc(13px*var(--fs));margin-left:2px;flex:none}
 /* Over an open dialog the toast docks at the bottom edge: at the top it would cover the dialog's title and close
    button on a narrow phone, and a tap meant for «×» would land on «Вернуть» or «Обновить». */
-dialog>.toast{top:auto;bottom:calc(env(safe-area-inset-bottom) + 8px);transform:translate(-50%,14px) scale(.97)}
+/* A toast inside a dialog is never wider than the dialog, so a long one cannot make it scroll sideways (the narrowest
+   dialog is the width of the screen less 38 px; the plain one is 520 px wide). */
+dialog>.toast{top:auto;bottom:calc(env(safe-area-inset-bottom) + 8px);transform:translate(-50%,14px) scale(.97);max-width:min(calc(100vw - 56px),500px)}
 dialog>.toast.show{transform:translate(-50%,0) scale(1)}
 .flying-coin{position:fixed;left:0;top:0;z-index:var(--z-fly);pointer-events:none;color:var(--brass-hi);margin:-10px 0 0 -10px}
 .flying-coin .icon{width:20px;height:20px;fill:rgba(214,173,102,.4)}
