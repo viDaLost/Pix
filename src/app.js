@@ -1,10 +1,10 @@
 import * as P from './progress.js';
 import * as L from './lore.js';
 import * as G from './guide.js';
-import {ScriptoriumScene,guestPerson as scenePerson,keeperPerson,personOf,hunterPerson as huntPerson,visitorPerson,THRESHOLD} from './scriptorium-scene.js';
+import {ScriptoriumScene,guestPerson as scenePerson,keeperPerson,personOf,hunterPerson as huntPerson,visitorPerson,lineup,doseLevel,THRESHOLD} from './scriptorium-scene.js';
 import {itemURL,flaskURL,trophyURL,pixelImg} from './item-art.js';
 import {paintPortrait} from './characters.js';
-import {GameAudio} from './audio.js';
+import {GameAudio,reportSounds,vibrate} from './audio.js';
 import {openStore,readLegacy,StaleTabError} from './store.js';
 import {icon,EMBLEM_ICON} from './icons.js';
 import {ToastQueue,ModalQueue,toastSpec,toastDuration} from './notices.js';
@@ -45,10 +45,8 @@ const knowKey=k=>k.rev?'cond':k.st;
 function portrait(person){const key=`${person.id}|${person.rag||0}`;if(portraits.has(key))return portraits.get(key);const c=document.createElement('canvas');c.width=c.height=64;paintPortrait(c.getContext('2d'),person,64);const url=c.toDataURL();portraits.set(key,url);return url;}
 const hunterPerson=id=>huntPerson(state,id),guestPerson=v=>scenePerson(v,state);
 const face=(person,rag=0,cls='portrait')=>`<span class="face ${cls}${rag?' rag'+rag:''}"><img src="${portrait(person)}" alt=""></span>`;
-// Vibration, when the player keeps it on and motion is not reduced (art.md 6.2): a seal 10 ms, «Во вред» a triple beat,
-// a victory a rising one, a loss one long pulse.
-const HAPTIC={seal:10,worse:[25,40,25],win:[15,30,40],fail:35};
-function buzz(kind){if(state.haptics===false||still()||!navigator.vibrate)return;try{navigator.vibrate(HAPTIC[kind]);}catch{}}
+// Vibration (audio.js HAPTICS, art.md 6.2), when the player keeps it on and motion is not reduced.
+const buzz=kind=>vibrate(kind,{on:state.haptics!==false,calm:still()});
 // The pixel things of the content: a part, a herb or a good (item-art.js), a flask of a potion, a trophy.
 const thing=(id,size=32)=>pixelImg(itemURL(L.MAT.get(id)?.look),size);
 const flaskImg=(id,size=24,level=1)=>pixelImg(flaskURL(L.POT.get(id)?.look,level),size);
@@ -165,10 +163,11 @@ const segments=(action,list,current)=>`<div class="tabs${list.length===3?' three
 // The live description of the scene (art.md 4.6): who is at the table and how they look, who waits, who else is in the
 // room, the wall, the candles and the window.
 const WOUND=[0,['потрёпанный','потрёпанная'],['с рукой на перевязи','с рукой на перевязи'],['на костыле, с повязкой на голове','на костыле, с повязкой на голове']];
-const looks=v=>{if(v.kind!=='hunter')return G.guestName(v);const r=ragOf(v.who);return G.guestName(v)+(r?', '+WOUND[r][female(v.who)?1:0]:'');};
-function sceneLabel(amb){const all=G.queueOf(state),q=all.filter(v=>v.kind!=='daro'&&v.kind!=='otto'),first=q.find(v=>v.id===chosen)||q[0],rest=q.filter(v=>v!==first).slice(0,2),troph=L.MONSTERS.filter(m=>state.monsters[m.id]?.troph.length).length;
- const others=[all.some(v=>v.kind==='daro')?'Даро в кресле':'',all.some(v=>v.kind==='otto')?'Магистр у окна':'',state.story.seen.includes('S2')?'Федя у полок':''].filter(Boolean);
- return `Скрипторий: ${first?`у стола ${looks(first)}`:'у стола никого'}${rest.length?`; ждут ${rest.map(looks).join(' и ')}`:''}${others.length?`; ${others.join(', ')}`:''}; на стене ${troph} ${plural(troph,'трофей','трофея','трофеев')}; горят ${P.candlesLeft(state)} ${plural(P.candlesLeft(state),'свеча','свечи','свечей')} из ${P.candleMax(state)}; за окном ${A.WEATHER[amb.weather]}${state.story.hold?', Чёрная зима':state.story.thaw?', оттепель':''}`;}
+const looks=v=>{if(v.kind!=='hunter')return G.guestName(v);const r=ragOf(v.who);return G.guestName(v)+(v.back?gendered(v.who,' вернулся',' вернулась'):'')+(r?', '+WOUND[r][female(v.who)?1:0]:'');};
+// The words follow the same lineup as the picture (scriptorium-scene.js), so nobody is described who is not drawn.
+function sceneLabel(amb){const u=lineup(state,G.queueOf(state),chosen),troph=L.MONSTERS.filter(m=>state.monsters[m.id]?.troph.length).length;
+ const others=[u.daro?'Даро в кресле':'',u.otto?'Магистр у окна':'',u.fedya?'Федя у полок':''].filter(Boolean);
+ return `Скрипторий: ${u.table?`у стола ${looks(u.table)}`:'у стола никого'}${u.line.length?`; у двери ${u.line.map(looks).join('; ')}`:''}${others.length?`; ${others.join(', ')}`:''}; на стене ${troph} ${plural(troph,'трофей','трофея','трофеев')}; горят ${P.candlesLeft(state)} ${plural(P.candlesLeft(state),'свеча','свечи','свечей')} из ${P.candleMax(state)}; за окном ${A.WEATHER[amb.weather]}${state.story.hold?', Чёрная зима':state.story.thaw?', оттепель':''}`;}
 function sceneHTML(){const amb=A.ambience(state);return `<div class="scene-wrap"><canvas id="scene" width="480" height="260" role="img" aria-label="${esc(sceneLabel(amb))}"></canvas><span class="scene-caption">Скрипторий · ${A.skyWords(amb)}</span></div>`;}
 // The side (the scene, the segments, the line of guests) and the main card; a landscape phone sets them side by side.
 function receptionHTML(){if(sheet)return sheetHTML();const n=G.queueOf(state).length+G.standing(state).length,q=receptionTab==='artel'?{rail:'',main:artelHTML()}:queueHTML();
@@ -276,10 +275,12 @@ function howCounted(){const c=contractOf(sheet);if(!c)return;const d=draft(c.id)
  const rows=[`Верных по листу: ${pv.k} из 3 (${L.pct(pv.k*100/3)}%)`,...d.potions.map(id=>{const p=L.POT.get(id);return `${p.name} ${p.bonus?(P.potionFits(mon(c.monster),id)?'+'+p.bonus:'+0, не против '+L.genOf(c.monster)):'— '+p.effectText.toLowerCase()}`;}),...pv.skill?[`мастерство охотника +${pv.skill}`]:[],...pv.vmod>0?[`молодой облик +${pv.vmod}`]:[],...pv.minus?[`древний облик ${pv.minus}`]:[],...(pv.skill||pv.potion||pv.vmod>0?[`всё сверху знания — до предела +${P.BONUS_CAP}`]:[]),...rumours.map(id=>`слух «${fact(id).title}»: может добавить 33 или отнять 25`)];
  modal('Как считается',`<ul class="reasons">${rows.map(r=>`<li>${esc(r)}</li>`).join('')}</ul><div class="score-row"><span>Итого по твоим записям</span><b>≈ ${pv.mid}%</b></div><p class="fine-print">Каждое верное указание — треть успеха, три верных — победа наверняка. Вредное отнимает 25. Снадобья и мастерство прибавляют сверху, но не больше 25, и без третьего верного шанс не выше 91%. Слухи считаются пустыми, пока их не проверят: «от» и «до» — что будет, если слух окажется вредным или верным.</p>`);}
 // ---- the morning report (GDD 4, 10.4)
-// The first time a report opens in a session it is heard: the door, then one stamp for the whole of it and its vibration.
+// The first time a report opens in a session it is heard (audio.reportSounds): the door, the medal, a stamp for every
+// piece of advice the hunter saw, with its vibration; short from the tenth hunt, one sound with less motion. A sound
+// still to come is dropped once its window is closed or shows something else.
 const heardReports=new Set();
-function hearReport(r){if(heardReports.has(r.id))return;heardReports.add(r.id);const worse=r.items.some(i=>i.seen&&i.o==='worse'),kind=worse?'worse':r.win?'win':'fail',sound={worse:'stamp-worse',win:'stamp-ok',fail:'stamp-none'}[kind];
- if(still()){audio.play(sound);return;}audio.play('door');setTimeout(()=>{audio.play(sound);buzz(kind);},450);}
+function hearReport(r){if(heardReports.has(r.id))return;heardReports.add(r.id);
+ for(const x of reportSounds(r,{short:state.stats.hunts>=10,reduced:still()}))setTimeout(()=>{if(!dialog.open||dialog.dataset.report!==r.id)return;if(x.kind)audio.play(x.kind,{step:x.step||0});if(x.buzz)buzz(x.buzz);},x.t);}
 function showReport(rid){const r=state.reports.find(r=>r.id===rid);if(!r)return modals.next()?.();const t=P.reportText(state,rid),m=mon(r.contract.monster),h=r.hunter&&hunterOf(r.hunter),x=h&&state.hunters[h.id];
  // The hunter stands in the doorway as he came back: in the rag of this report, with the bag and the trophy of a win.
  const person={...(h?hunterPerson(h.id):guestPerson({kind:'town',who:r.town})),rag:r.rag||0,...(r.win?{carry:true,trophy:r.trophy?m.trophy.look?.c:null}:{})};
@@ -347,7 +348,7 @@ function recipeSource(p){const books=p.recipe.filter(r=>L.BOOK.has(r)).map(r=>`�
 function alchemyHTML(){return `<div class="recipes">${L.POTIONS.map(p=>{const known=state.recipes.includes(p.id),c=P.brewCost(state,p.id),part=c.need.find(x=>!x.buy),doses=state.potions[p.id]||0,full=doses>=P.LIMITS.doses;
   const ing=Object.entries(p.ingredients).map(([id,n])=>{const have=state.stock[id]||0;return `<li class="${have<n?'short':''}">${thing(id,16)}<span>${esc(L.partName(id))}</span><b>${have}/${n}</b></li>`;}).join('');
   const button=!known?`<p class="why">${icon('lock')}${esc(recipeSource(p))}</p>`:full?`<p class="why">Полон запас: ${doses} из ${P.LIMITS.doses}</p>`:part?`<p class="why">Нужно: ${esc(L.partName(part.id).toLowerCase())} — это добывают охотники</p>`:btn('brew',c.coins?`<span>Докупить и сварить</span><small>${c.coins} мон. · ${cost(1)}</small>`:`<span>Сварить</span><small>${cost(1)}</small>`,'chip brew'+(c.coins?'':' ready'),`data-potion="${p.id}" data-buy="${c.coins?1:0}" ${P.candlesLeft(state)<1||state.gold<c.coins?'disabled':''}`);
-  return `<article class="recipe${known?'':' locked'}"><div class="recipe-head">${flaskImg(p.id,32,Math.round(doses/P.LIMITS.doses*4)/4)}<b>${esc(p.name)}</b></div><small>${esc(p.effectText)}</small><ul class="ingredients">${ing}</ul><span class="doses" aria-label="Запас: ${doses} из ${P.LIMITS.doses}">${Array.from({length:P.LIMITS.doses},(_,i)=>`<i class="${i<doses?'on':''}"></i>`).join('')}</span>${button}</article>`;}).join('')}</div>${noCandles(1)}<p class="fine-print">Одна варка — одна свеча и две дозы${state.upgrades.includes('still')?' (с перегонным кубом — три)':''}; больше ${P.LIMITS.doses} доз не хранят. Недостающие травы докупаются у Веданы той же кнопкой.</p>`;}
+  return `<article class="recipe${known?'':' locked'}"><div class="recipe-head">${flaskImg(p.id,32,doseLevel(doses)/4)}<b>${esc(p.name)}</b></div><small>${esc(p.effectText)}</small><ul class="ingredients">${ing}</ul><span class="doses" aria-label="Запас: ${doses} из ${P.LIMITS.doses}">${Array.from({length:P.LIMITS.doses},(_,i)=>`<i class="${i<doses?'on':''}"></i>`).join('')}</span>${button}</article>`;}).join('')}</div>${noCandles(1)}<p class="fine-print">Одна варка — одна свеча и две дозы${state.upgrades.includes('still')?' (с перегонным кубом — три)':''}; больше ${P.LIMITS.doses} доз не хранят. Недостающие травы докупаются у Веданы той же кнопкой.</p>`;}
 function archiveHTML(){const m=mon(labMonster);if(!m)return '';const x=state.monsters[m.id],notes=state.notes[m.id]||0,unknown=P.hasUnknown(state,m);
  const list=m.facts.filter(f=>ARCH.includes(f.cat)&&state.know[f.id]&&!state.know[f.id].rev).sort((a,b)=>byState(state.know[a.id])-byState(state.know[b.id]));
  return `<section class="card lab"><h2>${esc(m.name)}: время, место, обряд</h2><p class="fine-print">Сверка берёт одну полевую запись и две свечи. Полевые записи ${L.genOf(m)}: ${notes}.</p>${list.map(f=>{const k=state.know[f.id];return `<div class="lab-card ${k.st}">${icon(CAT.get(f.cat).icon)}<span class="lab-main"><b>${esc(f.title)}</b><small>${k.st==='rumour'?'слух — сверить с летописями':'уже записано — сверить ещё раз'}</small></span>${stamp(knowKey(k),k.st==='rumour'?source(k):'')}${btn('cross-check',`<span>Сверить летописи</span>${cost(2)}`,'chip',`data-fact="${f.id}" ${!notes||P.candlesLeft(state)<2?'disabled':''}`)}</div>`;}).join('')||'<p class="muted">Сверять нечего: записей о времени, месте и обряде нет или они проверены до конца.</p>'}${!notes&&list.length?`<p class="why">${icon('info')}Полевые записи приносят охотники — награда «Знание».</p>`:notes&&list.length?noCandles(2):''}</section>
@@ -457,7 +458,9 @@ function dayReasons(){const waiting=G.queueOf(state).filter(v=>v.contract&&!cont
 function endDay(confirmed=false){if(night)return;const reasons=confirmed?[]:dayReasons();
  if(reasons.length){modal('Задуть свечу?',`<p>${reasons.map(esc).join(' ')} Задуть свечу и закончить день?</p><p class="fine-print">Не взятые сегодня дела закроются без последствий; отложенные придут завтра.</p><div class="row fill">${btn('close','Остаться')}${btn('confirm-end',`${icon('snuff')}<span>Задуть свечу</span>`,'primary')}</div>`);return;}
  const from=A.ambience(state),lines=state.hunts.map(h=>`${h.contract.hunter?hunterOf(h.contract.hunter).short:L.TOWN_TYPE.get(h.contract.town).label} — ${L.PLACE.get(h.contract.place).where}`);let res;
- try{res=P.endDay(state);}catch(e){crash(e);return;}drafts.clear();leaveSheet();chosen=null;swap=null;labPick.clear();scheduleSave();render();audio.play('step');
+ try{res=P.endDay(state);}catch(e){crash(e);return;}
+ // The notes of the day are done with at night: «ушёл на дело… ответ — утром» does not cover the report of the morning.
+ if(toasts.drop(t=>t.kind!=='error'))showToast();drafts.clear();leaveSheet();chosen=null;swap=null;labPick.clear();scheduleSave();render();audio.play('step');
  const morning=()=>{for(const r of res.reports)queueModal(()=>showReport(r.id),'report');if(res.rank)queueModal(()=>showRank(res.rank),'rank');if(res.story)queueModal(()=>showStory(res.story,res.arcs),'story');queueModal(()=>showMorning(res),'morning');};
  if(!still()&&!dialog.open)startNight(from,lines.length?lines:[L.LINES.night.wait],morning);else morning();}
 let night=null;
@@ -468,8 +471,12 @@ function nightSky(time){const n=night;if(n.start===null)n.start=time;const t=tim
 function nightTick(time){const n=night;if(n.start===null)n.start=time;if(time-n.start>=1600)endNight();}
 function endNight(){const n=night;if(!n)return;night=null;n.veil.remove();lastFrame=0;n.then();}
 // ---- the picture
-function paint(time,dt,force=false){if(dialog.open&&!force)return;const t=still()?0:time,amb=night?nightSky(time):A.ambience(state),c=$('#scene'),lab=$('#lab-scene');
- if(c)scene.paint(c.getContext('2d'),state,{guests:G.queueOf(state),chosen,time:t,dt,amb,calm:still()});if(lab)scene.paintLab(lab.getContext('2d'),state,{time:t,dt,amb,calm:still()});}
+// With less motion the picture stands still: it is painted only when the game changes (render), never by the frame.
+function paint(time,dt,force=false){if(dialog.open&&!force||still()&&!force&&!night)return;const t=still()?0:time,amb=night?nightSky(time):A.ambience(state),c=$('#scene'),lab=$('#lab-scene');
+ if(c)scene.paint(c.getContext('2d'),state,{guests:G.queueOf(state),chosen,time:t,dt,amb,calm:still(),covered:dialog.open});if(lab)scene.paintLab(lab.getContext('2d'),state,{time:t,dt,amb,calm:still()});}
+// The point of a canvas under a tap in its own pixels, also where CSS crops it (object-fit:cover on short screens).
+function canvasPoint(el,e){const r=el.getBoundingClientRect(),k=Math.max(r.width/el.width,r.height/el.height),[ox,oy]=(getComputedStyle(el).objectPosition||'').split(' ').map(v=>{const n=parseFloat(v)/100;return Number.isFinite(n)?n:.5;});
+ return [(e.clientX-r.left-(r.width-el.width*k)*(ox??.5))/k,(e.clientY-r.top-(r.height-el.height*k)*(oy??.5))/k];}
 // A guest coming in or going out opens the door with its creak.
 scene.onDoor=()=>audio.play('door');
 // ?fps in the address shows the average time of a painted frame over the last forty, for checks on a slow phone.
@@ -494,7 +501,7 @@ document.addEventListener('pointerup',e=>{const s=swipe;swipe=null;if(!s||view!=
  const i=L.MONSTERS.findIndex(m=>m.id===page);page=L.MONSTERS[(i+(dx<0?1:13))%14].id;audio.play('page');render();$('#panel').scrollTop=0;},{passive:true});
 document.addEventListener('click',e=>{
  // A tap on the strip of the laboratory: the cauldron and the potions open «Алхимия», the jars «Образцы».
- if(e.target.id==='lab-scene'){const r=e.target.getBoundingClientRect(),tab=ScriptoriumScene.labTarget((e.clientX-r.left)/r.width*480,(e.clientY-r.top)/r.height*150);if(tab&&tab!==labTab){labTab=tab;audio.play('step');render();}return;}
+ if(e.target.id==='lab-scene'){const tab=ScriptoriumScene.labTarget(...canvasPoint(e.target,e));if(tab&&tab!==labTab){labTab=tab;audio.play('step');render();}return;}
  const b=e.target.closest('[data-action]');if(e.target.closest('#toast'))nextToast();if(!b||b.disabled)return;const id=b.dataset.action,d=b.dataset;
  switch(id){
  case'close':close();break;

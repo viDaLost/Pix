@@ -258,7 +258,7 @@ function equipment(c,p,rig,pose,frame,temper){
   }else if(pose==='browse'){px(c,w[0]+2,w[1]-1,3,1,shade(p.skin,17));}
   // The keeper's work: the quill on the page, the ladle in the cauldron, a book held open in both hands.
   else if(pose==='write'){const q=[Math.round(w[0])+5,Math.round(w[1])-6];pixelLine(c,w[0],w[1]+2,...q,'#fff1c7');px(c,q[0]-1,q[1]+1,2,1,'#d9c8a0');px(c,Math.round(w[0]),Math.round(w[1])+2,1,1,INK);hand(c,w,p.skin,true);}
-  else if(pose==='stir'){const q=[Math.round(w[0]),Math.round(w[1])+14];pixelLine(c,w[0]-1,w[1],q[0]-1,q[1],INK,3);pixelLine(c,w[0],w[1],...q,'#7a5a3a');px(c,q[0]-2,q[1],5,2,'#5a4030');hand(c,w,p.skin,true);}
+  else if(pose==='stir'){const q=[Math.round(w[0])+4,Math.round(w[1])+13];pixelLine(c,w[0]-1,w[1],q[0]-1,q[1],INK,3);pixelLine(c,w[0],w[1],...q,'#7a5a3a');px(c,q[0]-2,q[1],5,2,'#5a4030');hand(c,w,p.skin,true);}
   else if(pose==='read'){polygon(c,[[29,36],[37,37],[44,36],[44,43],[37,44],[29,43]],INK);polygon(c,[[30,37],[37,38],[43,37],[43,42],[37,43],[30,42]],'#ecdfbf');px(c,36,38,1,5,'#a88d5f');pixelLine(c,31,39,35,39,'#a88d5f');pixelLine(c,38,39,42,39,'#a88d5f');pixelLine(c,31,41,34,41,'#a88d5f');hand(c,rig.far.wrist,p.skin);hand(c,rig.near.wrist,p.skin);}
   // A hunter's own things in the near hand: Тимофей's hammer (at the belt while the arm is in a sling), Илларион's
   // censer on its chain, and after a first win over a variant, its trophy.

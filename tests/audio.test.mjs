@@ -82,3 +82,32 @@ test('the hearth of «Опыты» is heard in the laboratory only, and stops in
  a.setAmbience({lab:false});assert.equal(a.lab,null,'leaving «Опыты» stops the hearth');a.setAmbience({lab:true,rain:true});assert.ok(a.lab&&a.ambient,'rain and hearth together');
  a.setOptions({sound:false,music:false,volume:.6});assert.equal(a.lab,null);assert.equal(a.ambient,null);await a.destroy();
 });
+// Г3 (art.md 3.9, 6.2): the sounds of a report in time, full ≤ 4.0 s, short ≤ 1.8 s, one «hit» with less motion; the
+// vibration of the moments, only when it is on and motion is not reduced.
+test('a report is heard in time: door, medal, steps, a stamp for every piece of advice seen, the coin of a reward',async()=>{
+ const {reportSounds,EFFECTS}=await import('../src/audio.js');
+ const item=(o,seen=true,from='rumour',to=from)=>({o,seen,from,to});
+ const lost={win:false,offer:null,items:[item('ok',true,'confirmed'),item('none',false),item('worse',true,'rumour','dangerous')]};
+ const full=reportSounds(lost),kinds=full.map(x=>x.kind).filter(Boolean);
+ assert.deepEqual(kinds,['door','roll','step','step','stamp-ok','stamp-worse','learn']);assert.ok(full.every(x=>!x.kind||EFFECTS.includes(x.kind)));
+ assert.ok(full.at(-1).t<=4000,'the full report sounds within 4 s');assert.deepEqual(full.map(x=>x.t),[...full.map(x=>x.t)].sort((a,b)=>a-b));
+ assert.deepEqual(full.filter(x=>x.buzz).map(x=>x.buzz),['fail','worse'],'the verdict with the medal, the harm with its stamp');
+ const won=reportSounds({win:true,offer:{coins:9},items:[item('ok'),item('ok'),item('ok',true,'rumour','confirmed')]});assert.equal(won.at(-1).kind,'coin');assert.equal(won.find(x=>x.buzz).buzz,'win');
+ assert.equal(won.filter(x=>x.kind==='stamp-ok').length,3);assert.equal(won.filter(x=>x.kind==='learn').length,1,'only a changed fact is learned');
+ const short=reportSounds(lost,{short:true});assert.ok(!short.some(x=>x.kind==='door'),'the short report has no door');assert.ok(short.at(-1).t<=1800);assert.equal(short.find(x=>x.kind==='roll').step,1,'a quick medal');
+ assert.deepEqual(reportSounds(lost,{reduced:true}),[{t:0,kind:'hit'}]);assert.deepEqual(reportSounds({win:true,items:[]},{reduced:true,short:true}),[{t:0,kind:'hit'}]);
+ // The quick medal clicks the same eight times, sooner.
+ const ctx=context(),a=new GameAudio({contextFactory:()=>ctx});a.setOptions({sound:true,music:false,volume:.6});await a.unlock();const starts=[];const old=ctx.createBufferSource;ctx.createBufferSource=()=>{const n=old.call(ctx);const start=n.start;n.start=t=>{starts.push(t);start.call(n,t);};return n;};
+ a.play('roll');const slow=starts.splice(0).at(-1);ctx.currentTime+=1;a.play('roll',{step:1});const quick=starts.at(-1)-1;assert.ok(quick<slow*.6,`${quick} < ${slow}`);await a.destroy();
+});
+test('vibration follows the setting and less motion, with the patterns of art.md 6.2, and never throws',async()=>{
+ const {vibrate,HAPTICS}=await import('../src/audio.js');assert.deepEqual(HAPTICS,{seal:10,roll:20,worse:[25,40,25],win:[15,30,40],fail:35});
+ const calls=[],nav={vibrate:p=>{calls.push(p);return true;}};
+ for(const k of Object.keys(HAPTICS))assert.equal(vibrate(k,{nav}),true,k);assert.deepEqual(calls,Object.values(HAPTICS));
+ assert.equal(vibrate('seal',{nav,on:false}),false,'off in the menu');assert.equal(vibrate('seal',{nav,calm:true}),false,'less motion');assert.equal(vibrate('nothing',{nav}),false);
+ assert.equal(vibrate('seal',{nav:{}}),false,'a phone without vibration');assert.equal(vibrate('seal',{nav:{vibrate(){throw Error('denied');}}}),false);assert.equal(calls.length,5);
+ const {readFileSync}=await import('node:fs'),app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');
+ assert.match(app,/const buzz=kind=>vibrate\(kind,\{on:state\.haptics!==false,calm:still\(\)\}\);/);assert.match(app,/'seal'\)\)\{buzz\('seal'\);/,'the seal of a sent sheet');
+ assert.match(app,/reportSounds\(r,\{short:state\.stats\.hunts>=10,reduced:still\(\)\}\)/);assert.match(app,/if\(!dialog\.open\|\|dialog\.dataset\.report!==r\.id\)return;/,'nothing sounds once the report is closed');
+ assert.match(app,/case'toggle-haptics':state\.haptics=state\.haptics===false;/);
+});

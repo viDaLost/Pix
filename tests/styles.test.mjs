@@ -77,6 +77,8 @@ test('decision D6: the hand of the keeper only in the margins, at 16 px or more,
  assert.equal([...css.matchAll(/font-family:var\(--hand\)/g)].length,1,'one rule sets the hand');assert.match(css,/\.hand\{font-family:var\(--hand\);font-size:calc\(16px\*var\(--fs\)\)/);
  for(const m of css.matchAll(/\.hand[^{,]*\{[^}]*font-size:calc\((\d+(?:\.\d+)?)px/g))assert.ok(Number(m[1])>=16,`the hand at ${m[1]}px`);
  assert.match(css,/\.slot \.entry\{font-family:var\(--display\);font-weight:700;/);
+ // Found in Г3: «.fact p» (13 px) outweighed «.hand» on a page of the bestiary; the margin of a page says its size itself.
+ assert.match(css,/\.fact \.hand\{[^}]*font-size:calc\(16px\*var\(--fs\)\)/);
  assert.equal([...app.matchAll(/class="hand"/g)].length,2,'margin notes of a page and of a record');
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');assert.doesNotMatch(html,/marck/i,'the hand is not preloaded');
 });

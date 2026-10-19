@@ -21,7 +21,9 @@ export const W=480,H=260,LAB={w:480,h:150},THRESHOLD={w:240,h:80};
 export function personOf(id,look,fallback){let p={beard:false,female:false,mature:false,cap:false,carry:false,...look,id};if(!OUTFITS.includes(p.outfit))p={...p,...(fallback||{}),outfit:OUTFITS.includes(fallback?.outfit)?fallback.outfit:'surveyor'};if(p.hat&&!HATS.includes(p.hat))p.hat=HATS.includes(fallback?.hat)?fallback.hat:undefined;return p;}
 // A hunter as he is today: his rag after a lost hunt and his own marks (art.md 4.8), so the scene, the portraits of the
 // line and the artel, and the doorway of the report all show the same beaten man.
-export function hunterPerson(s,id,extra={}){const h=L.HUNTER.get(id);if(!h)return personOf(id,{});return {...personOf(h.id,h.look,h.lookFallback),marks:h.marks,rag:s?.hunters?.[id]?.rag||0,...extra};}
+// Back from a win this morning he carries his bag, and the trophy of a first win over a variant in his hand.
+export function hunterPerson(s,id,extra={}){const h=L.HUNTER.get(id);if(!h)return personOf(id,{});const r=s?.reports?.find(r=>r.hunter===id&&r.day===s.day&&r.win),won=r?{carry:true,...(r.trophy?{trophy:L.MON.get(r.contract.monster)?.trophy.look.c}:{})}:{};
+ return {...personOf(h.id,h.look,h.lookFallback),marks:h.marks,rag:s?.hunters?.[id]?.rag||0,...won,...extra};}
 // The person who stands for a guest of the day: a hunter, a townsperson or one of the visitors.
 export function guestPerson(v,s){if(v.kind==='hunter')return hunterPerson(s,v.who);if(v.kind==='town'){const t=L.TOWN_TYPE.get(v.who);return personOf('town-'+t.id,t.look);}
  const x=L.VISITOR.get(v.kind);return personOf(x.id,x.look,x.lookFallback);}
@@ -31,13 +33,23 @@ export const keeperPerson=s=>{const k=L.KEEPER.get(s.keeper)||L.KEEPER_LOOKS[0];
 const BEST=['young','grown','ancient'],PLAQUE={young:'#8a5e3c',grown:'#c9a050',ancient:'#c9d2d6'};
 export const bestOf=(s,id)=>{const t=s.monsters[id]?.troph||[];return BEST.filter(v=>t.includes(v)).at(-1)||null;};
 const SPINE={beast:'#6b2f2a',undead:'#4a5a4a',spirit:'#3a4a6a',serpent:'#2f5a5a',water:'#2f4a6a',cursed:'#2a2228'};
-// A flask on a shelf is filled in five steps of the doses in store (0…9 → 0…4).
-export const doseLevel=n=>Math.max(0,Math.min(4,Math.round((n||0)/P.LIMITS.doses*4)));
+// A flask on a shelf is filled in five steps of the doses in store: empty, a quarter for one to three doses … full at
+// eight and nine, so a single dose is never an empty flask (the same steps in «Алхимия»).
+export const doseLevel=n=>{n=Math.max(0,Math.min(P.LIMITS.doses,Math.floor(n||0)));return n?Math.min(4,1+Math.floor((n-1)*4/P.LIMITS.doses)):0;};
 const rareJars=s=>L.PARTS.filter(p=>p.kind==='rare'&&(s.stock[p.id]||0)>0).slice(0,5);
 // Who is in the room besides the guests of the line: Даро on his evenings and in his events, the Magister on the days he
 // comes, Федя from the day he was taken on (S2).
 export function residents(s,guests=[]){const daro=guests.some(v=>v.kind==='daro')||['S0','S8','S12'].some(e=>s.story?.days?.[e]===s.day&&s.story.seen.includes(e));
  return {daro,otto:guests.some(v=>v.kind==='otto'),fedya:!!s.story?.seen?.includes('S2')};}
+// The hunters back from a hunt this morning wait in the line in the rag they came back in (art.md 4.6), unless a new
+// case already brings them to it.
+export function returned(s,guests=[]){const seen=new Set(guests.filter(v=>v.kind==='hunter').map(v=>v.who)),out=[];
+ for(const r of s.reports||[])if(r.hunter&&r.day===s.day&&!seen.has(r.hunter)&&L.HUNTER.has(r.hunter)){seen.add(r.hunter);out.push({id:'back-'+r.hunter,kind:'hunter',who:r.hunter,back:true});}return out;}
+// Who stands where (art.md 4.6): the chosen guest at the table and up to two more in the line, then Даро in his chair,
+// the Magister by the window and Федя on the ladder. No more than four people besides Федя: with Даро and the Magister
+// both in the room one place of the line is left. Hunters back this morning wait in the line, never at the table.
+export function lineup(s,guests=[],chosen=null){const r=residents(s,guests),line=guests.filter(v=>v.kind!=='daro'&&v.kind!=='otto'),table=line.find(v=>v.id===chosen)||line[0]||null;
+ return {...r,table,line:[...line.filter(v=>v!==table),...returned(s,guests)].slice(0,r.daro&&r.otto?1:2)};}
 // The pointed arch of the window: springing at y 69 from two centres 12 px either side of the middle (art.md 4.3).
 const GLASS={x:168,y:28,w:62,h:82},ARCH={c:199,d:12,r:43,spring:69};
 function archEdges(y){if(y>=ARCH.spring)return [GLASS.x,GLASS.x+GLASS.w];const t=Math.sqrt(Math.max(0,ARCH.r*ARCH.r-(ARCH.spring-y)**2));return [ARCH.c+ARCH.d-t,ARCH.c-ARCH.d+t];}
@@ -69,13 +81,13 @@ function background(s){const c=canvas(W,H),g=c.getContext('2d'),up=new Set(s.upg
  if(up.has('infirmary')){px(g,120,150,14,8,'#eadbb8');px(g,120,150,14,1,'#ffffff');oval(g,127,154,2,2,'#c1b59a');}
  pixelLine(g,140,20,152,204,'#7a5a3c',2);pixelLine(g,150,20,162,204,'#7a5a3c',2);for(let y=36;y<200;y+=18)pixelLine(g,141+(y-20)/16,y,152+(y-20)/16,y,'#8a6a48');
  // A linen screen for the wounded, at the edge of the door (upgrade «Комната для раненых»).
- if(up.has('infirmary')){for(let i=0;i<2;i++){px(g,58+i*5,148,5,86,'#8a7a6a');px(g,59+i*5,150,3,82,'#d9d0bc');}px(g,59,170,8,1,'#eadbb8');px(g,60,186,6,3,'#eadbb8');}
+ if(up.has('infirmary')){for(let i=0;i<2;i++){const x=56+i*6;px(g,x,146,6,90,'#5e4330');px(g,x+1,148,4,84,'#d9d0bc');px(g,x+1,148,1,84,'#eadbb8');px(g,x+4,148,1,84,'#b8ad96');px(g,x,234,1,3,'#3e2b20');px(g,x+5,234,1,3,'#3e2b20');}px(g,57,168,10,2,'#eadbb8');px(g,58,170,3,6,'#eadbb8');px(g,63,170,2,4,'#c1b59a');}
  // The window frame and its sill; the glass itself is drawn every frame.
  for(let y=GLASS.y-3;y<=GLASS.y+GLASS.h;y++){const [a,b]=y<GLASS.y?archEdges(GLASS.y):archEdges(y);px(g,Math.round(a)-4,y,Math.round(b-a)+8,1,'#7a5a3c');}
  px(g,162,110,74,8,'#7a5a3c');px(g,162,110,74,1,'#9a7a54');px(g,164,118,70,2,'#3e2b20');
- // Jars of rare parts on the sill (up to five kinds), a basket of scrolls below.
- rareJars(s).forEach((p,i)=>jar(g,172+i*11,96,p));
- panel(g,172,152,52,34,'#6b4a33');for(let i=0;i<5;i++){px(g,176+i*9,146,7,8,'#d9c8a0');px(g,177+i*9,147,5,1,'#efe2c2');}
+ // A basket of scrolls under the window: rolls of three heights, one tied with a red cord, in wicker.
+ for(const [i,h] of[11,7,9,6,10].entries()){const x=175+i*9,y=152-h;px(g,x,y+1,7,h+2,'#d9c8a0');px(g,x+1,y,5,1,'#efe2c2');px(g,x+1,y+1,1,h,'#efe2c2');px(g,x+6,y+1,1,h+1,'#b8a77f');if(i===2)px(g,x,y+4,7,1,'#a3301c');}
+ panel(g,172,152,52,34,'#6b4a33');for(let y=156;y<184;y+=4)px(g,174,y,48,1,'#5a3e2b');for(let x=178;x<222;x+=8)px(g,x,153,1,32,'#7a5a3c');
  // The wall of trophies: 7×2 plaques, the best variant beaten of every monster; an empty place is a hook. The hall of
  // trophies hangs a cloth under them with brass labels; the showcase (décor) puts them behind glass.
  if(up.has('hall')){px(g,242,16,130,46,'#5a1f22');px(g,242,16,130,2,'#7a2f30');for(let x=244;x<370;x+=8)px(g,x,14,5,4,'#6a2a2c');}
@@ -100,8 +112,12 @@ function background(s){const c=canvas(W,H),g=c.getContext('2d'),up=new Set(s.upg
  chair(g,decor.has('armchair'));
  if(up.has('press')){panel(g,356,196,22,40,'#5a4630');px(g,358,204,18,3,'#3a2a20');pixelLine(g,360,198,374,198,'#8a8a92');px(g,362,214,14,8,'#d9c8a0');}
  return c;}
-// The front of the table with what lies on it, drawn over the keeper so he shows from the waist up.
-function tableFront(s){const c=canvas(W,H),g=c.getContext('2d'),up=new Set(s.upgrades),decor=new Set(s.decor||[]);
+// What stands on the sill, in front of the glass (the sky is painted over the window every frame): jars of rare parts
+// (up to five kinds) and, with the pigeon post (upgrade «Голубятня»), a letter sealed for the Academy and a dish of grain.
+function sill(g,s,up){rareJars(s).forEach((p,i)=>jar(g,172+i*11,96,p));
+ if(up.has('dovecote')){px(g,163,107,8,3,'#d9c8a0');px(g,163,107,8,1,'#efe2c2');px(g,166,108,2,2,'#a3301c');px(g,228,108,6,2,'#8a6a48');px(g,229,107,4,1,'#c9b06a');}}
+// The front of the table with what lies on it, drawn over the keeper so he shows from the waist up; the sill too.
+function tableFront(s){const c=canvas(W,H),g=c.getContext('2d'),up=new Set(s.upgrades),decor=new Set(s.decor||[]);sill(g,s,up);
  px(g,238,168,118,8,'#7a5a3c');px(g,238,168,118,1,'#9a7a54');px(g,240,176,114,36,'#5e4330');for(let x=246;x<350;x+=36){px(g,x,181,30,26,'#6b4a36');px(g,x,181,30,1,'#7e5a40');}px(g,240,210,114,2,'#3e2b20');
  // The open bestiary, or the great volume with brass clasps once it is printed.
  if(s.printed){px(g,256,152,52,18,'#1c1412');px(g,257,153,50,15,'#2e211c');px(g,259,155,46,2,'#c9a050');px(g,259,164,46,1,'#8f6c3a');px(g,280,152,4,18,'#c9a050');px(g,254,157,3,6,'#c9a050');px(g,307,157,3,6,'#c9a050');px(g,270,158,24,4,'#4a2a22');}
@@ -148,7 +164,7 @@ export function paintWindow(c,amb,time=0,{hold=false,thaw=false,dove=false,stain
   if(!calm)for(let i=0;i<4;i++){const p=((time/900+i*.27)%1);px(c,[184,193,203,212][i],gy+12+Math.round(p*84),1,2,'rgba(210,230,245,.8)');}}
  // The pigeon of the dovecote on the outer ledge, nodding once in two seconds.
  if(dove){const nod=calm?0:Math.floor(time/2000)%2&&time%2000<300?1:0;px(c,208,103,8,5,'#9a9aa2');px(c,209,104,6,2,'#c8c8d0');px(c,214+nod,100+nod,3,3,'#8a8a92');px(c,216+nod,101+nod,1,1,'#2a2420');px(c,217+nod,102+nod,1,1,'#c9a050');px(c,209,108,1,2,'#c9a050');px(c,212,108,1,2,'#c9a050');}
- c.restore();if(stain)c.drawImage(stainedPane(),0,0);c.drawImage(leadPane(),0,0);
+ c.restore();const [wx,wy,ww,wh]=[GLASS.x-1,GLASS.y-1,GLASS.w+2,GLASS.h+2];if(stain)c.drawImage(stainedPane(),wx,wy,ww,wh,wx,wy,ww,wh);c.drawImage(leadPane(),wx,wy,ww,wh,wx,wy,ww,wh);
  if(amb.season===1){px(c,164,108,70,2,hold?'#a9aaa8':'#f4f8fa');if(hold)for(const x of[170,186,207,224])px(c,x,107,3,1,'#8f908e');}
  if(thaw){px(c,164,109,70,1,'rgba(150,180,200,.6)');px(c,196,110,1,3,'rgba(150,180,200,.6)');}}
 // Light sprites, drawn once: the glow of a flame and of the hearth (no gradient is made in a frame).
@@ -160,7 +176,10 @@ function vignettePane(w=W,h=H){const key=w+'x'+h;let v=vignettes.get(key);if(v)r
 const FLAME=[['#fff1c7','#ffcf7a','#f08a3c'],['#fff1c7','#ffcf7a','#e8742c'],['#ffe7a8','#ffcf7a','#f08a3c']];
 export function flame(c,x,y,f,size=1){const [a,b,d]=FLAME[f%3];if(size<1){px(c,x+1,y-3,1,3,d);px(c,x+1,y-2,1,1,b);return;}px(c,x,y-6,3,6,d);px(c,x,y-5,3,4,b);px(c,x+1,y-4+(f%2),1,2,a);if(f===2)px(c,x+1,y-7,1,1,d);}
 // The fire of a hearth: three frames of tongues over embers (one sprite 30×14 drawn as rectangles).
-function fire(c,x,y,w,t,calm){const n=Math.floor(w/8),f=calm?0:Math.floor(t/120);for(let i=0;i<n;i++){const h=6+Math.round(noise(f,i)*6);px(c,x+i*8,y-h,6,h,i%2?'#f08a3c':'#ffcf7a');px(c,x+i*8+2,y-h+2,2,Math.max(1,h-4),'#fff1c7');}px(c,x-2,y-2,n*8+2,2,'#a3301c');}
+// Each tongue narrows upwards (edge, middle, core) over a bed of flame and embers.
+function fire(c,x,y,w,t,calm){const n=Math.floor(w/8),f=calm?0:Math.floor(t/120);px(c,x-1,y-4,n*8,3,'#f08a3c');
+ for(let i=0;i<n;i++){const h=7+Math.round(noise(f,i)*6),x0=x+i*8+(i%2),lean=Math.round(noise(f,i,5)*2)-1;px(c,x0,y-Math.round(h*.5),6,Math.round(h*.5),'#f08a3c');px(c,x0+1+lean,y-Math.round(h*.8),4,Math.round(h*.3),'#f08a3c');px(c,x0+2+lean,y-h,2,Math.round(h*.2)+1,'#ffcf7a');
+  px(c,x0+1,y-Math.round(h*.5),4,Math.round(h*.5)-1,'#ffcf7a');px(c,x0+2,y-Math.round(h*.4),2,Math.round(h*.4)-1,'#fff1c7');}px(c,x-2,y-2,n*8+2,2,'#a3301c');for(let i=0;i<n;i++)px(c,x+i*8+3,y-2,2,1,'#e8742c');}
 // The cauldron: a surface of the colour of the last potion brewed, bubbles, steam; brewing flares it with sparks (art.md 4.4).
 function cauldron(c,cx,cy,rx,t,calm,liquid,brewing){const flare=brewing&&!calm?Math.max(0,1-(t-brewing.at)/3000):0;
  oval(c,cx,cy,rx,3,flare?mix(liquid,'#ffffff',flare*.45):liquid);px(c,cx-rx+4,cy-1,6,1,shade(liquid,40));px(c,cx+4,cy+1,4,1,shade(liquid,-30));
@@ -169,10 +188,14 @@ function cauldron(c,cx,cy,rx,t,calm,liquid,brewing){const flare=brewing&&!calm?M
  if(flare)for(let i=0;i<12;i++){const p=((t-brewing.at)/3000*2+i/12)%1;px(c,cx-rx+4+((i*17)%(rx*2-8)),cy-4-Math.round(p*30),1,1,i%2?'#fff1c7':shade(liquid,60));}}
 // The door: closed, ajar, or open on the sky of the hour and the street, with a wedge of light on the floor.
 const doorArch=y=>{const dy=86-y;return dy>0?Math.sqrt(Math.max(0,22*22-dy*dy)):22;};
+// The three frames of the door are drawn once each (an open one per step of the sky and weather) and kept.
+const doors=new Map();
+function doorImage(state,amb){const key=state?`${state}|${Math.round(Math.min(.8,amb.phase)*23)}|${amb.weather}`:'0';let im=doors.get(key);if(im)return im;
+ im=canvas(64,176);const g=im.getContext('2d');g.translate(0,-60);door(g,state,state?{phase:Math.round(Math.min(.8,amb.phase)*23)/23,weather:amb.weather}:amb);doors.set(key,im);if(doors.size>8)doors.delete(doors.keys().next().value);return im;}
 function door(c,state,amb){
  if(state>0){const k=sky(Math.min(.8,amb.phase),amb.weather);for(let y=64;y<232;y++){const w=doorArch(y);px(c,Math.round(38-w),y,Math.round(2*w),1,y<196?mix(k.top,k.bottom,(y-64)/132):y<200?'#4a423c':'#6b6058');}
   for(let y=204;y<232;y+=7)for(let x=18+(y%14?0:4);x<58;x+=9)px(c,x,y,6,1,'#5a524a');
-  if(state>=1){c.save();c.globalAlpha=.22;polygon(c,[[17,233],[59,233],[120,252],[28,252]],'#ffe7b0');c.restore();}}
+}
  // The leaf fills the arch when closed, leaves a gap when ajar and stands against the wall when open.
  let right=60;for(let y=64;y<232;y++){const w=doorArch(y),a=Math.round(38-w),b=Math.round(38+w),r=state>=1?a+7:state>0?b-8:b;px(c,a,y,r-a,1,'#5a3d2a');if(state>0)px(c,r,y,1,1,'#2a1c14');if(y===150)right=r;}
  if(state<1){for(let x=24;x<right-3;x+=8)pixelLine(c,x,78,x,230,'#4a3222');for(const y of[96,150,204]){px(c,18,y,right-20,3,'#3a3634');for(let x=21;x<right-3;x+=9)px(c,x,y+1,1,1,'#9a8f80');}px(c,right-9,148,3,6,'#9a8f80');}
@@ -187,13 +210,12 @@ export class ScriptoriumScene{
  layers(s){const key=this.key(s);let l=this.bg.get(key);if(!l){l={bg:background(s),front:tableFront(s)};this.bg.set(key,l);if(this.bg.size>4)this.bg.delete(this.bg.keys().next().value);}return l;}
  // A potion brewed in «Опыты»: the cauldron flares in its colour for three seconds and keeps it.
  brew(potion,time){const p=L.POT.get(potion);if(!p)return;this.liquid=p.look?.liquid||this.liquid;this.brewing={at:time};}
- // The guests in view: the chosen one at the table, then up to two more of the line; Даро and the Magister have their
- // own places and are not in the line.
- cast(list,chosen){const line=list.filter(v=>v.kind!=='daro'&&v.kind!=='otto'),first=line.find(v=>v.id===chosen)||line[0];return first?[first,...line.filter(v=>v!==first).slice(0,2)]:[];}
  // Everyone to draw with their place and pose; actors keep their walk between frames.
- people(s,guests,chosen,time,dt,calm){const r=residents(s,guests),cast=this.cast(guests,chosen),want=new Map();
+ people(s,guests,chosen,time,dt,calm){const r=lineup(s,guests,chosen),want=new Map();
+  // Даро sits in front of the first place of the line, the Magister stands at the third.
   const free=SPOTS.line.filter((_,i)=>!(i===0&&r.daro)&&!(i===2&&r.otto));
-  cast.forEach((v,i)=>want.set(v.id,{person:guestPerson(v,s),spot:i===0?SPOTS.table:free[i-1]||SPOTS.line[1],pose:i===0?'chat':'idle',table:i===0}));
+  if(r.table)want.set(r.table.id,{person:guestPerson(r.table,s),spot:SPOTS.table,pose:'chat',table:true});
+  r.line.forEach((v,i)=>want.set(v.id,{person:guestPerson(v,s),spot:free[i],pose:'idle'}));
   if(r.daro)want.set('#daro',{person:visitorPerson('daro'),spot:SPOTS.chair,pose:'sit',fixed:true});
   if(r.otto)want.set('#otto',{person:visitorPerson('otto'),spot:SPOTS.window,pose:'browse',walk:true});
   if(r.fedya)want.set('#fedya',{person:visitorPerson('fedya'),spot:SPOTS.ladder,pose:'browse',facing:'left',fixed:true,scale:1.15});
@@ -211,11 +233,12 @@ export class ScriptoriumScene{
     if(a.table&&!calm&&time-a.arrived<560&&this.seen){a.pose='bow';a.poseStarted=a.arrived;}else{a.pose=w.pose;if(a.pose!=='bow')a.poseStarted=Math.floor(time/3400)*3400;}}
    shown.push(a);}
   this.seen=true;return shown;}
- paint(c,s,{guests=[],chosen=null,time=0,dt=.05,amb=ambience(s),calm=false}={}){
+ paint(c,s,{guests=[],chosen=null,time=0,dt=.05,amb=ambience(s),calm=false,covered=false}={}){
   const {bg,front}=this.layers(s),t=calm?0:time,f=calm?0:Math.floor(noise(Math.floor(t/120),3)*3),max=P.candleMax(s),left=P.candlesLeft(s),up=s.upgrades,decor=s.decor||[];
-  // A new trophy flashes on its plaque; a candle just spent shrinks and smokes (art.md 4.4, 6.1).
-  const best=L.MONSTERS.map(m=>bestOf(s,m.id)||'-').join(',');if(this.best!==null&&best!==this.best&&!calm){const was=this.best.split(',');best.split(',').forEach((b,i)=>{if(b!==was[i]&&b!=='-')this.flash.push({i,at:time});});}this.best=best;
-  if(this.left!==null&&left<this.left&&!calm)this.spent={i:left,at:time};this.left=left;
+  // A new trophy flashes on its plaque; a candle just spent shrinks and smokes (art.md 4.4, 6.1). A frame painted under
+  // a dialog (the report of the morning) keeps the news for the first frame that is seen.
+  const best=L.MONSTERS.map(m=>bestOf(s,m.id)||'-').join(',');if(this.best===null||!covered){if(this.best!==null&&best!==this.best&&!calm){const was=this.best.split(',');best.split(',').forEach((b,i)=>{if(b!==was[i]&&b!=='-')this.flash.push({i,at:time});});}this.best=best;
+   if(this.left!==null&&left<this.left&&!calm)this.spent={i:left,at:time};this.left=left;}
   c.clearRect(0,0,W,H);c.imageSmoothingEnabled=false;c.drawImage(bg,0,0);
   paintWindow(c,amb,t,{hold:!!s.story?.hold,thaw:(s.story?.thaw||0)>0,dove:up.includes('dovecote'),stain:decor.includes('stained'),calm});
   // The candles of the day on the ledge: burning ones, the one just spent going out, stubs with a curl of smoke.
@@ -230,7 +253,9 @@ export class ScriptoriumScene{
   const dark=Math.max(0,Math.min(1,(amb.phase-.8)*5));if(!calm&&dark<1){c.globalAlpha=.5*(1-dark);for(let i=0;i<12;i++){const p=((t*.00004+i*.083)%1),x=180+Math.round(i*9+p*40+Math.sin(t*.0007+i)*4),y=70+Math.round(((i*37)%150)+p*20)%170;px(c,x,y,1,1,'#fff1c7');}c.globalAlpha=1;}
   // People: the guests come in by the door; the keeper writes when nobody is there and talks when a guest is chosen.
   const shown=this.people(s,guests,chosen,time,dt,calm),inDoor=shown.some(a=>a.path.length&&a.x<110),target=inDoor?1:0;
-  if(target&&!this.opening&&!calm)this.onDoor?.();this.opening=!!target;this.door=calm?0:Math.max(0,Math.min(1,this.door+(target?1:-1)*dt*5));door(c,this.door>.66?1:this.door>.2?.5:0,amb);
+  if(target&&!this.opening&&!calm)this.onDoor?.();this.opening=!!target;this.door=calm?0:Math.max(0,Math.min(1,this.door+(target?1:-1)*dt*5));c.drawImage(doorImage(this.door>.66?1:this.door>.2?.5:0,amb),0,60);
+  // An open door lets a wedge of daylight onto the floor.
+  if(this.door>.66){c.save();c.globalAlpha=.22;polygon(c,[[17,233],[59,233],[120,252],[28,252]],'#ffe7b0');c.restore();}
   const k=this.keeper,talk=shown.some(a=>a.table&&!a.leaving);k.pose=talk?'chat':'write';k.facing='down';k.poseStarted=talk?Math.floor(time/3400)*3400:0;paintCharacter(c,{...k,shadow:false},keeperPerson(s),t/1000,1.35);
   c.drawImage(front,0,0);flame(c,332,154,f);if(up.includes('candle1'))flame(c,244,150,(f+1)%3);if(decor.includes('lamp')&&!calm)px(c,255,153,2,3,f%2?'#ffe0a0':'#fff1c7');
   for(const a of shown.sort((a,b)=>a.y-b.y))paintCharacter(c,a,a.person,t/1000,a.scale);
@@ -251,12 +276,13 @@ export class ScriptoriumScene{
  labKey(s){return [s.upgrades.includes('still')?1:0,L.MATERIALS.filter(m=>m.kind==='herb'&&(s.stock[m.id]||0)>0).map(m=>m.id).join(','),L.PARTS.filter(p=>(s.stock[p.id]||0)>0).map(p=>p.id).slice(0,12).join(','),L.POTIONS.map(p=>doseLevel(s.potions[p.id])+(s.recipes.includes(p.id)?'r':'')).join('')].join('|');}
  paintLab(c,s,{time=0,dt=.05,amb=ambience(s),calm=false}={}){const key=this.labKey(s);let bg=this.labBg.get(key);if(!bg){bg=labBackground(s);this.labBg.set(key,bg);if(this.labBg.size>3)this.labBg.delete(this.labBg.keys().next().value);}
   const t=calm?0:time,f=calm?0:Math.floor(noise(Math.floor(t/120),5)*3),dark=Math.max(0,Math.min(1,(amb.phase-.8)*5));c.clearRect(0,0,LAB.w,LAB.h);c.imageSmoothingEnabled=false;c.drawImage(bg,0,0);
-  fire(c,212,132,58,t,calm);cauldron(c,240,82,36,t,calm,this.liquid,this.brewing);flame(c,330,40,f);
-  paintCharacter(c,{x:306,y:142,facing:'left',pose:'stir',poseStarted:0,shadow:true},keeperPerson(s),t/1000,1.3);
+  // The keeper stands at the pot and stirs: his ladle goes in over the rim and the front of the pot hides it.
+  fire(c,214,140,56,t,calm);cauldron(c,242,100,34,t,calm,this.liquid,this.brewing);flame(c,330,40,f);
+  paintCharacter(c,{x:294,y:146,facing:'left',pose:'stir',poseStarted:calm?0:Math.floor(t/660)*660,shadow:true},keeperPerson(s),t/1000,1.55);c.drawImage(potFront(),0,0);
   const k2=sky(amb.phase,amb.weather),flick=calm?1:.85+.15*Math.sin(t*.011)*Math.sin(t*.0037);
   if(k2.tint!=='#ffffff'){c.save();c.globalCompositeOperation='multiply';c.fillStyle=k2.tint;c.fillRect(0,0,LAB.w,LAB.h);c.restore();}
-  c.save();c.globalCompositeOperation='lighter';c.globalAlpha=.32*flick*(1+.5*dark);c.drawImage(glow('rgba(240,138,60,.9)',90),240-90,120-90);c.globalAlpha=.2*flick;c.drawImage(glow('rgba(255,207,122,.9)',50),331-50,36-50);
-  if(this.brewing&&!calm&&time-this.brewing.at<3000){c.globalAlpha=.4*(1-(time-this.brewing.at)/3000);c.drawImage(glow(this.liquid,70),240-70,80-70);}
+  c.save();c.globalCompositeOperation='lighter';c.globalAlpha=.32*flick*(1+.5*dark);c.drawImage(glow('rgba(240,138,60,.9)',90),242-90,132-90);c.globalAlpha=.2*flick;c.drawImage(glow('rgba(255,207,122,.9)',50),331-50,36-50);
+  if(this.brewing&&!calm&&time-this.brewing.at<3000){c.globalAlpha=.4*(1-(time-this.brewing.at)/3000);c.drawImage(glow(this.liquid,70),242-70,100-70);}
   c.restore();c.drawImage(vignettePane(LAB.w,LAB.h),0,0);}
  // ---- «Порог» of the morning report (art.md 3.9): the hunter in the doorway against the morning sky, 240×80.
  paintThreshold(c,person,{weather='clear',season=0}={}){const key=weather+'|'+season;let bg=this.thresholds.get(key);if(!bg){bg=thresholdBackground(weather,season);this.thresholds.set(key,bg);}
@@ -280,13 +306,19 @@ function labBackground(s){const c=canvas(LAB.w,LAB.h),g=c.getContext('2d');px(g,
  for(let y=20;y<138;y++){const dy=y-20,w=y<60?Math.sqrt(Math.max(0,62*62-(62-dy-22)**2)):62;px(g,Math.round(240-w),y,Math.round(2*w),1,'#4a4038');}
  for(let y=30;y<138;y++){const dy=y-30,w=y<64?Math.sqrt(Math.max(0,50*50-(50-dy-16)**2)):50;px(g,Math.round(240-w),y,Math.round(2*w),1,'#1a1410');}
  for(let y=26;y<138;y+=10)for(let x=180+(y%20?0:7);x<300;x+=14){px(g,x,y,13,1,'#3a322c');}
- polygon(g,[[202,80],[278,80],[270,122],[210,122]],'#2a2622');polygon(g,[[205,83],[275,83],[268,119],[212,119]],'#3a3632');px(g,202,79,76,4,'#4a4440');px(g,206,86,3,26,'#4a4642');pixelLine(g,212,122,204,136,'#3a3634',2);pixelLine(g,268,122,276,136,'#3a3634',2);
+ // The back of the pot and the far leg of its tripod; the front is drawn over the keeper's ladle (potFront).
+ polygon(g,[[206,98],[278,98],[278,104],[206,104]],'#2a2622');pixelLine(g,242,126,242,142,'#2a2622',2);
  // The shelf of potions and a candle on it; the still when there is one.
  px(g,316,56,152,3,'#7a5a3c');px(g,316,59,152,1,'#3e2b20');px(g,326,40,8,16,'#e8dcc0');px(g,324,54,12,2,'#c9a050');
  L.POTIONS.forEach((p,i)=>{const x=338+i*13,n=s.potions[p.id]||0;if(!n&&!s.recipes.includes(p.id))return;paintGrid(g,flaskGrid(p.look,doseLevel(n)/4),x,40);});
  if(s.upgrades.includes('still')){panel(g,430,82,26,38,'#a86a3a');oval(g,443,80,9,5,'#c9883a');pixelLine(g,443,75,420,62,'#c9883a',2);px(g,432,96,22,1,'#e0a060');px(g,434,120,4,18,'#5e4330');px(g,448,120,4,18,'#5e4330');}
  px(g,316,104,60,4,'#5e4330');px(g,320,108,3,30,'#3e2b20');px(g,368,108,3,30,'#3e2b20');oval(g,334,100,6,4,'#8a8a82');pixelLine(g,334,96,344,88,'#6b4a33',2);
  return c;}
+// The front of the pot of the strip with its rim and two legs of the tripod, drawn once.
+let pot=null;
+function potFront(){if(pot)return pot;pot=canvas(LAB.w,LAB.h);const g=pot.getContext('2d');
+ polygon(g,[[206,102],[278,102],[270,130],[214,130]],'#2a2622');polygon(g,[[209,104],[275,104],[268,127],[216,127]],'#3a3632');px(g,204,99,74,4,'#4a4440');px(g,205,99,72,1,'#6a625a');px(g,212,106,3,18,'#4a4642');px(g,216,127,52,1,'#22201c');
+ pixelLine(g,218,130,208,144,'#3a3634',2);pixelLine(g,266,130,276,144,'#3a3634',2);return pot;}
 // The doorway of the morning: a stone arch, the morning sky and the street of Velen, the weather of the day.
 function thresholdBackground(weather,season){const c=canvas(THRESHOLD.w,THRESHOLD.h),g=c.getContext('2d'),k=sky(.04,weather);
  px(g,0,0,THRESHOLD.w,THRESHOLD.h,'#2e251f');for(let y=0,row=0;y<THRESHOLD.h;y+=12,row++)for(let x=-(row%2?14:0);x<THRESHOLD.w;x+=28){px(g,x+1,y+1,26,10,'#4a3e34');px(g,x+1,y+1,26,1,'#5a4b3e');}

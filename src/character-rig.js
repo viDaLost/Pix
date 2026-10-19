@@ -38,7 +38,7 @@ export function characterRig(facing='right',pose='idle',frame=0,temper='water',b
   else if(pose==='browse'){near=[46+[0,1,2,1,0,-1][frame%6],34+frame%2];}
   // The quill runs along the line of the book; the ladle goes round the cauldron; a book is held in both hands.
   else if(pose==='write'){near=[46+[0,1,2,1,0,-1][frame%6],41];far=[side?30:26,42];tool=[near[0]+5,near[1]-5];}
-  else if(pose==='stir'){near=[44+Math.round(2*Math.cos(frame*Math.PI/3)),40+Math.round(Math.sin(frame*Math.PI/3))];far=[side?31:27,43];tool=[near[0],near[1]+14];}
+  else if(pose==='stir'){near=[44+Math.round(2*Math.cos(frame*Math.PI/3)),40+Math.round(Math.sin(frame*Math.PI/3))];far=[side?31:27,43];tool=[near[0]+4,near[1]+13];}
   else if(pose==='read'){near=[38,40];far=[30,41];}
   else if(pose==='sit'){near=[side?44:43,45];far=[side?33:24,45];}
   if(sling)near=[...(side?SLING.side:SLING.front)];

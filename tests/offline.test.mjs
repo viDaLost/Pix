@@ -22,6 +22,10 @@ test('the page is «Бестиарий Велена»: title, description, splas
  assert.equal(man.name,'Бестиарий Велена');assert.equal(man.short_name,'Бестиарий');assert.equal(man.background_color,'#120e0b');assert.equal(man.theme_color,'#120e0b');
  assert.match(svg,/viewBox="0 0 64 64"/);assert.match(svg,/#ecdfbf/);assert.match(svg,/#a3301c/);
  for(const n of[192,512]){const png=readFileSync(new URL(`assets/icon-${n}.png`,root));assert.equal(png.readUInt32BE(16),n);assert.equal(png.readUInt32BE(20),n);}
+ // Г3: a maskable icon of its own, the drawing inside the safe circle on a full-bleed square, so a round mask cuts nothing.
+ const mask=man.icons.find(i=>i.purpose==='maskable');assert.equal(mask?.src,'./assets/icon-maskable-512.png');assert.ok(man.icons.filter(i=>i.purpose.includes('maskable')).length===1,'the rounded icon is not offered as maskable');
+ const mpng=readFileSync(new URL('assets/icon-maskable-512.png',root));assert.equal(mpng.readUInt32BE(16),512);assert.equal(mpng.readUInt32BE(20),512);
+ for(const i of man.icons)assert.ok(FILES.includes(i.src.slice(2)),`${i.src} is cached`);
 });
 test('the page, its stylesheet fonts and icons are cached, and every cached file exists',()=>{
  for(const file of FILES)if(file)assert.ok(existsSync(new URL(file,root)),`${file} listed in sw.js does not exist`);

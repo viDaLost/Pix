@@ -87,3 +87,9 @@ test('the sheet keeps exactly one entry in the history: none left after sending,
  assert.match(app,/else if\(sheet&&!history\.state\?\.sheet\)history\.pushState\(\{sheet:1\},''\);else if\(!sheet&&history\.state\?\.sheet\)\{ignorePop=true;history\.back\(\);\}/);
  assert.match(app,/loadError\?'reset-recovery':'reset-game'/,'a damaged save offers its own «Начать заново»');
 });
+// Found in Г3: the note of a sheet sent just before the night («ушёл на дело… Ответ — утром») still lay over the report
+// of the morning on a small phone; the notes of the day go with the night, errors stay.
+test('the notes of the day are dropped at night, so none covers the report of the morning',()=>{
+ const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');assert.match(app,/try\{res=P\.endDay\(state\);\}catch\(e\)\{crash\(e\);return;\}\n \/\/[^\n]*\n if\(toasts\.drop\(t=>t\.kind!=='error'\)\)showToast\(\);/);
+ const q=new ToastQueue();q.add(toastSpec('Гордей ушёл на дело')) ;q.add(toastSpec('Не получилось.',true));q.add(toastSpec('Ещё одна весть'));q.drop(t=>t.kind!=='error');assert.deepEqual([q.now,...q.waiting].filter(Boolean).map(t=>t.kind),['error']);
+});

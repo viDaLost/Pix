@@ -70,7 +70,8 @@ export function playEffect(ctx,out,kind='good',time=ctx.currentTime,track,{step=
   else if(kind==='stamp-none')seal(ctx,out,time,track,.65);
   else if(kind==='stamp-worse'){seal(ctx,out,time,track);for(const f of[92,97.5])glide(ctx,out,time,.42,.05,f,f,'sawtooth',track,{filter:'lowpass',cutoff:600});}
   else if(kind==='learn')for(const [i,n] of[74,78,81].entries())tone(ctx,out,hz(n),time+i*.07,.3,.035,'triangle',track);
-  else if(kind==='roll'){let at=time;for(const gap of[.06,.07,.085,.1,.12,.15,.19,.24]){noise(ctx,out,at,.018,.05,2400,'bandpass',track,{q:2});at+=gap;}
+  // The medal of chance: eight clicks slowing down, then it lands; step 1 is the quick roll of the short report.
+  else if(kind==='roll'){let at=time;const k=step?.42:1;for(const gap of[.06,.07,.085,.1,.12,.15,.19,.24]){noise(ctx,out,at,.018,.05,2400,'bandpass',track,{q:2});at+=gap*k;}
     for(const [i,f] of[220,690,1100].entries())tone(ctx,out,f,at,[.12,.18,.11][i],[.13,.08,.04][i],'sine',track);}
   else if(kind==='door'){glide(ctx,out,time,.38,.03,110,150,'sawtooth',track,{filter:'bandpass',cutoff:900,q:4});for(const d of[.42,.66]){noise(ctx,out,time+d,.065,.045,220,'lowpass',track);tone(ctx,out,92,time+d,.05,.025,'sine',track);}}
   else if(kind==='snuff')noise(ctx,out,time,.12,.06,1500,'highpass',track);
@@ -79,6 +80,23 @@ export function playEffect(ctx,out,kind='good',time=ctx.currentTime,track,{step=
   else if(kind==='brew'){for(const [i,n] of[74,77,81].entries())tone(ctx,out,hz(n),time+i*.09,.4,.045,'triangle',track);for(let i=0;i<5;i++){const f=220+rnd()*220;glide(ctx,out,time+.3+i*.11,.07,.018,f,f*1.3,'sine',track);}}
   else{tone(ctx,out,440,time,.18,.045,'triangle',track);tone(ctx,out,660,time+.08,.2,.035,'sine',track);}
 }
+// The sounds of a morning report in time (art.md 3.9, 6.2), for the window that shows it: the door, the medal of chance
+// that lands with the verdict, two steps of the hunter, then a stamp for every piece of advice he saw (none for what he
+// did not notice) and «learn» where the bestiary changed, the coin of a reward. The plan is short from the tenth report
+// (no door, a quick medal, stamps every 220 ms) and with less motion only one «hit», without vibration. buzz is the
+// vibration of the moment: the verdict with the medal, the triple beat of a harmful stamp.
+export function reportSounds(r,{short=false,reduced=false}={}){
+ if(reduced)return [{t:0,kind:'hit'}];
+ const out=[],land=short?450:1300,first=short?750:2150,gap=short?220:550,worse=(r.items||[]).some(i=>i.seen&&i.o==='worse');
+ if(!short)out.push({t:0,kind:'door'});out.push({t:short?0:400,kind:'roll',step:short?1:0},{t:land,kind:null,buzz:r.win?'win':'fail'});
+ if(!short)out.push({t:1300,kind:'step'},{t:1500,kind:'step'});
+ (r.items||[]).forEach((it,i)=>{if(!it.seen)return;const t=first+gap*i;out.push({t,kind:'stamp-'+(it.o==='ok'?'ok':it.o==='worse'?'worse':'none'),...(it.o==='worse'?{buzz:'worse'}:{})});if(it.from!==it.to)out.push({t:t+150,kind:'learn'});});
+ if(r.win&&r.offer)out.push({t:short?1400:3550,kind:'coin'});
+ return out.sort((a,b)=>a.t-b.t);}
+// Vibration (art.md 6.2), when the player keeps it on and motion is not reduced: a seal 10 ms, the medal landing 20 ms,
+// «Во вред» a triple beat, a victory a rising one, a loss one long pulse. Returns whether the phone was asked.
+export const HAPTICS={seal:10,roll:20,worse:[25,40,25],win:[15,30,40],fail:35};
+export function vibrate(kind,{on=true,calm=false,nav=globalThis.navigator}={}){const p=HAPTICS[kind];if(!on||calm||p==null||typeof nav?.vibrate!=='function')return false;try{return nav.vibrate(p)!==false;}catch{return false;}}
 export function playMusicTick(ctx,out,scene,index,time,track){
   const score=SCORES[scene]||SCORES.scriptorium,bar=Math.floor(index/8)%8,beat=index%8,secondPass=Math.floor(index/64)%2,root=score.roots[bar];
   const raw=score.bars[bar][beat];
