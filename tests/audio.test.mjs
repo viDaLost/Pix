@@ -110,4 +110,6 @@ test('vibration follows the setting and less motion, with the patterns of art.md
  assert.match(app,/const buzz=kind=>vibrate\(kind,\{on:state\.haptics!==false,calm:still\(\)\}\);/);assert.match(app,/'seal'\)\)\{buzz\('seal'\);/,'the seal of a sent sheet');
  assert.match(app,/reportSounds\(r,\{short:state\.stats\.hunts>=10,reduced:still\(\)\}\)/);assert.match(app,/if\(!dialog\.open\|\|dialog\.dataset\.report!==r\.id\)return;/,'nothing sounds once the report is closed');
  assert.match(app,/case'toggle-haptics':state\.haptics=state\.haptics===false;/);
+ // Found in the review of Г3: an old report opened again from the chronicle clicked its medal and buzzed once more.
+ assert.match(app,/function hearReport\(r\)\{if\(r\.read\|\|heardReports\.has\(r\.id\)\)return;/,'a report already read opens quietly');
 });

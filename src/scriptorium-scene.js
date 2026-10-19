@@ -41,15 +41,18 @@ const rareJars=s=>L.PARTS.filter(p=>p.kind==='rare'&&(s.stock[p.id]||0)>0).slice
 // comes, Федя from the day he was taken on (S2).
 export function residents(s,guests=[]){const daro=guests.some(v=>v.kind==='daro')||['S0','S8','S12'].some(e=>s.story?.days?.[e]===s.day&&s.story.seen.includes(e));
  return {daro,otto:guests.some(v=>v.kind==='otto'),fedya:!!s.story?.seen?.includes('S2')};}
-// The hunters back from a hunt this morning wait in the line in the rag they came back in (art.md 4.6), unless a new
-// case already brings them to it.
+// The hunters back from a hunt this morning wait in the line in the rag they came back in (art.md 4.6), the most beaten
+// first, unless a new case already brings them to it. One who took offence («не придёт N дней») has gone home.
 export function returned(s,guests=[]){const seen=new Set(guests.filter(v=>v.kind==='hunter').map(v=>v.who)),out=[];
- for(const r of s.reports||[])if(r.hunter&&r.day===s.day&&!seen.has(r.hunter)&&L.HUNTER.has(r.hunter)){seen.add(r.hunter);out.push({id:'back-'+r.hunter,kind:'hunter',who:r.hunter,back:true});}return out;}
+ for(const r of s.reports||[])if(r.hunter&&r.day===s.day&&!seen.has(r.hunter)&&L.HUNTER.has(r.hunter)&&!(s.hunters?.[r.hunter]?.sulk>0)){seen.add(r.hunter);out.push({id:'back-'+r.hunter,kind:'hunter',who:r.hunter,back:true});}
+ const rag=v=>s.hunters?.[v.who]?.rag||0;return out.sort((a,b)=>rag(b)-rag(a));}
 // Who stands where (art.md 4.6): the chosen guest at the table and up to two more in the line, then Даро in his chair,
 // the Magister by the window and Федя on the ladder. No more than four people besides Федя: with Даро and the Magister
-// both in the room one place of the line is left. Hunters back this morning wait in the line, never at the table.
+// both in the room one place of the line is left. Hunters back this morning wait in the line, never at the table, and
+// before the guests of the queue: the beaten hunter is seen in his rags however full the morning is (brief, GDD 4.4);
+// the guests left out are in the ribbon of the queue.
 export function lineup(s,guests=[],chosen=null){const r=residents(s,guests),line=guests.filter(v=>v.kind!=='daro'&&v.kind!=='otto'),table=line.find(v=>v.id===chosen)||line[0]||null;
- return {...r,table,line:[...line.filter(v=>v!==table),...returned(s,guests)].slice(0,r.daro&&r.otto?1:2)};}
+ return {...r,table,line:[...returned(s,guests),...line.filter(v=>v!==table)].slice(0,r.daro&&r.otto?1:2)};}
 // The pointed arch of the window: springing at y 69 from two centres 12 px either side of the middle (art.md 4.3).
 const GLASS={x:168,y:28,w:62,h:82},ARCH={c:199,d:12,r:43,spring:69};
 function archEdges(y){if(y>=ARCH.spring)return [GLASS.x,GLASS.x+GLASS.w];const t=Math.sqrt(Math.max(0,ARCH.r*ARCH.r-(ARCH.spring-y)**2));return [ARCH.c+ARCH.d-t,ARCH.c-ARCH.d+t];}
@@ -127,15 +130,16 @@ function tableFront(s){const c=canvas(W,H),g=c.getContext('2d'),up=new Set(s.upg
  if(decor.has('lamp')){px(g,252,162,8,6,'#a8703a');px(g,253,156,6,6,'#c98a4a');px(g,250,152,3,10,'#d9a060');px(g,255,154,2,2,'#ffe0a0');}
  if(up.has('lens')){pixelLine(g,346,168,346,158,'#a87a3a');px(g,342,151,9,9,'#a87a3a');px(g,343,152,7,7,'#cfe3e8');px(g,344,153,2,2,'#ffffff');}
  return c;}
-// The sky and hills behind the glass, cached for 24 steps of the day × weather × season (the twelve latest kept).
-const skies=new Map();
-function skyPane(amb,w=GLASS.w,h=GLASS.h){const step=Math.round(amb.phase*23),key=`${step}|${amb.weather}|${amb.season}|${w}x${h}`;let pane=skies.get(key);if(pane){skies.delete(key);skies.set(key,pane);return pane;}
+// The sky and hills behind the glass, cached for 24 steps of the day × weather × season (the twelve latest kept). The
+// snow of the Black Winter is grey with soot (GDD 1.5): on the hills, on the roofs and on the sill alike.
+const skies=new Map(),SOOT='#a9aaa8';
+function skyPane(amb,hold=false,w=GLASS.w,h=GLASS.h){const step=Math.round(amb.phase*23),key=`${step}|${amb.weather}|${amb.season}|${hold?1:0}|${w}x${h}`;let pane=skies.get(key);if(pane){skies.delete(key);skies.set(key,pane);return pane;}
  pane=canvas(w,h);const g=pane.getContext('2d'),k=sky(step/23,amb.weather);
  for(let y=0;y<h;y+=4)px(g,0,y,w,4,mix(k.top,k.bottom,y/(h*.8)));
- const hill=mix(HILLS[amb.season],k.hill,.25+.5*Math.max(0,Math.min(1,(step/23-.8)*5))),sx=w/62,sy=h/82;polygon(g,[[0,58*sy],[18*sx,44*sy],[36*sx,54*sy],[w,40*sy],[w,h],[0,h]],hill);
+ const hill=mix(hold&&amb.season===1?SOOT:HILLS[amb.season],k.hill,.25+.5*Math.max(0,Math.min(1,(step/23-.8)*5))),sx=w/62,sy=h/82;polygon(g,[[0,58*sy],[18*sx,44*sy],[36*sx,54*sy],[w,40*sy],[w,h],[0,h]],hill);
  // The roofs of Velen below: a spire and a few gables.
  const roof=shade(hill,-26);polygon(g,[[0,70*sy],[8*sx,64*sy],[14*sx,68*sy],[22*sx,60*sy],[30*sx,66*sy],[40*sx,62*sy],[48*sx,67*sy],[w,63*sy],[w,h],[0,h]],roof);px(g,37*sx,50*sy,2,13*sy,roof);polygon(g,[[36*sx,51*sy],[38*sx,44*sy],[40*sx,51*sy]],roof);
- if(amb.season===1)px(g,0,70*sy,w,1,'#e6eaec');
+ if(amb.season===1)px(g,0,70*sy,w,1,hold?SOOT:'#e6eaec');
  skies.set(key,pane);if(skies.size>12)skies.delete(skies.keys().next().value);return pane;}
 let lead=null,stained=null;
 // The leaded diamonds over the glass: lines every 8 px in both diagonals, drawn once.
@@ -149,7 +153,7 @@ function stainedPane(){if(stained)return stained;stained=canvas(W,H);const g=sta
 // The window is alive over the cached room: sky of the hour, clouds, rain (drops crawl down the glass), snow (grey under
 // the Black Winter) or fog, the drip of the thaw, stars and the moon of the day at night, the pigeon of the dovecote.
 export function paintWindow(c,amb,time=0,{hold=false,thaw=false,dove=false,stain=false,calm=false}={}){const dark=Math.max(0,Math.min(1,(amb.phase-.8)*5)),wet=amb.weather!=='clear',gx=GLASS.x,gy=GLASS.y;
- c.save();archClip(c);c.drawImage(skyPane(amb),gx,gy);
+ c.save();archClip(c);c.drawImage(skyPane(amb,hold),gx,gy);
  if(dark>0){for(let i=0;i<8;i++){const sx=gx+2+Math.floor(dayHash(31+i,7)*58),sy=gy+4+Math.floor(dayHash(i,3)*34);c.globalAlpha=dark*(.55+.45*Math.sin(time*.003+i*2.1));px(c,sx,sy,1,1,'#fff6d8');}
   const m=amb.moon??4,mx=gx+46,my=gy+14;c.globalAlpha=dark*(m===0?.25:1);if(m===4){c.globalAlpha=dark*.25;px(c,mx-5,my-5,11,11,'#fff6d8');c.globalAlpha=dark;}
   if(m===0){px(c,mx-3,my-3,7,1,'#fff6d8');px(c,mx-3,my+3,7,1,'#fff6d8');px(c,mx-3,my-3,1,7,'#fff6d8');px(c,mx+3,my-3,1,7,'#fff6d8');}
@@ -165,7 +169,7 @@ export function paintWindow(c,amb,time=0,{hold=false,thaw=false,dove=false,stain
  // The pigeon of the dovecote on the outer ledge, nodding once in two seconds.
  if(dove){const nod=calm?0:Math.floor(time/2000)%2&&time%2000<300?1:0;px(c,208,103,8,5,'#9a9aa2');px(c,209,104,6,2,'#c8c8d0');px(c,214+nod,100+nod,3,3,'#8a8a92');px(c,216+nod,101+nod,1,1,'#2a2420');px(c,217+nod,102+nod,1,1,'#c9a050');px(c,209,108,1,2,'#c9a050');px(c,212,108,1,2,'#c9a050');}
  c.restore();const [wx,wy,ww,wh]=[GLASS.x-1,GLASS.y-1,GLASS.w+2,GLASS.h+2];if(stain)c.drawImage(stainedPane(),wx,wy,ww,wh,wx,wy,ww,wh);c.drawImage(leadPane(),wx,wy,ww,wh,wx,wy,ww,wh);
- if(amb.season===1){px(c,164,108,70,2,hold?'#a9aaa8':'#f4f8fa');if(hold)for(const x of[170,186,207,224])px(c,x,107,3,1,'#8f908e');}
+ if(amb.season===1){px(c,164,108,70,2,hold?SOOT:'#f4f8fa');if(hold)for(const x of[170,186,207,224])px(c,x,107,3,1,'#8f908e');}
  if(thaw){px(c,164,109,70,1,'rgba(150,180,200,.6)');px(c,196,110,1,3,'rgba(150,180,200,.6)');}}
 // Light sprites, drawn once: the glow of a flame and of the hearth (no gradient is made in a frame).
 const glows=new Map();
@@ -285,7 +289,7 @@ export class ScriptoriumScene{
   if(this.brewing&&!calm&&time-this.brewing.at<3000){c.globalAlpha=.4*(1-(time-this.brewing.at)/3000);c.drawImage(glow(this.liquid,70),242-70,100-70);}
   c.restore();c.drawImage(vignettePane(LAB.w,LAB.h),0,0);}
  // ---- «Порог» of the morning report (art.md 3.9): the hunter in the doorway against the morning sky, 240×80.
- paintThreshold(c,person,{weather='clear',season=0}={}){const key=weather+'|'+season;let bg=this.thresholds.get(key);if(!bg){bg=thresholdBackground(weather,season);this.thresholds.set(key,bg);}
+ paintThreshold(c,person,{weather='clear',season=0,hold=false}={}){const key=weather+'|'+season+'|'+(hold?1:0);let bg=this.thresholds.get(key);if(!bg){bg=thresholdBackground(weather,season,hold);this.thresholds.set(key,bg);}
   c.clearRect(0,0,THRESHOLD.w,THRESHOLD.h);c.imageSmoothingEnabled=false;c.drawImage(bg,0,0);paintCharacter(c,{x:120,y:77,facing:'down',pose:'idle',poseStarted:0},person,0,1.05);
   c.save();c.globalCompositeOperation='lighter';c.globalAlpha=.16;c.drawImage(glow('rgba(255,236,190,.9)',60),120-60,40-60);c.restore();c.drawImage(vignettePane(THRESHOLD.w,THRESHOLD.h),0,0);}
  // What a tap on the strip of the laboratory means: the cauldron and the potions lead to «Алхимия», the jars to «Образцы».
@@ -320,14 +324,14 @@ function potFront(){if(pot)return pot;pot=canvas(LAB.w,LAB.h);const g=pot.getCon
  polygon(g,[[206,102],[278,102],[270,130],[214,130]],'#2a2622');polygon(g,[[209,104],[275,104],[268,127],[216,127]],'#3a3632');px(g,204,99,74,4,'#4a4440');px(g,205,99,72,1,'#6a625a');px(g,212,106,3,18,'#4a4642');px(g,216,127,52,1,'#22201c');
  pixelLine(g,218,130,208,144,'#3a3634',2);pixelLine(g,266,130,276,144,'#3a3634',2);return pot;}
 // The doorway of the morning: a stone arch, the morning sky and the street of Velen, the weather of the day.
-function thresholdBackground(weather,season){const c=canvas(THRESHOLD.w,THRESHOLD.h),g=c.getContext('2d'),k=sky(.04,weather);
+function thresholdBackground(weather,season,hold=false){const c=canvas(THRESHOLD.w,THRESHOLD.h),g=c.getContext('2d'),k=sky(.04,weather),soot=hold&&season===1;
  px(g,0,0,THRESHOLD.w,THRESHOLD.h,'#2e251f');for(let y=0,row=0;y<THRESHOLD.h;y+=12,row++)for(let x=-(row%2?14:0);x<THRESHOLD.w;x+=28){px(g,x+1,y+1,26,10,'#4a3e34');px(g,x+1,y+1,26,1,'#5a4b3e');}
  const edge=y=>{const dy=30-y;return dy>0?Math.sqrt(Math.max(0,38*38-dy*dy))*.92:35;};
  for(let y=4;y<THRESHOLD.h;y++){const w=edge(y);px(g,Math.round(120-w-5),y,Math.round(2*w+10),1,'#6a5a4c');}
  for(let y=6;y<THRESHOLD.h;y++){const w=edge(y);px(g,Math.round(120-w),y,Math.round(2*w),1,y<54?mix(k.top,k.bottom,(y-6)/48):'#6b6058');}
- const hill=shade(mix(HILLS[season],k.hill,.3),-30);polygon(g,[[84,50],[96,42],[104,46],[114,38],[124,44],[136,40],[148,46],[156,44],[156,56],[84,56]],hill);px(g,128,30,2,12,hill);polygon(g,[[127,31],[129,25],[131,31]],hill);
+ const hill=shade(mix(soot?SOOT:HILLS[season],k.hill,.3),-30);polygon(g,[[84,50],[96,42],[104,46],[114,38],[124,44],[136,40],[148,46],[156,44],[156,56],[84,56]],hill);px(g,128,30,2,12,hill);polygon(g,[[127,31],[129,25],[131,31]],hill);
  for(let y=58;y<THRESHOLD.h;y+=5)for(let x=84+(y%10?0:4);x<156;x+=8)px(g,x,y,6,1,'#5a524a');
  if(weather==='rain')for(let i=0;i<14;i++)px(g,90+(i*29)%62,10+(i*17)%44,1,4,'rgba(205,222,240,.55)');
- if(weather==='snow'){for(let i=0;i<16;i++)px(g,88+(i*31)%64,8+(i*13)%46,1,1,'rgba(255,255,255,.9)');px(g,84,56,72,2,'#e8eef0');}
+ if(weather==='snow'){for(let i=0;i<16;i++)px(g,88+(i*31)%64,8+(i*13)%46,1,1,soot?'rgba(170,172,170,.9)':'rgba(255,255,255,.9)');px(g,84,56,72,2,soot?SOOT:'#e8eef0');}
  if(weather==='fog'){g.fillStyle='rgba(226,231,234,.4)';g.fillRect(84,34,72,14);}
  return c;}

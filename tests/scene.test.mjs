@@ -57,6 +57,19 @@ test('the hunters back this morning wait in the line in their rag, a winner with
  const sc=new S.ScriptoriumScene();sc.people(s,[],null,0,.05,true);assert.deepEqual([sc.actors.get('back-gordey').x,sc.actors.get('back-gordey').y],S.SPOTS.line[0]);assert.equal(sc.actors.get('back-gordey').person.rag,2);
  s.day++;sc.people(s,[],null,100,.05,true);assert.equal(sc.actors.size,0,'the next day they are gone');
 });
+// Found in the review of Г3: the returners came after the guests of the queue, and an ordinary morning has three or more
+// guests, so the beaten hunter was cut from the line on nearly every morning (30 of 30 in three bot runs).
+test('a beaten hunter back this morning is in the picture however many guests wait; one who took offence has gone home',()=>{
+ const s=fresh();s.day=5;const guest=(i,kind='hunter',who)=>({id:'v-'+i,kind,who,contract:null,rumour:null,heard:false});
+ const queue=[guest(1,'hunter','agata'),guest(2,'hunter','marta'),guest(3,'hunter','timofey'),guest(4,'vedana',null),guest(5,'yanek',null)];
+ for(const id of['erofey','armand'])s.hunters[id]={...s.hunters.agata};s.hunters.gordey.rag=3;s.hunters.erofey.rag=1;s.hunters.armand.rag=0;
+ s.reports=['armand','erofey','gordey'].map(h=>({id:'r-'+h,day:5,hunter:h,win:h==='armand',trophy:null,contract:{monster:'werewolf'},rag:s.hunters[h].rag}));
+ const u=S.lineup(s,queue,null);assert.equal(u.table.id,'v-1','the first guest still talks at the table');assert.deepEqual(u.line.map(v=>v.who),['gordey','erofey'],'the most beaten first');
+ const tight=S.lineup(s,[...queue,guest(6,'daro',null),guest(7,'otto',null)],null);assert.deepEqual(tight.line.map(v=>v.who),['gordey'],'with Даро and the Magister the one place goes to the worst hurt');
+ s.hunters.gordey.sulk=5;assert.ok(!S.returned(s,queue).some(v=>v.who==='gordey'),'«обиделся и не придёт» — he is not waiting');assert.deepEqual(S.lineup(s,queue,null).line.map(v=>v.who),['erofey','armand']);
+ // The words for a screen reader agree with the number: «горит 1 свеча», «горят 3 свечи».
+ assert.match(readFileSync(new URL('../src/app.js',import.meta.url),'utf8'),/\$\{plural\(P\.candlesLeft\(state\),'горит','горят','горят'\)\} \$\{P\.candlesLeft\(state\)\}/);
+});
 test('a beaten hunter comes in slow and ragged, bows at the table, and a guest who is gone walks out by the door',()=>{
  const s=fresh();s.hunters.gordey.rag=3;const v={id:'v-1',kind:'hunter',who:'gordey',contract:null,rumour:null,heard:false},sc=new S.ScriptoriumScene();
  sc.people(s,[],null,0,.05,false);sc.people(s,[v],null,100,.05,false);const a=sc.actors.get('v-1');assert.deepEqual([a.x,a.y],S.SPOTS.door,'in by the door');assert.equal(a.slow,.6);assert.equal(a.person.rag,3);
@@ -85,6 +98,13 @@ test('the window: rain on the glass, grey snow in the Black Winter, the drip of 
  assert.ok(run({...day,season:1},{hold:true}).has('#a9aaa8'),'grey snow on the sill');assert.ok(run(day,{thaw:true}).has('rgba(220,235,245,.85)'),'icicles of the thaw');
  assert.ok(run({...day,phase:1,moon:4},{}).has('#fff6d8'),'the moon at night');assert.ok(!run(day,{}).has('#fff6d8'),'no moon by day');
  assert.ok(run(day,{dove:true}).has('#9a9aa2'),'the pigeon of the dovecote');
+ // Found in the review of Г3: under the Black Winter the hills and roofs behind the glass stayed white as in any winter,
+ // and the doorway of a report too; the snow of the story is grey with soot everywhere (GDD 1.5, 11.2).
+ const pane=(amb,o)=>{const c=fakeCanvas(480,260);S.paintWindow(c.getContext('2d'),amb,5000,o);return colors(c.ops.find(op=>op.kind==='image').img);};
+ const winter={...day,season:1,weather:'snow'};assert.ok(pane(winter,{hold:true}).has('#a9aaa8')&&!pane(winter,{hold:true}).has('#e6eaec'),'soot on the roofs');assert.ok(pane(winter,{}).has('#e6eaec'),'white in an ordinary winter');
+ const sc=new S.ScriptoriumScene(),door=o=>{const t=fakeCanvas(240,80);sc.paintThreshold(t.getContext('2d'),{id:'x'},{weather:'snow',season:1,...o});return colors(t.ops.find(op=>op.kind==='image').img);};
+ assert.ok(door({hold:true}).has('#a9aaa8')&&!door({hold:true}).has('#e8eef0'),'grey snow in the doorway');assert.ok(door({}).has('#e8eef0'));assert.equal(sc.thresholds.size,2);
+ assert.match(readFileSync(new URL('../src/app.js',import.meta.url),'utf8'),/scene\.paintThreshold\(door\.getContext\('2d'\),person,\{weather:amb\.weather,season:amb\.season,hold:!!state\.story\.hold\}\)/,'the report knows the winter of the story');
 });
 test('the strip of the laboratory and the doorway of the report draw from cached backgrounds; taps on the strip lead to the tabs',()=>{
  const s=fresh();s.stock.herb_aconite=3;s.stock.werewolf_fur=2;s.upgrades=['still'];const sc=new S.ScriptoriumScene(),c=fakeCanvas(480,150);sc.paintLab(c.getContext('2d'),s,{time:500,amb:A.ambience(s)});
