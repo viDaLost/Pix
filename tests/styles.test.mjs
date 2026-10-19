@@ -17,7 +17,7 @@ test('the components of art.md 1.5 are there and the jewellery of the previous g
  for(const old of['.editor','.gem-','.velvet-','.contest','.ceremony','.jewel','.showcase','.buyer','.resident','.guild','.ribbon','.tools{'])assert.ok(!css.includes(old),`a block of the atelier left: ${old}`);
  // The four segments of the bar share the grid of the slots above them: three thirds and the column of potions.
  assert.match(css,/\.meter\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\) 52px/);assert.match(css,/\.slots-row\{display:grid;grid-template-columns:minmax\(0,1fr\) 52px/);
- // Every label stays at 11 px or more, the hand at 15 px or more (art.md 6.3).
+ // Every label stays at 11 px or more (art.md 6.3); the hand at 16 px or more (decision D6, tested below).
  for(const m of css.matchAll(/font(?:-size)?:[^;{}]*?calc\((\d+(?:\.\d+)?)px\*var\(--fs\)\)/g))assert.ok(Number(m[1])>=11,`a label of ${m[1]}px`);
  for(const m of css.matchAll(/(?<![\w-])font-size:(\d+(?:\.\d+)?)px/g))assert.ok(Number(m[1])>=11,`a fixed label of ${m[1]}px`);
 });
@@ -46,7 +46,7 @@ test('review of Г2: dialogs within 88dvh everywhere, whole stamps in «Опыт
  for(const m of css.matchAll(/max-height:(\d+)dvh/g))assert.ok(Number(m[1])<=88,`a max-height of ${m[1]}dvh`);
  assert.match(css,/\.lab-card>\.stamp\{grid-column:2\/4;/);assert.match(css,/\.lab-card>button\{grid-column:3;grid-row:1;/);
  assert.match(css,/@media\(max-width:359px\)\{\.lab-card>\.lab-main\{grid-column:2\/4\}\.lab-card>button\{grid-column:2\/4;grid-row:3;/);
- assert.match(css,/\.slot\{[^}]*overflow:hidden;/);assert.match(css,/\.slot \.hand\{[^}]*overflow-wrap:anywhere;hyphens:auto/);assert.match(css,/\.slot \.hand\.longword\{font-size:calc\(14px\*var\(--fs\)\)\}/);assert.match(app,/<span class="hand\$\{Math\.max\(/);
+ assert.match(css,/\.slot\{[^}]*overflow:hidden;/);assert.match(css,/\.slot \.entry\{[^}]*overflow-wrap:anywhere;hyphens:auto/);assert.match(css,/\.slot \.entry\.longword\{font-size:calc\(14px\*var\(--fs\)\)\}/);assert.match(app,/<span class="entry\$\{Math\.max\(/);
  assert.match(app,/c\.kind==='town'\?`плата \$\{c\.fee\} · при победе \$\{P\.TOWN\.pay\*c\.tier\}`/);
 });
 // Found in the second review of Г2: the honest mark of a book was cut to «ПРОВЕРЕНО УЧ» at 320 px; a long toast inside a
@@ -63,8 +63,20 @@ test('second review of Г2: whole book marks, toasts within their dialog, a swip
 // «Курины|й бог» with large text) — the soft hyphens only help words of nine letters. The hand of a slot is now written
 // smaller until its longest word fits; the label keeps 11 px with large text on a landscape phone too.
 test('second review of Г2: a word of a title keeps whole in its slot, the label of a slot fits in landscape',()=>{
- assert.match(app,/function fitSlots\(root\)\{for\(const el of root\.querySelectorAll\('\.slot \.hand'\)\)\{el\.style\.fontSize='';el\.style\.overflowWrap='normal';/);
+ assert.match(app,/function fitSlots\(root\)\{for\(const el of root\.querySelectorAll\('\.slot \.entry'\)\)\{el\.style\.fontSize='';el\.style\.overflowWrap='normal';/);
  assert.match(app,/while\(el\.scrollWidth>el\.clientWidth\+\.5&&size>11\)/,'down to 11 px, the smallest label of art.md');
  assert.match(app,/if\(view==='reception'&&sheet\)fitSlots\(panel\);/,'every render of the sheet fits its slots');assert.match(app,/document\.fonts\?\.addEventListener\?\.\('loadingdone',refit\);addEventListener\('resize',refit\);/);
  assert.match(css,/@media\(max-width:419px\),\(orientation:landscape\) and \(max-height:500px\)\{\.large-text \.slot em\{font-size:11px\}\}/);
+});
+
+// Г3, decision D6: Marck Script (OFL, vendored from @fontsource/marck-script@5.3.0) is the hand of the margins and
+// signatures only, never below 16 px and never preloaded; the entries of the slots are main text in Cormorant.
+test('decision D6: the hand of the keeper only in the margins, at 16 px or more, the slots in Cormorant',()=>{
+ const faces=[...css.matchAll(/@font-face\{font-family:'Marck Script';[^}]*\}/g)].map(m=>m[0]);assert.equal(faces.length,2,'cyrillic and latin');
+ for(const f of faces){assert.match(f,/font-display:swap/);assert.match(f,/url\(\.\/assets\/fonts\/marck-script-(cyrillic|latin)-400-normal\.woff2\)/);}
+ assert.equal([...css.matchAll(/font-family:var\(--hand\)/g)].length,1,'one rule sets the hand');assert.match(css,/\.hand\{font-family:var\(--hand\);font-size:calc\(16px\*var\(--fs\)\)/);
+ for(const m of css.matchAll(/\.hand[^{,]*\{[^}]*font-size:calc\((\d+(?:\.\d+)?)px/g))assert.ok(Number(m[1])>=16,`the hand at ${m[1]}px`);
+ assert.match(css,/\.slot \.entry\{font-family:var\(--display\);font-weight:700;/);
+ assert.equal([...app.matchAll(/class="hand"/g)].length,2,'margin notes of a page and of a record');
+ const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');assert.doesNotMatch(html,/marck/i,'the hand is not preloaded');
 });

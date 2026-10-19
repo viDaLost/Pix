@@ -122,7 +122,7 @@ test('the interface carries every screen, segment and label of GDD 10',()=>{
 // archive and the Academy, and «осталась одна» was written whatever was left.
 test('second review of Г2: words in the right gender, one history entry, a reason for every button off for want of candles',()=>{
  const app=src('app.js');
- assert.match(app,/придёт завтра \$\{gendered\(c\.hunter,'первым','первой'\)\}/);assert.match(app,/gendered\(first\.who,', побитый',', побитая'\)/);
+ assert.match(app,/придёт завтра \$\{gendered\(c\.hunter,'первым','первой'\)\}/);assert.match(app,/const WOUND=\[0,\['потрёпанный','потрёпанная'\]/);assert.match(app,/WOUND\[r\]\[female\(v\.who\)\?1:0\]/);
  assert.match(app,/case'rank-path':view='chronicle';chronicleTab='path';leaveSheet\(\);/);assert.equal(app.match(/[^.]sheet=null;render\(\)/g).length,1,'only «Назад» itself drops the sheet without leaveSheet(): its entry is already gone');
  assert.match(app,/const noCandles=n=>\{const left=P\.candlesLeft\(state\);/);assert.match(app,/осталась одна':`осталось \$\{left\}`/);
  assert.match(app,/notes&&list\.length\?noCandles\(2\):''/,'«Сверить летописи» needs two candles and says so');

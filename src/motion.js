@@ -1,5 +1,6 @@
+// slow scales the pace: a hunter on a crutch walks at 0.6 (art.md 4.8).
 export function createActor(x,y,facing='right') {
-  return {x,y,facing,pose:'idle',path:[],phase:0,speed:0,workUntil:0,poseStarted:0,after:null};
+  return {x,y,facing,pose:'idle',path:[],phase:0,speed:0,workUntil:0,poseStarted:0,after:null,slow:1};
 }
 // Round the corridor's corners instead of turning in a single frame.
 function roundRoute(points) {
@@ -27,7 +28,7 @@ export function updateActor(actor,dt,now) {
   const elapsed=Math.max(0,Math.min(dt,.05));
   if(actor.path.length) {
     const target=actor.path[0],dx=target.x-actor.x,dy=target.y-actor.y,distance=Math.hypot(dx,dy);
-    const desired=actor.path.length===1?Math.min(155,Math.max(24,Math.sqrt(distance*750))):155,change=720*elapsed;
+    const pace=155*(actor.slow>0?actor.slow:1),desired=actor.path.length===1?Math.min(pace,Math.max(24,Math.sqrt(distance*750))):pace,change=720*elapsed;
     actor.speed=Math.max(0,actor.speed+Math.max(-change,Math.min(change,desired-actor.speed)));
     const step=actor.speed*elapsed;
     if(distance>.1)actor.facing=Math.abs(dx)>Math.abs(dy)?(dx<0?'left':'right'):(dy<0?'up':'down');

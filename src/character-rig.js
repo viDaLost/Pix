@@ -7,12 +7,20 @@ export function solveArm(shoulder,target,bend=1,upper=10,lower=9){
   const along=(upper*upper-lower*lower+distance*distance)/(2*distance),height=Math.sqrt(Math.max(0,upper*upper-along*along));
   return {shoulder:[...shoulder],elbow:[shoulder[0]+ux*along-uy*height*bend,shoulder[1]+uy*along+ux*height*bend],wrist:[shoulder[0]+ux*distance,shoulder[1]+uy*distance]};
 }
-export const POSES=['idle','walk','hammer','cut','heat','quench','polish','chat','wave','inspect','browse'];
+// The poses of the forge stay for the tests of the rig; the bestiary adds the keeper's own (write, stir, read), the bow
+// of a guest at the table, the slump of a badly wounded hunter and Даро sitting in his chair (art.md 4.8).
+export const POSES=['idle','walk','hammer','cut','heat','quench','polish','chat','wave','inspect','browse','write','stir','read','bow','slump','sit'];
 const SWING=[0,3,5,3,0,-3,-5,-3],DIP=[0,-1,-2,-1,0,-1,-2,-1];
-export function characterRig(facing='right',pose='idle',frame=0,temper='water',breath=0){
+// A limping walk dips on one leg and rises on the other (art.md 4.8, rag 3).
+export const DIP_LIMP=[0,-1,-2,-1,1,0,0,1];
+// A hand at the chest in a sling (the forearm across the body, the elbow down), the other on a crutch: what a wound does
+// to the arms whatever the pose.
+export const SLING={side:[41,36],front:[36,35]};
+export function characterRig(facing='right',pose='idle',frame=0,temper='water',breath=0,{sling=false,crutch=false,limp=false}={}){
   frame=Math.max(0,Math.floor(frame));
-  const side=facing==='right'||facing==='left',swing=pose==='walk'?SWING[frame%8]:0,bob=pose==='walk'?DIP[frame%8]:breath;
-  const lean=pose==='hammer'?[0,-1,-1,1,2,1,0][Math.min(6,frame)]:pose==='polish'?frame%2:0;
+  const side=facing==='right'||facing==='left',swing=pose==='walk'?SWING[frame%8]:0;
+  const bob=pose==='walk'?(limp?DIP_LIMP:DIP)[frame%8]:pose==='bow'?[1,2,2,1,0][Math.min(4,frame)]:pose==='slump'?1:pose==='sit'?11:breath;
+  const lean=pose==='hammer'?[0,-1,-1,1,2,1,0][Math.min(6,frame)]:pose==='polish'?frame%2:pose==='slump'?-1:pose==='bow'?[1,1,1,0,0][Math.min(4,frame)]:0;
   const nearShoulder=[(side?37:41)+lean,28],farShoulder=[(side?28:23)+lean,28];
   let near=[side?43:44,46],far=[side?26:21,46],tool=null;
   if(pose==='walk'){near=[(side?41:44)-swing,44-Math.abs(swing)/3];far=[(side?29:21)+swing,44-Math.abs(swing)/3];}
@@ -28,5 +36,12 @@ export function characterRig(facing='right',pose='idle',frame=0,temper='water',b
   else if(pose==='wave'){near=[43+[0,1,2,1,0,-1][frame%6],20+[0,1,0,-1,0,1][frame%6]];}
   else if(pose==='inspect'){near=[45,43+frame%2];far=[30,43];}
   else if(pose==='browse'){near=[46+[0,1,2,1,0,-1][frame%6],34+frame%2];}
-  return {side,back:facing==='up',bob,lean,swing,near:solveArm(nearShoulder,near,1),far:solveArm(farShoulder,far,-1),tool};
+  // The quill runs along the line of the book; the ladle goes round the cauldron; a book is held in both hands.
+  else if(pose==='write'){near=[46+[0,1,2,1,0,-1][frame%6],41];far=[side?30:26,42];tool=[near[0]+5,near[1]-5];}
+  else if(pose==='stir'){near=[44+Math.round(2*Math.cos(frame*Math.PI/3)),40+Math.round(Math.sin(frame*Math.PI/3))];far=[side?31:27,43];tool=[near[0],near[1]+14];}
+  else if(pose==='read'){near=[38,40];far=[30,41];}
+  else if(pose==='sit'){near=[side?44:43,45];far=[side?33:24,45];}
+  if(sling)near=[...(side?SLING.side:SLING.front)];
+  if(crutch)far=side?[24,44]:[19,44];
+  return {side,back:facing==='up',bob,lean,swing,near:solveArm(nearShoulder,near,sling&&!side?-1:1),far:solveArm(farShoulder,far,-1),tool};
 }

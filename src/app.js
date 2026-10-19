@@ -1,7 +1,8 @@
 import * as P from './progress.js';
 import * as L from './lore.js';
 import * as G from './guide.js';
-import {ScriptoriumScene,guestPerson,keeperPerson,personOf} from './scriptorium-scene.js';
+import {ScriptoriumScene,guestPerson as scenePerson,keeperPerson,personOf,hunterPerson as huntPerson,visitorPerson,THRESHOLD} from './scriptorium-scene.js';
+import {itemURL,flaskURL,trophyURL,pixelImg} from './item-art.js';
 import {paintPortrait} from './characters.js';
 import {GameAudio} from './audio.js';
 import {openStore,readLegacy,StaleTabError} from './store.js';
@@ -39,11 +40,18 @@ const STAMP_LOOK={confirmed:['ok','check'],rumour:['rumour','question'],refuted:
 const stamp=(key,extra='',word=L.STAMPS[key])=>{const [cls,ic]=STAMP_LOOK[key];return `<span class="stamp ${cls}">${icon(ic)}<span>${word}</span>${extra?`<small>${esc(extra)}</small>`:''}</span>`;};
 const mini=key=>{const [cls,ic]=STAMP_LOOK[key];return `<i class="mini ${cls}" role="img" aria-label="${L.STAMPS[key]}">${icon(ic)}</i>`;};
 const knowKey=k=>k.rev?'cond':k.st;
-function portrait(person){if(portraits.has(person.id))return portraits.get(person.id);const c=document.createElement('canvas');c.width=c.height=64;paintPortrait(c.getContext('2d'),person,64);const url=c.toDataURL();portraits.set(person.id,url);return url;}
-const hunterPerson=id=>{const h=hunterOf(id);return personOf(h.id,h.look,h.lookFallback);};
-const visitorPerson=id=>{const v=L.VISITOR.get(id);return personOf(v.id,v.look,v.lookFallback);};
-// A beaten hunter wears a bandage on the portrait until his own sprite learns rags (Г3).
-const face=(person,rag=0,cls='portrait')=>`<span class="face ${cls}${rag?' rag'+rag:''}"><img src="${portrait(person)}" alt="">${rag?icon('bandage','rag-mark'):''}</span>`;
+// A portrait is the same frame as the scene, so it is kept per look and per rag: a beaten hunter looks beaten in the line,
+// the artel and the report (art.md 4.8).
+function portrait(person){const key=`${person.id}|${person.rag||0}`;if(portraits.has(key))return portraits.get(key);const c=document.createElement('canvas');c.width=c.height=64;paintPortrait(c.getContext('2d'),person,64);const url=c.toDataURL();portraits.set(key,url);return url;}
+const hunterPerson=id=>huntPerson(state,id),guestPerson=v=>scenePerson(v,state);
+const face=(person,rag=0,cls='portrait')=>`<span class="face ${cls}${rag?' rag'+rag:''}"><img src="${portrait(person)}" alt=""></span>`;
+// Vibration, when the player keeps it on and motion is not reduced (art.md 6.2): a seal 10 ms, «Во вред» a triple beat,
+// a victory a rising one, a loss one long pulse.
+const HAPTIC={seal:10,worse:[25,40,25],win:[15,30,40],fail:35};
+function buzz(kind){if(state.haptics===false||still()||!navigator.vibrate)return;try{navigator.vibrate(HAPTIC[kind]);}catch{}}
+// The pixel things of the content: a part, a herb or a good (item-art.js), a flask of a potion, a trophy.
+const thing=(id,size=32)=>pixelImg(itemURL(L.MAT.get(id)?.look),size);
+const flaskImg=(id,size=24,level=1)=>pixelImg(flaskURL(L.POT.get(id)?.look,level),size);
 const contractOf=id=>state.contracts.find(c=>c.id===id)||null;
 const ragOf=id=>state.hunters[id]?.rag||0;
 function notice(){const el=$('#storage-warning');el.hidden=storageOK;el.textContent=loadError?'Сохранение повреждено. Скачай исходный файл в меню или загрузи другой.':'Автосохранение недоступно. Скачай бестиарий через меню.';}
@@ -115,8 +123,11 @@ addEventListener('popstate',()=>{if(ignorePop){ignorePop=false;if(dialog.open)hi
 // ---- the shell
 function applyPrefs(){const root=document.documentElement;root.classList.toggle('large-text',!!state.prefs?.large);root.classList.toggle('calm',!!state.prefs?.calm);}
 const rankName=()=>L.RANKS[P.rankOf(state.rep)].name;
+let candlesSeen=null,candlesDay=0,spendAt=0;
 function render(){
- applyPrefs();audio.setOptions(state);const amb=A.ambience(state);audio.setAmbience({rain:amb.weather==='rain'});
+ applyPrefs();audio.setOptions(state);const amb=A.ambience(state);audio.setScene(view==='lab'?'lab':'scriptorium');audio.setAmbience({rain:amb.weather==='rain',lab:view==='lab'});
+ // A candle spent goes out with a puff on the HUD and in the scene (art.md 1.5, 4.4).
+ const left=P.candlesLeft(state);if(candlesSeen!==null&&left<candlesSeen&&state.day===candlesDay){audio.play('snuff');spendAt=performance.now();}candlesSeen=left;candlesDay=state.day;
  if(draftDay!==state.day){drafts.clear();labPick.clear();draftDay=state.day;swap=null;}
  if(sheet&&!contractOf(sheet)){sheet=null;}
  seeTab();$('#brand-sub').innerHTML=`<span class="where">Велен · 1740 · </span>${esc(rankName())}`;$('#hud').innerHTML=hudHTML(amb);$('#navigation').innerHTML=navHTML();
@@ -129,7 +140,7 @@ function render(){
  for(const a of panel.querySelectorAll('.rail .active'))a.parentElement.scrollLeft=a.offsetLeft-a.parentElement.offsetLeft-8;
  notice();paint(performance.now(),0,true);}
 function hudHTML(amb){const r=P.rankOf(state.rep),now=L.RANKS[r],next=L.RANKS[r+1],p=next?Math.round((state.rep-now.rep)/(next.rep-now.rep)*100):100,left=P.candlesLeft(state),max=P.candleMax(state),sky=A.skyWords(amb);
- return `<span class="stat" title="Монеты" aria-label="Монеты: ${state.gold}">${icon('coin')}<b id="hud-gold">${state.gold}</b></span><span class="stat candles${left?'':' out'}" title="Свечи дня" aria-label="Свечей осталось ${left} из ${max}">${icon('candle')}<b>${left}</b><small>/${max}</small></span>${btn('rank-path',`${icon(EMBLEM_ICON[now.emblem]||'crest')}<b>${r+1}</b><i class="xp" style="--p:${p}%"></i>`,'stat rank',`title="${now.name} · репутация ${state.rep}" aria-label="Звание «${now.name}», ступень ${r+1} из ${L.RANKS.length}${next?`, до следующего ещё ${next.rep-state.rep} репутации`:''}. Путь"`)}${btn('sky',`${icon(A.WEATHER_ICON[amb.weather])}<span><span class="long">День </span><b>${state.day}</b></span>`,'stat day',`title="${sky}" aria-label="День ${state.day}, ${sky}. Небо дня"`)}`;}
+ return `<span class="stat" title="Монеты" aria-label="Монеты: ${state.gold}">${icon('coin')}<b id="hud-gold">${state.gold}</b></span><span class="stat candles${left?'':' out'}${performance.now()-spendAt<400&&!still()?' spend':''}" title="Свечи дня" aria-label="Свечей осталось ${left} из ${max}">${icon('candle')}<b>${left}</b><small>/${max}</small></span>${btn('rank-path',`${icon(EMBLEM_ICON[now.emblem]||'crest')}<b>${r+1}</b><i class="xp" style="--p:${p}%"></i>`,'stat rank',`title="${now.name} · репутация ${state.rep}" aria-label="Звание «${now.name}», ступень ${r+1} из ${L.RANKS.length}${next?`, до следующего ещё ${next.rep-state.rep} репутации`:''}. Путь"`)}${btn('sky',`${icon(A.WEATHER_ICON[amb.weather])}<span><span class="long">День </span><b>${state.day}</b></span>`,'stat day',`title="${sky}" aria-label="День ${state.day}, ${sky}. Небо дня"`)}`;}
 const TABS=[['reception','door','Приёмная'],['bestiary','book','Бестиарий'],['lab','flask','Опыты','Лаборатория'],['shop','scale','Лавка'],['chronicle','scroll','Летопись']];
 // The dots of the tabs say why in their labels: guests wait, fresh ink, the Magister in town or new books, a new rank.
 const UI_KEY='pix-bestiary-ui';let ui={};try{ui=JSON.parse(localStorage.getItem(UI_KEY)||'{}')||{};}catch{ui={};}
@@ -151,8 +162,13 @@ function dots(){const d={},guests=G.queueOf(state).filter(v=>!v.heard).length;if
 function navHTML(){const d=dots();return TABS.map(([id,ic,text,long])=>btn('navigate',`${icon(ic)}<span>${long?`<span class="short">${text}</span><span class="long">${long}</span>`:text}</span>${d[id]?'<i class="dot" aria-hidden="true"></i>':''}`,view===id?'active':'',`data-view="${id}" ${view===id?'aria-current="page"':''} aria-label="${long||text}${d[id]?', '+d[id]:''}"`)).join('');}
 const segments=(action,list,current)=>`<div class="tabs${list.length===3?' three':''}" role="tablist">${list.map(([id,name,n,ic])=>btn(action,`${ic?icon(ic):''}<span>${name}</span>${n?`<small>${n}</small>`:''}`,current===id?'active':'',`data-tab="${id}" role="tab" aria-selected="${current===id}"`)).join('')}</div>`;
 // ---- Приёмная (GDD 10.2)
-function sceneLabel(amb){const q=G.queueOf(state),first=q.find(v=>v.id===chosen)||q[0],rest=q.filter(v=>v!==first).slice(0,2),troph=L.MONSTERS.filter(m=>state.monsters[m.id]?.troph.length).length;
- return `Скрипторий: ${first?`у стола ${G.guestName(first)}${first.kind==='hunter'&&ragOf(first.who)?gendered(first.who,', побитый',', побитая'):''}`:'у стола никого'}${rest.length?`; ждут ${rest.map(G.guestName).join(' и ')}`:''}; на стене ${troph} ${plural(troph,'трофей','трофея','трофеев')}; горят ${P.candlesLeft(state)} ${plural(P.candlesLeft(state),'свеча','свечи','свечей')} из ${P.candleMax(state)}; за окном ${A.WEATHER[amb.weather]}`;}
+// The live description of the scene (art.md 4.6): who is at the table and how they look, who waits, who else is in the
+// room, the wall, the candles and the window.
+const WOUND=[0,['потрёпанный','потрёпанная'],['с рукой на перевязи','с рукой на перевязи'],['на костыле, с повязкой на голове','на костыле, с повязкой на голове']];
+const looks=v=>{if(v.kind!=='hunter')return G.guestName(v);const r=ragOf(v.who);return G.guestName(v)+(r?', '+WOUND[r][female(v.who)?1:0]:'');};
+function sceneLabel(amb){const all=G.queueOf(state),q=all.filter(v=>v.kind!=='daro'&&v.kind!=='otto'),first=q.find(v=>v.id===chosen)||q[0],rest=q.filter(v=>v!==first).slice(0,2),troph=L.MONSTERS.filter(m=>state.monsters[m.id]?.troph.length).length;
+ const others=[all.some(v=>v.kind==='daro')?'Даро в кресле':'',all.some(v=>v.kind==='otto')?'Магистр у окна':'',state.story.seen.includes('S2')?'Федя у полок':''].filter(Boolean);
+ return `Скрипторий: ${first?`у стола ${looks(first)}`:'у стола никого'}${rest.length?`; ждут ${rest.map(looks).join(' и ')}`:''}${others.length?`; ${others.join(', ')}`:''}; на стене ${troph} ${plural(troph,'трофей','трофея','трофеев')}; горят ${P.candlesLeft(state)} ${plural(P.candlesLeft(state),'свеча','свечи','свечей')} из ${P.candleMax(state)}; за окном ${A.WEATHER[amb.weather]}${state.story.hold?', Чёрная зима':state.story.thaw?', оттепель':''}`;}
 function sceneHTML(){const amb=A.ambience(state);return `<div class="scene-wrap"><canvas id="scene" width="480" height="260" role="img" aria-label="${esc(sceneLabel(amb))}"></canvas><span class="scene-caption">Скрипторий · ${A.skyWords(amb)}</span></div>`;}
 // The side (the scene, the segments, the line of guests) and the main card; a landscape phone sets them side by side.
 function receptionHTML(){if(sheet)return sheetHTML();const n=G.queueOf(state).length+G.standing(state).length,q=receptionTab==='artel'?{rail:'',main:artelHTML()}:queueHTML();
@@ -215,10 +231,10 @@ const SEG={ok:'ok',rumour:'rumour',none:'refuted',worse:'dangerous',empty:'empty
 function potionChip(p,d,m,pv){const on=d.potions.includes(p.id),fits=P.potionFits(m,p.id),kinds=d.potions.map(id=>L.POT.get(id).kind);
  const block=on?'':d.potions.length>=2?'уже два снадобья':p.kind==='general'&&kinds.includes('general')?'уже есть общее снадобье':p.kind==='family'&&kinds.includes('family')?'уже есть снадобье против рода':'';
  const what=p.bonus?(fits?`+${p.bonus}`:`не против ${L.genOf(m)}`):{owl_drops:'видит всё',life_balm:'раны легче',ward_tincture:'прощает вред'}[p.id]||'эффект';
- return btn('potion',`${icon('flask')}<span><b>${esc(p.short)}</b><small>${esc(block||what)} · осталось ${state.potions[p.id]}</small></span>`,`potion-chip${on?' active':''}${p.bonus&&!fits?' unfit':''}`,`data-potion="${p.id}" aria-pressed="${on}" ${block?'disabled':''} aria-label="${esc(p.name)}: ${esc(block||p.effectText)}"`);}
+ return btn('potion',`${flaskImg(p.id,24)}<span><b>${esc(p.short)}</b><small>${esc(block||what)} · осталось ${state.potions[p.id]}</small></span>`,`potion-chip${on?' active':''}${p.bonus&&!fits?' unfit':''}`,`data-potion="${p.id}" aria-pressed="${on}" ${block?'disabled':''} aria-label="${esc(p.name)}: ${esc(block||p.effectText)}"`);}
 function sheetHTML(){const c=contractOf(sheet),m=mon(c.monster),d=draft(c.id),cards=P.cards(state,c.id),pv=P.preview(state,c.id,d.facts,d.potions),ctx=pv.ctx,h=c.hunter?hunterOf(c.hunter):null;
  const cats=new Set(cards.filter(x=>x.usable).map(x=>x.cat)),missing=Math.max(0,3-cats.size),unknown=m.facts.filter(f=>!state.know[f.id]).length;
- const slots=[0,1,2].map(i=>{const id=d.facts[i];if(id){const f=fact(id),seg=pv.segments[i];return `<li>${btn('slot',`<em>${esc(CAT.get(f.cat).slot)}</em><span class="hand${Math.max(...f.title.split(/[\s-]/).map(w=>w.length))>=9?' longword':''}">${esc(G.hyphenate(f.title))}${mini(seg.kind==='rumour'?'rumour':seg.kind==='ok'?'confirmed':seg.kind==='worse'?'dangerous':'refuted')}</span>`,'slot filled',`data-fact="${id}" aria-label="Указание ${i+1} из 3: ${esc(f.title)}, ${STATE_WORD[state.know[id].st]}, ${esc(CAT.get(f.cat).slot.toLowerCase())}. Убрать"`)}</li>`;}
+ const slots=[0,1,2].map(i=>{const id=d.facts[i];if(id){const f=fact(id),seg=pv.segments[i];return `<li>${btn('slot',`<em>${esc(CAT.get(f.cat).slot)}</em><span class="entry${Math.max(...f.title.split(/[\s-]/).map(w=>w.length))>=9?' longword':''}">${esc(G.hyphenate(f.title))}${mini(seg.kind==='rumour'?'rumour':seg.kind==='ok'?'confirmed':seg.kind==='worse'?'dangerous':'refuted')}</span>`,'slot filled',`data-fact="${id}" aria-label="Указание ${i+1} из 3: ${esc(f.title)}, ${STATE_WORD[state.know[id].st]}, ${esc(CAT.get(f.cat).slot.toLowerCase())}. Убрать"`)}</li>`;}
   return `<li><span class="slot empty${i>=cats.size?' none':''}"><em>Указание ${i+1}</em><span>${i>=cats.size?'Нет сведений ещё одного рода':'＋'}</span></span></li>`;}).join('');
  const full=pv.k===3,need=3-d.facts.length,low=pv.low<pv.mid;
  // Three right pieces of advice need no potion: the column says so, though a potion of effect still does its work.
@@ -238,7 +254,7 @@ function sheetHTML(){const c=contractOf(sheet),m=mon(c.monster),d=draft(c.id),ca
 // A word of a title never breaks between its letters in a slot of the sheet («Скважин|ы»): the hand is written smaller,
 // half a pixel at a time down to 11 px, until its longest word fits whole (soft hyphens may still part a long one);
 // only a word that does not fit even then may break. Fonts that arrive late and a turned phone fit the slots again.
-function fitSlots(root){for(const el of root.querySelectorAll('.slot .hand')){el.style.fontSize='';el.style.overflowWrap='normal';let size=parseFloat(getComputedStyle(el).fontSize);
+function fitSlots(root){for(const el of root.querySelectorAll('.slot .entry')){el.style.fontSize='';el.style.overflowWrap='normal';let size=parseFloat(getComputedStyle(el).fontSize);
  while(el.scrollWidth>el.clientWidth+.5&&size>11){size=Math.max(11,size-.5);el.style.fontSize=size+'px';}el.style.overflowWrap='';}}
 const refit=()=>{if(view==='reception'&&sheet)fitSlots($('#panel'));};document.fonts?.addEventListener?.('loadingdone',refit);addEventListener('resize',refit);
 // The sheet is a mode of the reception with its own entry in the history, so «Назад» leaves it before the game.
@@ -252,31 +268,36 @@ function tapSlip(id){const c=contractOf(sheet);if(!c)return;const d=draft(c.id),
  // An offer to bring back a replaced slip is stale once the sheet changes again.
  const before=[...d.facts];if(swap){swap=null;withdrawToast('undo-swap');}d.facts=r.facts;
  if(r.replaced){swap={cid:c.id,facts:before};toast(`${fact(r.replaced).title} → ${fact(id).title}`,{action:{action:'undo-swap',label:'Вернуть',icon:'undo'}});}
- audio.play(r.removed?'step':'good');render();}
+ audio.play(r.removed?'step':'quill');render();}
 function tapPotion(id){const c=contractOf(sheet);if(!c)return;const d=draft(c.id),i=d.potions.indexOf(id);if(i>=0)d.potions.splice(i,1);else if(d.potions.length<2)d.potions.push(id);render();}
 function send(cid){const c=contractOf(cid),d=draft(cid),m=mon(c.monster),h=c.hunter&&hunterOf(c.hunter);
- if(act(()=>P.advise(state,cid,d.facts,d.potions),()=>h?`${h.short} ${gendered(h.id,'ушёл','ушла')} на дело: ${L.lowerFirst(m.name)} ${L.PLACE.get(c.place).where}. Ответ — утром`:`${townName(c.town)} ${gendered(c.town,'ушёл','ушла')} с листом: ${L.lowerFirst(m.name)} ${L.PLACE.get(c.place).where}. Ответ — утром`,'stamp')){drafts.delete(cid);leaveSheet();chosen=null;render();if(!persistAsked){persistAsked=true;navigator.storage?.persist?.().catch(()=>{});}}}
+ if(act(()=>P.advise(state,cid,d.facts,d.potions),()=>h?`${h.short} ${gendered(h.id,'ушёл','ушла')} на дело: ${L.lowerFirst(m.name)} ${L.PLACE.get(c.place).where}. Ответ — утром`:`${townName(c.town)} ${gendered(c.town,'ушёл','ушла')} с листом: ${L.lowerFirst(m.name)} ${L.PLACE.get(c.place).where}. Ответ — утром`,'seal')){buzz('seal');drafts.delete(cid);leaveSheet();chosen=null;render();if(!persistAsked){persistAsked=true;navigator.storage?.persist?.().catch(()=>{});}}}
 function howCounted(){const c=contractOf(sheet);if(!c)return;const d=draft(c.id),pv=P.preview(state,c.id,d.facts,d.potions),rumours=d.facts.filter(id=>state.know[id]?.st==='rumour'&&!state.know[id].rev);
  const rows=[`Верных по листу: ${pv.k} из 3 (${L.pct(pv.k*100/3)}%)`,...d.potions.map(id=>{const p=L.POT.get(id);return `${p.name} ${p.bonus?(P.potionFits(mon(c.monster),id)?'+'+p.bonus:'+0, не против '+L.genOf(c.monster)):'— '+p.effectText.toLowerCase()}`;}),...pv.skill?[`мастерство охотника +${pv.skill}`]:[],...pv.vmod>0?[`молодой облик +${pv.vmod}`]:[],...pv.minus?[`древний облик ${pv.minus}`]:[],...(pv.skill||pv.potion||pv.vmod>0?[`всё сверху знания — до предела +${P.BONUS_CAP}`]:[]),...rumours.map(id=>`слух «${fact(id).title}»: может добавить 33 или отнять 25`)];
  modal('Как считается',`<ul class="reasons">${rows.map(r=>`<li>${esc(r)}</li>`).join('')}</ul><div class="score-row"><span>Итого по твоим записям</span><b>≈ ${pv.mid}%</b></div><p class="fine-print">Каждое верное указание — треть успеха, три верных — победа наверняка. Вредное отнимает 25. Снадобья и мастерство прибавляют сверху, но не больше 25, и без третьего верного шанс не выше 91%. Слухи считаются пустыми, пока их не проверят: «от» и «до» — что будет, если слух окажется вредным или верным.</p>`);}
 // ---- the morning report (GDD 4, 10.4)
+// The first time a report opens in a session it is heard: the door, then one stamp for the whole of it and its vibration.
+const heardReports=new Set();
+function hearReport(r){if(heardReports.has(r.id))return;heardReports.add(r.id);const worse=r.items.some(i=>i.seen&&i.o==='worse'),kind=worse?'worse':r.win?'win':'fail',sound={worse:'stamp-worse',win:'stamp-ok',fail:'stamp-none'}[kind];
+ if(still()){audio.play(sound);return;}audio.play('door');setTimeout(()=>{audio.play(sound);buzz(kind);},450);}
 function showReport(rid){const r=state.reports.find(r=>r.id===rid);if(!r)return modals.next()?.();const t=P.reportText(state,rid),m=mon(r.contract.monster),h=r.hunter&&hunterOf(r.hunter),x=h&&state.hunters[h.id];
- const person=h?hunterPerson(h.id):guestPerson({kind:'town',who:r.town});
+ // The hunter stands in the doorway as he came back: in the rag of this report, with the bag and the trophy of a win.
+ const person={...(h?hunterPerson(h.id):guestPerson({kind:'town',who:r.town})),rag:r.rag||0,...(r.win?{carry:true,trophy:r.trophy?m.trophy.look?.c:null}:{})};
  const items=t.items.map((it,i)=>{const change=it.from!==it.to?`<em class="change">${it.from?STATE_WORD[it.from]:'новое'} → ${STATE_WORD[it.to]}</em>`:'';
   return `<li class="${it.seen?it.o:'unseen'}"><div class="item-head"><b>${'①②③'[i]} ${esc(it.title)}</b>${stamp(it.seen?it.o:'unseen')}</div><p class="quote">«${esc(it.text)}»</p>${change}${it.contradiction?`<p class="contradiction">${icon('approx')}<span>${esc(it.contradiction)}</span></p>`:''}</li>`;}).join('');
  let end='';
  if(!r.win&&h){const wound=r.injury?`${icon('bandage')}<span>${G.woundLine(r.injury,x.out)}</span>`:'',tr=`<span class="trust-change">${trust(x.trust)}${r.trust?`<small>(${r.trust>0?'+':'−'}${Math.abs(r.trust)})</small>`:''}</span>`;
   end=`<p class="wound">${wound}${tr}</p>${r.sulk?`<p class="fine-print">${esc(h.short)} ${gendered(h.id,'обиделся','обиделась')} и не придёт ${L.days(x.sulk)}.</p>`:''}<div class="row fill">${x.out>0?btn('heal',`${icon('bandage')}<span>Лекарь · ${P.PRICE.doctor} мон.</span>`,'',`data-id="${h.id}" ${state.gold<P.PRICE.doctor?'disabled':''}`):''}${r.items.some(i=>!i.seen)&&!r.asked?btn('ask-again',`${icon('candle')}<span>Расспросить · 1</span>`,'',`data-id="${r.id}" ${P.candlesLeft(state)<1?'disabled':''}`):''}</div>`;}
- else{if(r.offer&&!r.choice)end+=`<div class="tokens" role="group" aria-label="Награда: выбери одно">${btn('claim',`${icon('coin')}<b>Монеты</b><small>${r.offer.coins} мон.</small>`,'token',`data-id="${r.id}" data-choice="coins"`)}${btn('claim',`${icon('fang')}<b>Добыча</b><small>${esc(r.offer.loot.map(l=>L.partName(l.id).toLowerCase()+(l.n>1?' ×'+l.n:'')).join(', '))}</small>`,'token',`data-id="${r.id}" data-choice="loot"`)}${btn('claim',`${icon('quill')}<b>Знание</b><small>${r.offer.tale?'новое сведение и записи':'полевые записи'}</small>`,'token',`data-id="${r.id}" data-choice="know"`)}</div><p class="fine-print center">Возьми одно — не выбранное до ночи станет монетами.</p>`;
+ else{if(r.offer&&!r.choice)end+=`<div class="tokens" role="group" aria-label="Награда: выбери одно">${btn('claim',`${icon('coin')}<b>Монеты</b><small>${r.offer.coins} мон.</small>`,'token',`data-id="${r.id}" data-choice="coins"`)}${btn('claim',`${r.offer.loot[0]?thing(r.offer.loot[0].id,24):icon('fang')}<b>Добыча</b><small>${esc(r.offer.loot.map(l=>L.partName(l.id).toLowerCase()+(l.n>1?' ×'+l.n:'')).join(', '))}</small>`,'token',`data-id="${r.id}" data-choice="loot"`)}${btn('claim',`${icon('quill')}<b>Знание</b><small>${r.offer.tale?'новое сведение и записи':'полевые записи'}</small>`,'token',`data-id="${r.id}" data-choice="know"`)}</div><p class="fine-print center">Возьми одно — не выбранное до ночи станет монетами.</p>`;
   if(r.gift)end+=`<p class="gift">${icon('heart')}<span>Подарок за доверие: ${r.gift.id==='notes'?`полевые записи ${L.genOf(m)}`:esc(L.partName(r.gift.id).toLowerCase())}</span></p>`;
-  if(r.trophy){const mx=state.monsters[m.id],rep=2+(state.upgrades.includes('hall')?1:0)+(mx?.troph[0]===r.trophy?5:0);end+=`<p class="gift">${icon('crest')}<span>На стену: ${esc(m.trophy.name)} (${VARIANT[r.trophy]}) · +${rep} репутации</span></p>`;}
+  if(r.trophy){const mx=state.monsters[m.id],rep=2+(state.upgrades.includes('hall')?1:0)+(mx?.troph[0]===r.trophy?5:0);end+=`<p class="gift">${pixelImg(trophyURL(m.id,m.trophy.look),24)}<span>На стену: ${esc(m.trophy.name)} (${VARIANT[r.trophy]}) · +${rep} репутации</span></p>`;}
   if(h&&r.items.some(i=>!i.seen)&&!r.asked)end+=`<div class="row fill">${btn('ask-again',`${icon('candle')}<span>Расспросить · 1</span>`,'',`data-id="${r.id}" ${P.candlesLeft(state)<1?'disabled':''}`)}</div>`;}
- modal(esc(t.title),`<div class="threshold ${r.win?'won':'lost'}">${face(person,r.rag,'portrait big')}<div>${stamp(r.win?'ok':'worse','',r.win?'Добыто':'Ушёл')}<small>по листу: надёжно ${r.shown.mid}%</small></div></div>
+ modal(esc(t.title),`<div class="threshold ${r.win?'won':'lost'}"><canvas class="doorway" width="${THRESHOLD.w}" height="${THRESHOLD.h}" aria-hidden="true"></canvas><div class="verdict">${stamp(r.win?'ok':'worse','',r.win?'Добыто':'Ушёл')}<small>по листу: надёжно ${r.shown.mid}%</small></div></div>
   <p class="quote greet">«${esc(t.greet)}»${t.first?` «${esc(t.first)}»`:''}</p><ol class="report-items">${items}</ol>${t.after.map(a=>`<p class="quote after">«${esc(a)}»</p>`).join('')}${end}
   <div class="sticky-actions">${btn('report-done',`${icon('quill')}<span>Вписать в бестиарий</span>`,'primary',`data-id="${r.id}"`)}</div>`,true,'report-dialog sheet-dialog');
- dialog.dataset.report=r.id;}
+ dialog.dataset.report=r.id;const door=dialog.querySelector('canvas.doorway'),amb=A.ambience(state);if(door)scene.paintThreshold(door.getContext('2d'),person,{weather:amb.weather,season:amb.season});hearReport(r);}
 function claim(b){const r=state.reports.find(r=>r.id===b.dataset.id),choice=b.dataset.choice,from=b.getBoundingClientRect();
- const res=act(()=>P.claim(state,b.dataset.id,choice),x=>choice==='coins'?`Монеты: +${r.offer.coins}`:choice==='loot'?`Добыча в запасе: ${r.offer.loot.map(l=>L.partName(l.id).toLowerCase()).join(', ')}`:x.fact?`В бестиарий: «${fact(x.fact.f).title}» — ${STATE_WORD[x.fact.to]} · полевые записи +1`:'Полевые записи +1',choice==='coins'?'coin':'good');
+ const res=act(()=>P.claim(state,b.dataset.id,choice),x=>choice==='coins'?`Монеты: +${r.offer.coins}`:choice==='loot'?`Добыча в запасе: ${r.offer.loot.map(l=>L.partName(l.id).toLowerCase()).join(', ')}`:x.fact?`В бестиарий: «${fact(x.fact.f).title}» — ${STATE_WORD[x.fact.to]} · полевые записи +1`:'Полевые записи +1',choice==='coins'?'coin':choice==='know'?'learn':'good');
  if(res){if(choice==='coins')coinBurst(from);showReport(r.id);}}
 // ---- Бестиарий (GDD 10.5): contents and pages of text; the engravings come with Г4, a frame stands in their place.
 function bestiaryHTML(){if(page&&!mon(page))page=null;return page?pageHTML(page):tocHTML();}
@@ -309,7 +330,10 @@ function labRail(){const list=P.openList(state);if(!labMonster||!state.monsters[
  return `<div class="rail monsters" data-scroll="lab-mons" aria-label="Чудовища">${list.map(m=>{const n=(state.stock[m.loot.common]||0)+(state.stock[m.loot.rare]||0),notes=state.notes[m.id]||0;return btn('lab-monster',`<b>${esc(m.name)}</b><small>${labTab==='archive'?`записи ${notes}`:`образцы ${n}`}</small>`,'mon-chip'+(m.id===labMonster?' active':''),`data-monster="${m.id}" aria-pressed="${m.id===labMonster}"`);}).join('')}</div>`;}
 // Why a button is off for want of candles (GDD 10.6): none left, or fewer than the work needs.
 const noCandles=n=>{const left=P.candlesLeft(state);return left<n?`<p class="why">${icon('candle')}${left?`Нужно ${n} ${plural(n,'свеча','свечи','свечей')} — ${left===1?'осталась одна':`осталось ${left}`}`:'Свечи догорели — завтра'}</p>`:'';};
-function labHTML(){return `<div class="section-line"><h1>Опыты</h1><small>свечей осталось: ${P.candlesLeft(state)}</small></div>${segments('lab-tab',[['samples','Образцы',0,'mortar'],['alchemy','Алхимия',0,'cauldron'],['archive','Архив',0,'scroll']],labTab)}${labTab==='alchemy'?alchemyHTML():labTab==='archive'?labRail()+archiveHTML():labRail()+samplesHTML()}`;}
+// The strip «Лаборатория» (art.md 4.7): the alchemy corner close up; the cauldron leads to «Алхимия», the jars to «Образцы».
+function labStrip(){const herbs=L.MATERIALS.filter(m=>m.kind==='herb'&&(state.stock[m.id]||0)>0).length,parts=L.PARTS.filter(p=>(state.stock[p.id]||0)>0).length,pots=L.POTIONS.filter(p=>(state.potions[p.id]||0)>0).length;
+ return `<div class="lab-strip"><canvas id="lab-scene" width="480" height="150" role="img" aria-label="${esc(`Лаборатория: котёл над огнём, летописец мешает варево; трав на балке: ${herbs}, банок с образцами: ${parts}, склянок со снадобьями: ${pots}`)}"></canvas></div>`;}
+function labHTML(){return `<div class="lab-side">${labStrip()}<div class="section-line"><h1>Опыты</h1><small>свечей осталось: ${P.candlesLeft(state)}</small></div>${segments('lab-tab',[['samples','Образцы',0,'mortar'],['alchemy','Алхимия',0,'cauldron'],['archive','Архив',0,'scroll']],labTab)}</div><div class="lab-main">${labTab==='alchemy'?alchemyHTML():labTab==='archive'?labRail()+archiveHTML():labRail()+samplesHTML()}</div>`;}
 function samplesHTML(){const m=mon(labMonster);if(!m)return '';const part=[m.loot.common,m.loot.rare].find(p=>(state.stock[p]||0)>0),lens=state.upgrades.includes('lens');
  const list=m.facts.filter(f=>LAB.includes(f.cat)&&state.know[f.id]&&!state.know[f.id].rev).sort((a,b)=>byState(state.know[a.id])-byState(state.know[b.id]));for(const id of[...labPick])if(!list.some(f=>f.id===id))labPick.delete(id);
  const need=`нужно: ${L.partName(m.loot.common).toLowerCase()} или ${L.partName(m.loot.rare).toLowerCase()} ×1 (есть ${(state.stock[m.loot.common]||0)+(state.stock[m.loot.rare]||0)})`;
@@ -321,9 +345,9 @@ function samplesHTML(){const m=mon(labMonster);if(!m)return '';const part=[m.loo
  ${troph.length?`<section class="card lab"><h2>Трофеи</h2>${troph.map(v=>`<div class="lab-card">${icon('crest')}<span class="lab-main"><b>${esc(m.trophy.name)}</b><small>${VARIANT[v]} · изучить один раз</small></span>${btn('study',`<span>Изучить</span>${cost(1)}`,'chip',`data-monster="${m.id}" data-variant="${v}" ${!canStudy||P.candlesLeft(state)<1?'disabled':''}`)}</div>`).join('')}</section>`:''}`;}
 function recipeSource(p){const books=p.recipe.filter(r=>L.BOOK.has(r)).map(r=>`по книге «${L.BOOK.get(r).title}»`);return books[0]||(p.recipe.some(r=>L.STORY.has(r))?'откроется по сюжету':'откроется в истории охотников');}
 function alchemyHTML(){return `<div class="recipes">${L.POTIONS.map(p=>{const known=state.recipes.includes(p.id),c=P.brewCost(state,p.id),part=c.need.find(x=>!x.buy),doses=state.potions[p.id]||0,full=doses>=P.LIMITS.doses;
-  const ing=Object.entries(p.ingredients).map(([id,n])=>{const have=state.stock[id]||0;return `<li class="${have<n?'short':''}"><span>${esc(L.partName(id))}</span><b>${have}/${n}</b></li>`;}).join('');
+  const ing=Object.entries(p.ingredients).map(([id,n])=>{const have=state.stock[id]||0;return `<li class="${have<n?'short':''}">${thing(id,16)}<span>${esc(L.partName(id))}</span><b>${have}/${n}</b></li>`;}).join('');
   const button=!known?`<p class="why">${icon('lock')}${esc(recipeSource(p))}</p>`:full?`<p class="why">Полон запас: ${doses} из ${P.LIMITS.doses}</p>`:part?`<p class="why">Нужно: ${esc(L.partName(part.id).toLowerCase())} — это добывают охотники</p>`:btn('brew',c.coins?`<span>Докупить и сварить</span><small>${c.coins} мон. · ${cost(1)}</small>`:`<span>Сварить</span><small>${cost(1)}</small>`,'chip brew'+(c.coins?'':' ready'),`data-potion="${p.id}" data-buy="${c.coins?1:0}" ${P.candlesLeft(state)<1||state.gold<c.coins?'disabled':''}`);
-  return `<article class="recipe${known?'':' locked'}"><div class="recipe-head">${icon('flask')}<b>${esc(p.name)}</b></div><small>${esc(p.effectText)}</small><ul class="ingredients">${ing}</ul><span class="doses" aria-label="Запас: ${doses} из ${P.LIMITS.doses}">${Array.from({length:P.LIMITS.doses},(_,i)=>`<i class="${i<doses?'on':''}"></i>`).join('')}</span>${button}</article>`;}).join('')}</div>${noCandles(1)}<p class="fine-print">Одна варка — одна свеча и две дозы${state.upgrades.includes('still')?' (с перегонным кубом — три)':''}; больше ${P.LIMITS.doses} доз не хранят. Недостающие травы докупаются у Веданы той же кнопкой.</p>`;}
+  return `<article class="recipe${known?'':' locked'}"><div class="recipe-head">${flaskImg(p.id,32,Math.round(doses/P.LIMITS.doses*4)/4)}<b>${esc(p.name)}</b></div><small>${esc(p.effectText)}</small><ul class="ingredients">${ing}</ul><span class="doses" aria-label="Запас: ${doses} из ${P.LIMITS.doses}">${Array.from({length:P.LIMITS.doses},(_,i)=>`<i class="${i<doses?'on':''}"></i>`).join('')}</span>${button}</article>`;}).join('')}</div>${noCandles(1)}<p class="fine-print">Одна варка — одна свеча и две дозы${state.upgrades.includes('still')?' (с перегонным кубом — три)':''}; больше ${P.LIMITS.doses} доз не хранят. Недостающие травы докупаются у Веданы той же кнопкой.</p>`;}
 function archiveHTML(){const m=mon(labMonster);if(!m)return '';const x=state.monsters[m.id],notes=state.notes[m.id]||0,unknown=P.hasUnknown(state,m);
  const list=m.facts.filter(f=>ARCH.includes(f.cat)&&state.know[f.id]&&!state.know[f.id].rev).sort((a,b)=>byState(state.know[a.id])-byState(state.know[b.id]));
  return `<section class="card lab"><h2>${esc(m.name)}: время, место, обряд</h2><p class="fine-print">Сверка берёт одну полевую запись и две свечи. Полевые записи ${L.genOf(m)}: ${notes}.</p>${list.map(f=>{const k=state.know[f.id];return `<div class="lab-card ${k.st}">${icon(CAT.get(f.cat).icon)}<span class="lab-main"><b>${esc(f.title)}</b><small>${k.st==='rumour'?'слух — сверить с летописями':'уже записано — сверить ещё раз'}</small></span>${stamp(knowKey(k),k.st==='rumour'?source(k):'')}${btn('cross-check',`<span>Сверить летописи</span>${cost(2)}`,'chip',`data-fact="${f.id}" ${!notes||P.candlesLeft(state)<2?'disabled':''}`)}</div>`;}).join('')||'<p class="muted">Сверять нечего: записей о времени, месте и обряде нет или они проверены до конца.</p>'}${!notes&&list.length?`<p class="why">${icon('info')}Полевые записи приносят охотники — награда «Знание».</p>`:notes&&list.length?noCandles(2):''}</section>
@@ -332,7 +356,7 @@ function archiveHTML(){const m=mon(labMonster);if(!m)return '';const x=state.mon
 function shopHTML(){return `<div class="section-line"><h1>Лавка</h1>${coins(state.gold)}</div>${segments('shop-tab',[['trader','Торговка',0,'coin'],['academy','Академия',0,'scale'],['upgrades','Обустройство',0,'home']],shopTab)}${shopTab==='academy'?academyHTML():shopTab==='upgrades'?upgradesHTML():traderHTML()}`;}
 function bookRow(b){const own=state.books.includes(b.id),mark=b.reliable?stamp('confirmed','','Проверено учёными'):stamp('rumour','','Половина — небылицы');
  return `<div class="book-row${own?' own':''}"><span class="cover ${b.reliable?'sure':'lubok'}" aria-hidden="true"></span><span class="book-main"><b>${esc(b.title)}</b><small>${esc(b.by)}</small>${mark}<small class="blurb">${esc(b.blurb)}</small></span>${own?'<em class="own-mark">в библиотеке</em>':btn('buy-book',`<span>Купить</span>${coins(b.price)}`,'chip',`data-id="${b.id}" ${state.gold<b.price?'disabled':''}`)}</div>`;}
-function goodsRow(mt){const have=state.stock[mt.id]||0;return `<div class="goods"><span class="goods-main"><b>${esc(mt.name)}</b><small>${coins(mt.buy)} · есть ${have}</small></span>${btn('buy',`+1`,'chip',`data-id="${mt.id}" data-n="1" aria-label="Купить: ${esc(mt.name)}, 1 за ${mt.buy} мон." ${state.gold<mt.buy?'disabled':''}`)}${btn('buy',`+5`,'chip',`data-id="${mt.id}" data-n="5" aria-label="Купить: ${esc(mt.name)}, 5 за ${mt.buy*5} мон." ${state.gold<mt.buy*5?'disabled':''}`)}</div>`;}
+function goodsRow(mt){const have=state.stock[mt.id]||0;return `<div class="goods">${thing(mt.id)}<span class="goods-main"><b>${esc(mt.name)}</b><small>${coins(mt.buy)} · есть ${have}</small></span>${btn('buy',`+1`,'chip',`data-id="${mt.id}" data-n="1" aria-label="Купить: ${esc(mt.name)}, 1 за ${mt.buy} мон." ${state.gold<mt.buy?'disabled':''}`)}${btn('buy',`+5`,'chip',`data-id="${mt.id}" data-n="5" aria-label="Купить: ${esc(mt.name)}, 5 за ${mt.buy*5} мон." ${state.gold<mt.buy*5?'disabled':''}`)}</div>`;}
 function traderHTML(){const shelf=P.shelfTier(state),books=L.BOOKS.filter(b=>b.seller!=='gift'&&b.tier<=shelf),by=s=>books.filter(b=>b.seller===s).map(bookRow).join(''),goods=s=>L.BOUGHT.filter(m=>m.seller===s).map(goodsRow).join('');
  const sheets=state.trader.day===state.day?state.trader.rumours:[],sell=L.MATERIALS.filter(mt=>(state.stock[mt.id]||0)>0&&mt.sell>0);
  const v=L.VISITOR.get('vedana');
@@ -342,7 +366,7 @@ function traderHTML(){const shelf=P.shelfTier(state),books=L.BOOKS.filter(b=>b.s
  <h3 class="label">Книжная полка</h3>${by('yanek')}<div class="goods-grid">${goods('yanek')}</div></section>
  <section class="card stall"><div class="stall-head">${face(visitorPerson('nikodim'),0,'portrait small')}<div><h2>о. Никодим</h2><small>«${esc(L.VISITOR.get('nikodim').lines.water)}»</small></div></div><div class="goods-grid">${goods('nikodim')}</div>${by('nikodim')}</section>
  <section class="card stall"><h2>Свечи</h2><div class="goods"><span class="goods-main"><b>Лишняя свеча</b><small>одна в день · ${coins(P.PRICE.candle)}</small></span>${btn('buy-candle',`<span>${state.daily.extra?'Куплена':'Купить'}</span>`,'chip',`${state.daily.extra||state.gold<P.PRICE.candle||P.candleMax(state)>=P.CANDLE_LIMIT?'disabled':''}`)}</div></section>
- <section class="card stall"><h2>Продать</h2>${sell.map(mt=>{const n=state.stock[mt.id];return `<div class="goods"><span class="goods-main"><b>${esc(mt.name)}</b><small>×${n} · по ${mt.sell} мон.</small></span>${btn('sell',`Продать · ${mt.sell}`,'chip',`data-id="${mt.id}" data-n="1"`)}${n>1?btn('sell',`Все · ${mt.sell*n}`,'chip',`data-id="${mt.id}" data-n="${n}"`):''}</div>`;}).join('')||'<p class="muted">Продать пока нечего: части чудовищ приносят охотники.</p>'}</section>`;}
+ <section class="card stall"><h2>Продать</h2>${sell.map(mt=>{const n=state.stock[mt.id];return `<div class="goods">${thing(mt.id)}<span class="goods-main"><b>${esc(mt.name)}</b><small>×${n} · по ${mt.sell} мон.</small></span>${btn('sell',`Продать · ${mt.sell}`,'chip',`data-id="${mt.id}" data-n="1"`)}${n>1?btn('sell',`Все · ${mt.sell*n}`,'chip',`data-id="${mt.id}" data-n="${n}"`):''}</div>`;}).join('')||'<p class="muted">Продать пока нечего: части чудовищ приносят охотники.</p>'}</section>`;}
 function academyBanner(){if(!state.story.seen.includes('S1'))return 'Академия ещё не знает о бестиарии.';if(state.upgrades.includes('dovecote'))return 'Листы Магистру — почтой, в любой день.';if(P.academyOpen(state))return 'Сегодня в Велене Магистр Брандт.';
  const n=3-state.day%3;return n===1?'Магистр будет завтра.':`Магистр будет через ${L.days(n)}.`;}
 function academyHTML(){const open=P.academyOpen(state),free=state.story.seen.includes('S2')&&!state.daily.copied,n=P.treatises(state),rank=P.rankOf(state.rep),press=state.upgrades.includes('press');
@@ -370,7 +394,7 @@ function pathHTML(){const r=P.rankOf(state.rep),now=L.RANKS[r],next=L.RANKS[r+1]
  return `<section class="card rank-card"><span class="rank-seal" aria-hidden="true">${icon(EMBLEM_ICON[now.emblem]||'crest')}</span><div><small>Звание ${r+1} из ${L.RANKS.length}</small><h2>${esc(now.name)}</h2><i class="bar" style="--p:${p}%"></i><small>репутация ${state.rep}${next?` · до «${esc(next.name)}» ещё ${next.rep-state.rep}`:''}</small></div></section>
  ${next?`<section class="card"><h3 class="label first">Откроет «${esc(next.name)}»</h3><p class="muted">${esc(next.opens)}</p></section>`:''}
  <section class="card"><h3 class="label first">Вехи</h3><ul class="steps">${steps.map(([done,t])=>`<li class="${done?'done':''}">${icon(done?'check':'ring')}<span>${esc(t)}</span></li>`).join('')}</ul><p class="fine-print">Великий бестиарий: трактаты ${n} / ${L.MONSTERS.length}.</p></section>`;}
-function trophiesHTML(){return `<div class="trophy-grid">${L.MONSTERS.map(m=>{const x=state.monsters[m.id];return `<div class="trophy-card${x?'':' locked'}"><b>${x?esc(m.name):'Не заведено'}</b><div class="slots3">${['young','grown','ancient'].map(v=>{const has=x?.troph.includes(v),ok=m.variants.some(z=>z.id===v);return ok?btn('trophy',`<i class="plaque ${v}${has?' on':''}"></i><small>${VARIANT[v]}</small>`,'plaque-button',`data-monster="${m.id}" data-variant="${v}" ${x?'':'disabled'} aria-label="${esc(m.name)}, ${VARIANT[v]}: ${has?esc(m.trophy.name):'пустой крюк'}"`):'<span class="plaque-button none"></span>';}).join('')}</div></div>`;}).join('')}</div>`;}
+function trophiesHTML(){return `<div class="trophy-grid">${L.MONSTERS.map(m=>{const x=state.monsters[m.id];return `<div class="trophy-card${x?'':' locked'}"><b>${x?esc(m.name):'Не заведено'}</b><div class="slots3">${['young','grown','ancient'].map(v=>{const has=x?.troph.includes(v),ok=m.variants.some(z=>z.id===v);return ok?btn('trophy',`<i class="plaque ${v}${has?' on':''}">${has?pixelImg(trophyURL(m.id,m.trophy.look),24):''}</i><small>${VARIANT[v]}</small>`,'plaque-button',`data-monster="${m.id}" data-variant="${v}" ${x?'':'disabled'} aria-label="${esc(m.name)}, ${VARIANT[v]}: ${has?esc(m.trophy.name):'пустой крюк'}"`):'<span class="plaque-button none"></span>';}).join('')}</div></div>`;}).join('')}</div>`;}
 const LOG_ICON={hunt:'door',story:'scroll',arc:'quill',rank:'crest',book:'book',sale:'scale',treatise:'book',print:'crown',note:'info'};
 function daysHTML(){const days=new Map();for(const e of state.chronicle){if(!days.has(e.d))days.set(e.d,[]);days.get(e.d).push(e);}
  return [...days].map(([d,list])=>`<h3 class="label">День ${d}</h3><ul class="chronicle">${list.map(e=>`<li>${icon(LOG_ICON[e.k]||'info')}<span>${esc(e.t.startsWith(`День ${d}: `)?L.upperFirst(e.t.slice(`День ${d}: `.length)):e.t)}</span></li>`).join('')}</ul>`).join('')||'<p class="fine-print">Здесь появятся охоты, книги, листы Академии и вести.</p>';}
@@ -444,8 +468,10 @@ function nightSky(time){const n=night;if(n.start===null)n.start=time;const t=tim
 function nightTick(time){const n=night;if(n.start===null)n.start=time;if(time-n.start>=1600)endNight();}
 function endNight(){const n=night;if(!n)return;night=null;n.veil.remove();lastFrame=0;n.then();}
 // ---- the picture
-function paint(time,dt,force=false){if(dialog.open&&!force)return;const c=$('#scene');if(!c)return;const t=still()?0:time,amb=night?nightSky(time):A.ambience(state);
- scene.paint(c.getContext('2d'),state,{guests:G.queueOf(state),chosen,time:t,dt,amb,calm:still()});}
+function paint(time,dt,force=false){if(dialog.open&&!force)return;const t=still()?0:time,amb=night?nightSky(time):A.ambience(state),c=$('#scene'),lab=$('#lab-scene');
+ if(c)scene.paint(c.getContext('2d'),state,{guests:G.queueOf(state),chosen,time:t,dt,amb,calm:still()});if(lab)scene.paintLab(lab.getContext('2d'),state,{time:t,dt,amb,calm:still()});}
+// A guest coming in or going out opens the door with its creak.
+scene.onDoor=()=>audio.play('door');
 // ?fps in the address shows the average time of a painted frame over the last forty, for checks on a slow phone.
 const fps=/[?&]fps\b/.test(location.search)?{n:0,sum:0,el:null}:null;
 function meter(ms){fps.sum+=ms;if(++fps.n<40)return;if(!fps.el){fps.el=document.createElement('div');fps.el.className='fps-meter';fps.el.setAttribute('aria-hidden','true');}const host=dialog.open?dialog:document.body;if(fps.el.parentElement!==host)host.append(fps.el);fps.el.textContent=`${(fps.sum/fps.n).toFixed(1)} мс · кадр`;fps.n=fps.sum=0;}
@@ -465,8 +491,10 @@ function goTo(d){if(dialog.open)close();if(d.report){showReport(d.report);return
 document.addEventListener('pointerdown',e=>{audio.unlock();swipe=view==='bestiary'&&page&&e.target.closest('.folio')?{x:e.clientX,y:e.clientY}:null;},{passive:true});
 let swipe=null;
 document.addEventListener('pointerup',e=>{const s=swipe;swipe=null;if(!s||view!=='bestiary'||!page||dialog.open)return;const dx=e.clientX-s.x,dy=e.clientY-s.y;if(Math.abs(dx)<60||Math.abs(dy)>Math.abs(dx)*.6)return;
- const i=L.MONSTERS.findIndex(m=>m.id===page);page=L.MONSTERS[(i+(dx<0?1:13))%14].id;audio.play('step');render();$('#panel').scrollTop=0;},{passive:true});
+ const i=L.MONSTERS.findIndex(m=>m.id===page);page=L.MONSTERS[(i+(dx<0?1:13))%14].id;audio.play('page');render();$('#panel').scrollTop=0;},{passive:true});
 document.addEventListener('click',e=>{
+ // A tap on the strip of the laboratory: the cauldron and the potions open «Алхимия», the jars «Образцы».
+ if(e.target.id==='lab-scene'){const r=e.target.getBoundingClientRect(),tab=ScriptoriumScene.labTarget((e.clientX-r.left)/r.width*480,(e.clientY-r.top)/r.height*150);if(tab&&tab!==labTab){labTab=tab;audio.play('step');render();}return;}
  const b=e.target.closest('[data-action]');if(e.target.closest('#toast'))nextToast();if(!b||b.disabled)return;const id=b.dataset.action,d=b.dataset;
  switch(id){
  case'close':close();break;
@@ -499,26 +527,26 @@ document.addEventListener('click',e=>{
  case'ask-again':{const who=state.reports.find(r=>r.id===d.id)?.hunter,name=who?hunterOf(who).short:'',said=gendered(who,'вспомнил','вспомнила');if(act(()=>P.askAgain(state,d.id),r=>r.changed.length?`${name} ${said} ${r.changed.length===1?'ещё одно':'ещё '+r.changed.length}: печати поменялись.`:`${name} больше ничего не ${said}.`))showReport(d.id);break;}
  case'report-done':P.readReport(state,d.id);scheduleSave();delete dialog.dataset.report;close();render();break;
  case'page':page=d.monster;render();$('#panel').scrollTop=0;break;
- case'page-turn':page=d.monster;audio.play('step');render();$('#panel').scrollTop=0;break;
+ case'page-turn':page=d.monster;audio.play('page');render();$('#panel').scrollTop=0;break;
  case'toc':page=null;render();$('#panel').scrollTop=0;break;
  case'marker':document.getElementById('cat-'+d.cat)?.scrollIntoView({block:'start',behavior:still()?'auto':'smooth'});break;
  case'lab-tab':labTab=d.tab;render();break;
  case'lab-monster':labMonster=d.monster;labPick.clear();render();break;
  case'lab-pick':if(labPick.has(d.fact))labPick.delete(d.fact);else if(labPick.size<2)labPick.add(d.fact);render();break;
- case'lab-test':{const ids=d.pick?[...labPick]:[d.fact];const r=act(()=>P.labTest(state,ids),r=>r.results.map(x=>L.say(x.same?L.LINES.labSame:L.LINES.labOk,{title:fact(x.f).title,stamp:x.rev?`условно: ${fact(x.f).condTag}`:STATE_WORD[x.to]})).join(' '));if(r)labPick.clear();break;}
+ case'lab-test':{const ids=d.pick?[...labPick]:[d.fact];const r=act(()=>P.labTest(state,ids),r=>r.results.map(x=>L.say(x.same?L.LINES.labSame:L.LINES.labOk,{title:fact(x.f).title,stamp:x.rev?`условно: ${fact(x.f).condTag}`:STATE_WORD[x.to]})).join(' '),'learn');if(r)labPick.clear();break;}
  case'study':studyDialog(d.monster,d.variant);break;
- case'study-fact':close();act(()=>P.studyTrophy(state,d.monster,d.variant,d.fact||null),r=>L.say(L.LINES.labOk,{title:fact(r.result.f).title,stamp:r.result.rev?`условно: ${fact(r.result.f).condTag}`:STATE_WORD[r.result.to]}));break;
- case'brew':act(()=>P.brew(state,d.potion,{buyMissing:d.buy==='1'}),r=>`Сварено: ${L.POT.get(d.potion).name} ×${r.made}${r.coins?` · докуплено на ${r.coins} мон.`:''}`);break;
- case'cross-check':act(()=>P.crossCheck(state,d.fact),r=>L.say(L.LINES.archiveOk,{title:fact(r.result.f).title,stamp:r.result.rev?`условно: ${fact(r.result.f).condTag}`:STATE_WORD[r.result.to]}));break;
- case'rummage':act(()=>P.rummage(state,d.monster),r=>r.found?`В старой летописи на полях: «${fact(r.found).advice}» — записано слухом.`:L.LINES.dust);break;
+ case'study-fact':close();act(()=>P.studyTrophy(state,d.monster,d.variant,d.fact||null),r=>L.say(L.LINES.labOk,{title:fact(r.result.f).title,stamp:r.result.rev?`условно: ${fact(r.result.f).condTag}`:STATE_WORD[r.result.to]}),'learn');break;
+ case'brew':if(act(()=>P.brew(state,d.potion,{buyMissing:d.buy==='1'}),r=>`Сварено: ${L.POT.get(d.potion).name} ×${r.made}${r.coins?` · докуплено на ${r.coins} мон.`:''}`,'brew'))scene.brew(d.potion,performance.now());break;
+ case'cross-check':act(()=>P.crossCheck(state,d.fact),r=>L.say(L.LINES.archiveOk,{title:fact(r.result.f).title,stamp:r.result.rev?`условно: ${fact(r.result.f).condTag}`:STATE_WORD[r.result.to]}),'learn');break;
+ case'rummage':act(()=>P.rummage(state,d.monster),r=>r.found?`В старой летописи на полях: «${fact(r.found).advice}» — записано слухом.`:L.LINES.dust,'page');break;
  case'shop-tab':shopTab=d.tab;render();break;
  case'buy':act(()=>P.buy(state,d.id,Number(d.n)),r=>`${L.partName(d.id)} ×${d.n} · −${r.coins} мон.`,'coin');break;
  case'sell':{const from=b.getBoundingClientRect();if(act(()=>P.sell(state,d.id,Number(d.n)),r=>`Продано: ${L.partName(d.id).toLowerCase()} ×${d.n} · +${r.coins} мон.`,'coin'))coinBurst(from);break;}
- case'buy-rumour':act(()=>P.buyRumour(state,Number(d.slot)),r=>`Новый слух ${L.monsterOf(r.fact).about}: «${fact(r.fact).title}»`,'coin');break;
- case'buy-book':act(()=>P.buyBook(state,d.id),r=>`Книга «${L.BOOK.get(d.id).title}» в библиотеке${r.changed?` · записей в бестиарии: ${r.changed}`:''}`,'coin');break;
+ case'buy-rumour':act(()=>P.buyRumour(state,Number(d.slot)),r=>`Новый слух ${L.monsterOf(r.fact).about}: «${fact(r.fact).title}»`,'seal');break;
+ case'buy-book':act(()=>P.buyBook(state,d.id),r=>`Книга «${L.BOOK.get(d.id).title}» в библиотеке${r.changed?` · записей в бестиарии: ${r.changed}`:''}`,'page');break;
  case'buy-candle':act(()=>P.buyCandle(state),'Лишняя свеча на карнизе.','coin');break;
  case'copy-page':{const from=b.getBoundingClientRect();if(act(()=>P.copyPage(state,d.monster),r=>`Магистр заплатил ${L.coins(r.coins)}${r.free?' · переписал Федя':''}`,'coin'))coinBurst(from);break;}
- case'treatise':act(()=>P.writeTreatise(state,d.monster),r=>`Трактат ${mon(d.monster).about} написан · ${L.coins(r.coins)} · репутация +10`,'magic');break;
+ case'treatise':act(()=>P.writeTreatise(state,d.monster),r=>`Трактат ${mon(d.monster).about} написан · ${L.coins(r.coins)} · репутация +10`,'quill');break;
  case'leaflet':act(()=>P.leaflet(state,d.monster),r=>`Печатня заплатила ${L.coins(r.coins)}`,'coin');break;
  case'print':{const r=act(()=>P.printBestiary(state),'«Великий бестиарий» напечатан!','magic');if(r?.story)queueModal(()=>showStory(r.story),'story');break;}
  case'upgrade':act(()=>P.upgrade(state,d.id),`${L.UPGRADE.get(d.id).name} — в скриптории.`,'coin');break;
@@ -560,7 +588,7 @@ $('#import-file').addEventListener('change',async e=>{const file=e.target.files[
 $('#menu-button').addEventListener('click',menu);
 $('#end-day').addEventListener('click',()=>endDay());
 dialog.addEventListener('cancel',e=>{if(conflict||!modalClosable)e.preventDefault();});
-document.addEventListener('keydown',e=>{if(dialog.open||e.target.matches('input,select,textarea'))return;if(view==='bestiary'&&page&&(e.key==='ArrowLeft'||e.key==='ArrowRight')){const i=L.MONSTERS.findIndex(m=>m.id===page);page=L.MONSTERS[(i+(e.key==='ArrowRight'?1:13))%14].id;render();}});
+document.addEventListener('keydown',e=>{if(dialog.open||e.target.matches('input,select,textarea'))return;if(view==='bestiary'&&page&&(e.key==='ArrowLeft'||e.key==='ArrowRight')){const i=L.MONSTERS.findIndex(m=>m.id===page);page=L.MONSTERS[(i+(e.key==='ArrowRight'?1:13))%14].id;audio.play('page');render();}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){flushSave(true);audio.pause();}else{lastFrame=performance.now();audio.resume();otherWrite(readStamp());}});
 window.addEventListener('pagehide',()=>{flushSave(true);audio.pause();});
 window.addEventListener('pageshow',e=>{if(e.persisted)otherWrite(readStamp());});

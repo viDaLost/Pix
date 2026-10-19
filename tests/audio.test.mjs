@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {GameAudio} from '../src/audio.js';
+import {GameAudio,EFFECTS,SCORES,SCENES,playMusicTick} from '../src/audio.js';
 
 function context(){
   const sources=[],parameter=()=>({value:0,setValueAtTime(){},linearRampToValueAtTime(){},exponentialRampToValueAtTime(){},setTargetAtTime(){},cancelScheduledValues(){}});
@@ -33,7 +33,7 @@ test('rapid effect input is throttled and active sources stay bounded',async()=>
 });
 test('scene changes replace the score; silent or unsupported browsers keep the game running',async()=>{
   const ctx=context(),a=new GameAudio({contextFactory:()=>ctx});a.setOptions({sound:true,music:true,volume:.4});await a.unlock();const oldMusic=[...a.voices].filter(v=>v.group==='music');
-  a.setScene('explore');assert.equal(a.scene,'explore');assert.ok(oldMusic.every(v=>v.source.stopped));assert.ok(a.timer);a.setScene('unexpected');assert.equal(a.scene,'forge');await a.destroy();
+  assert.equal(a.scene,'scriptorium','the scriptorium plays by default');a.setScene('lab');assert.equal(a.scene,'lab');assert.ok(oldMusic.every(v=>v.source.stopped));assert.ok(a.timer);a.setScene('unexpected');assert.equal(a.scene,'scriptorium');await a.destroy();
   const none=new GameAudio({contextFactory:()=>null});none.setOptions({sound:true,music:true,volume:.6});assert.equal(await none.unlock(),false);assert.equal(none.play('hit'),false);await none.destroy();
   const denied=new GameAudio({contextFactory:()=>{throw Error('Blocked');}});denied.setOptions({sound:true});assert.equal(await denied.unlock(),false);await denied.destroy();
 });
@@ -52,4 +52,33 @@ test('rain outside is a loop of its own: it stops in the background, with the so
   const again=a.ambient.source;a.setOptions({sound:false,music:false,volume:.6});assert.equal(a.ambient,null);assert.ok(again.stopped,'stops with the sound');
   a.setOptions({sound:true,music:false,volume:.6});await a.unlock();assert.ok(a.ambient);const third=a.ambient.source;a.setAmbience({rain:false});assert.equal(a.ambient,null);assert.ok(third.stopped,'stops when the rain ends');
   a.setAmbience({rain:true});const fourth=a.ambient.source;a.setAmbience({rain:true});assert.equal(a.ambient.source,fourth,'the same rain the next day goes on');await a.destroy();
+});
+
+// Г3 (GDD 11.7, art.md 6.2): every sound of the bestiary is synthesised, scheduled and stopped like the others; the two
+// scores have their tempo and key; «Опыты» are heard by their hearth, which stops like the rain.
+test('every sound of the bestiary starts and stops its sources, and only those of art.md 6.2 are there',async()=>{
+ for(const kind of['quill','page','seal','stamp-ok','stamp-none','stamp-worse','learn','roll','door','snuff','bubble','fire','brew','coin','hit','error','step'])assert.ok(EFFECTS.includes(kind),kind);
+ for(const gone of['forge','quench','polish','rivet'])assert.ok(!EFFECTS.includes(gone),gone+' of the forge is gone');
+ const ctx=context(),a=new GameAudio({contextFactory:()=>ctx});a.setOptions({sound:true,music:false,volume:.6});await a.unlock();
+ for(const kind of EFFECTS){ctx.currentTime+=1;const before=ctx.sources.length;assert.equal(a.play(kind),true,kind);const made=ctx.sources.slice(before);assert.ok(made.length>=1,kind+' makes a sound');assert.ok(made.every(s=>s.started&&s.stopped),`${kind} sources are scheduled to stop`);}
+ // A stamp of harm is louder and longer than an empty one; the medal of chance clicks eight times before it lands.
+ ctx.currentTime+=1;let before=ctx.sources.length;a.play('stamp-worse');const worse=ctx.sources.length-before;ctx.currentTime+=1;before=ctx.sources.length;a.play('stamp-none');assert.ok(worse>ctx.sources.length-before);
+ ctx.currentTime+=1;before=ctx.sources.length;a.play('roll');assert.ok(ctx.sources.length-before>=11,'eight clicks and the landing');
+ for(let i=0;i<5;i++){ctx.currentTime+=.1;a.play('door');}assert.ok(a.voices.size<=40);await a.destroy();
+});
+test('the scriptorium plays at 66 in D dorian, the laboratory at 72 in A minor over a bass ostinato',()=>{
+ assert.deepEqual(SCENES.sort(),['lab','scriptorium']);assert.equal(SCORES.scriptorium.bpm,66);assert.equal(SCORES.lab.bpm,72);
+ const dorian=new Set([2,4,5,7,9,11,0]),minor=new Set([9,11,0,2,4,5,7,8]);
+ for(const n of SCORES.scriptorium.bars.flat().filter(n=>n!=null))assert.ok(dorian.has(n%12),`${n} is in D dorian`);
+ for(const n of SCORES.lab.bars.flat().filter(n=>n!=null))assert.ok(minor.has(n%12),`${n} is in A minor`);
+ const ctx=context(),notes=scene=>{const before=ctx.sources.length;for(let i=0;i<8;i++)playMusicTick(ctx,ctx.destination,scene,i,i*.2);return ctx.sources.length-before;};
+ assert.ok(notes('lab')>notes('scriptorium'),'the ostinato walks on every quarter');
+});
+test('the hearth of «Опыты» is heard in the laboratory only, and stops in the background, with the sound and on leaving',async()=>{
+ const ctx=context(),a=new GameAudio({contextFactory:()=>ctx});a.setOptions({sound:true,music:false,volume:.6});a.setAmbience({lab:true});assert.equal(a.lab,null,'nothing before the first touch');
+ await a.unlock();assert.ok(a.lab);const rumble=a.lab.source;assert.ok(rumble.started&&rumble.loop);
+ const before=ctx.sources.length;for(let i=0;i<20;i++){ctx.currentTime+=.1;a.hearthTick();}assert.ok(ctx.sources.length-before>=8,'crackles and bubbles are scheduled');assert.ok(a.voices.size<=40);
+ a.pause();assert.equal(a.lab,null);assert.ok(rumble.stopped);await a.resume();assert.ok(a.lab,'back with the page');
+ a.setAmbience({lab:false});assert.equal(a.lab,null,'leaving «Опыты» stops the hearth');a.setAmbience({lab:true,rain:true});assert.ok(a.lab&&a.ambient,'rain and hearth together');
+ a.setOptions({sound:false,music:false,volume:.6});assert.equal(a.lab,null);assert.equal(a.ambient,null);await a.destroy();
 });
