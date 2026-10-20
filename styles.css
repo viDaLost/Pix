@@ -752,6 +752,18 @@ button.keeper-pick{flex-direction:column;gap:6px;min-height:96px;padding:8px}
   .welcome-dialog .sticky-actions{position:static;margin:8px 0 0;padding:0;background:none}
 }
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+/* The coach of the lesson (GDD 9.1): Даро's bar over the panel, a brass ring round the next tap, a dotted line under the
+   slips he points at without picking them. Nothing here takes a tap away from the game. */
+.coach{padding:6px 16px 0;flex:none}
+.coach-bar{display:flex;align-items:center;gap:8px;background:linear-gradient(180deg,#3a2c1c,#2b2016);border:1px solid var(--line-3);border-radius:var(--r-md);padding:4px 4px 4px 6px;box-shadow:0 6px 14px -10px rgba(0,0,0,.8)}
+.coach-bar p{flex:1;min-width:0;margin:0;display:flex;flex-direction:column;line-height:1.2}
+.coach-bar p small{font-size:11px;color:var(--brass);letter-spacing:.04em}
+.coach-bar p span{font-size:calc(13px*var(--fs));color:var(--text)}
+.coach-bar .chip{flex:none}.coach-bar .icon-button{flex:none;width:44px;min-height:44px;padding:0}
+.coach-ring{outline:2px solid var(--brass-hi)!important;outline-offset:2px;animation:coach-ring 1.6s var(--ease) infinite}
+@keyframes coach-ring{0%,100%{box-shadow:0 0 0 0 rgba(242,214,154,.55)}60%{box-shadow:0 0 0 7px rgba(242,214,154,0)}}
+.lesson-mark{text-decoration:underline dotted var(--brass);text-underline-offset:3px;outline:1px dashed var(--brass-lo);outline-offset:1px}
+@media(max-width:359px),(orientation:landscape) and (max-height:500px){.coach{padding:4px 12px 0}.coach-bar .face{display:none}.coach-bar p small{display:none}}
 /* The player's own choices from the menu, on top of the system settings. */
 :root.large-text{--fs:1.12}
 /* Five tabs share a narrow phone: their labels stay at the smallest size so they never run into each other. */

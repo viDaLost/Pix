@@ -140,7 +140,22 @@ function render(){
  if(view==='bestiary'&&page&&state.monsters[page]&&P.seePage(state,page)){scheduleSave();$('#navigation').innerHTML=navHTML();}
  for(const a of panel.querySelectorAll('.rail .active'))a.parentElement.scrollLeft=a.offsetLeft-a.parentElement.offsetLeft-8;
  if(view==='bestiary')mountPlates(panel);
- notice();paint(performance.now(),0,true);}
+ coach();notice();paint(performance.now(),0,true);}
+// The coach of the lesson (GDD 9.1): Даро's bar over the panel and a ring round the next tap. It never blocks: every
+// button stays live, «Понятно» passes a step that only shows something, the cross skips the lesson. A step is passed by
+// what the player did (`lessonEvent`, set by the tap) or by what is on screen; Даро's one-off tips (GDD 9.2) come here
+// too, one at a time, as a hint with «Понятно» that waits while a dialog is open.
+let lessonEvent=null;
+const lessonCtx=()=>{const d=sheet&&contractOf(sheet)?draft(sheet):{facts:[],potions:[]};return {view,sheet:view==='reception'?sheet:null,facts:d.facts,potions:d.potions,event:lessonEvent};};
+function coach(){const el=$('#coach');if(loadError){el.hidden=true;return;}if(G.lessonAdvance(state,lessonCtx()).length)scheduleSave();lessonEvent=null;
+ for(const x of document.querySelectorAll('.coach-ring,.lesson-mark'))x.classList.remove('coach-ring','lesson-mark');
+ const t=G.lessonStep(state,lessonCtx());el.hidden=!t;
+ if(t){const key=t.id+'|'+t.text;if(el.dataset.key!==key){el.dataset.key=key;el.innerHTML=`<div class="coach-bar" role="status">${face(visitorPerson('daro'),0,'portrait small')}<p><small>Даро</small><span>${esc(t.text)}</span></p>${t.next?btn('coach-next','Понятно','chip'):''}${btn('coach-skip',icon('close'),'icon-button ghost small','aria-label="Пропустить обучение"')}</div>`;}
+  const ring=t.ring&&document.querySelector(t.ring);if(ring){ring.classList.add('coach-ring');if(ring.closest('.slips'))ring.scrollIntoView({block:'center',behavior:'auto'});}
+  for(const id of t.marks)document.querySelector(`.slip[data-fact="${id}"]`)?.classList.add('lesson-mark');}
+ else delete el.dataset.key;
+ if(dialog.open||heldHints.length||toasts.now&&isHint(toasts.now)||toasts.waiting.some(isHint))return;
+ const tip=G.tipDue(state,{view,tab:view==='shop'?shopTab:view==='lab'?labTab:''});if(tip&&P.seeHint(state,tip)){scheduleSave();toast(`Даро: «${G.tipText(tip)}»`,{kind:'hint',action:{action:'hint-ok',label:'Понятно'}});}}
 function hudHTML(amb){const r=P.rankOf(state.rep),now=L.RANKS[r],next=L.RANKS[r+1],p=next?Math.round((state.rep-now.rep)/(next.rep-now.rep)*100):100,left=P.candlesLeft(state),max=P.candleMax(state),sky=A.skyWords(amb);
  return `<span class="stat" title="Монеты" aria-label="Монеты: ${state.gold}">${icon('coin')}<b id="hud-gold">${state.gold}</b></span><span class="stat candles${left?'':' out'}${performance.now()-spendAt<400&&!still()?' spend':''}" title="Свечи дня" aria-label="Свечей осталось ${left} из ${max}">${icon('candle')}<b>${left}</b><small>/${max}</small></span>${btn('rank-path',`${icon(EMBLEM_ICON[now.emblem]||'crest')}<b>${r+1}</b><i class="xp" style="--p:${p}%"></i>`,'stat rank',`title="${now.name} · репутация ${state.rep}" aria-label="Звание «${now.name}», ступень ${r+1} из ${L.RANKS.length}${next?`, до следующего ещё ${next.rep-state.rep} репутации`:''}. Путь"`)}${btn('sky',`${icon(A.WEATHER_ICON[amb.weather])}<span><span class="long">День </span><b>${state.day}</b></span>`,'stat day',`title="${sky}" aria-label="День ${state.day}, ${sky}. Небо дня"`)}`;}
 const TABS=[['reception','door','Приёмная'],['bestiary','book','Бестиарий'],['lab','flask','Опыты','Лаборатория'],['shop','scale','Лавка'],['chronicle','scroll','Летопись']];
@@ -472,7 +487,7 @@ function startGame(){state.welcomed=true;if(welcomeKeeper)P.setKeeper(state,welc
  const s0=L.STORY.get('S0');if(state.day===1)queueModal(()=>showStory(s0),'story');}
 function showLegacy(){state.legacySeen=true;scheduleSave();modal('Прежняя игра',`<p>Здесь была ювелирная мастерская «Сияние». Её сохранение не тронуто — его можно скачать в меню. В бестиарий оно не переносится.</p><div class="row fill">${btn('legacy-export',`${icon('download')}<span>Скачать сохранение прежней игры</span>`)}${btn('close','Понятно','primary')}</div>`);}
 function download(raw,filename,type='application/json'){const url=URL.createObjectURL(raw instanceof Blob?raw:new Blob([raw],{type})),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-function menu(){modal('Бестиарий Велена',`<div class="row fill menu-top">${btn('reference',`${icon('help')}<span>Справочник</span>`)}${btn('keeper',`${icon('quill')}<span>Облик летописца</span>`)}</div><div class="settings">${btn('toggle-sound',`${icon('sound')}<span>Звук</span><em>${state.sound?'вкл':'выкл'}</em>`,state.sound?'on':'',`aria-pressed="${state.sound}"`)}${btn('toggle-music',`${icon('music')}<span>Музыка</span><em>${state.music?'вкл':'выкл'}</em>`,state.music?'on':'',`aria-pressed="${state.music}"`)}<label class="slider">Громкость <input id="volume" aria-label="Громкость" type="range" min="0" max="1" step="0.05" value="${state.volume}"></label>${btn('toggle-large',`${icon('text')}<span>Крупный текст</span><em>${state.prefs?.large?'вкл':'выкл'}</em>`,state.prefs?.large?'on':'',`aria-pressed="${!!state.prefs?.large}"`)}${btn('toggle-calm',`${icon('calm')}<span>Меньше анимаций</span><em>${state.prefs?.calm||reduced.matches?'вкл':'выкл'}</em>`,state.prefs?.calm||reduced.matches?'on':'',`aria-pressed="${!!state.prefs?.calm}"`)}${'vibrate'in navigator?btn('toggle-haptics',`${icon('vibrate')}<span>Вибрация</span><em>${state.haptics!==false?'вкл':'выкл'}</em>`,state.haptics!==false?'on':'',`aria-pressed="${state.haptics!==false}"`):''}
+function menu(){modal('Бестиарий Велена',`<div class="row fill menu-top">${btn('reference',`${icon('help')}<span>Справочник</span>`)}${btn('keeper',`${icon('quill')}<span>Облик летописца</span>`)}</div>${G.lessonStep(state)?`<div class="row fill">${btn('skip-lesson',`${icon('close')}<span>Пропустить обучение</span>`)}</div>`:''}<div class="settings">${btn('toggle-sound',`${icon('sound')}<span>Звук</span><em>${state.sound?'вкл':'выкл'}</em>`,state.sound?'on':'',`aria-pressed="${state.sound}"`)}${btn('toggle-music',`${icon('music')}<span>Музыка</span><em>${state.music?'вкл':'выкл'}</em>`,state.music?'on':'',`aria-pressed="${state.music}"`)}<label class="slider">Громкость <input id="volume" aria-label="Громкость" type="range" min="0" max="1" step="0.05" value="${state.volume}"></label>${btn('toggle-large',`${icon('text')}<span>Крупный текст</span><em>${state.prefs?.large?'вкл':'выкл'}</em>`,state.prefs?.large?'on':'',`aria-pressed="${!!state.prefs?.large}"`)}${btn('toggle-calm',`${icon('calm')}<span>Меньше анимаций</span><em>${state.prefs?.calm||reduced.matches?'вкл':'выкл'}</em>`,state.prefs?.calm||reduced.matches?'on':'',`aria-pressed="${!!state.prefs?.calm}"`)}${'vibrate'in navigator?btn('toggle-haptics',`${icon('vibrate')}<span>Вибрация</span><em>${state.haptics!==false?'вкл':'выкл'}</em>`,state.haptics!==false?'on':'',`aria-pressed="${state.haptics!==false}"`):''}
  ${btn('export',`${icon('download')}<span>Скачать сохранение</span>`)}${btn('import',`${icon('upload')}<span>Загрузить сохранение</span>`)}${legacy?btn('legacy-export',`${icon('download')}<span>Скачать сохранение прежней игры</span>`):''}${backupMeta?btn('restore-backup',`${icon('undo')}<span>Вернуть прежний бестиарий</span><em>день ${backupMeta.day}</em>`):''}${installable()?btn('install',`${icon('home')}<span>На главный экран</span>`):''}${updateReady?btn('reload-app',`${icon('download')}<span>Обновить до новой версии</span>`):''}${btn(loadError?'reset-recovery':'reset-game',`${icon('close')}<span>Начать заново</span>`,'danger')}</div><p class="fine-print">Бестиарий хранится на этом устройстве. Для переноса на другой телефон скачай файл. ${reduced.matches?'Анимации уменьшены настройкой системы. ':''}Велен, 1740 год.</p>`);}
 function keeperDialog(){modal('Облик летописца',`<div class="keepers">${L.KEEPER_LOOKS.map(k=>btn('set-keeper',`${face(personOf(k.id,k.look),0,'portrait')}<span>${k.id==='keeper_a'?'Летописец':'Летописица'}</span>`,'keeper-pick'+(state.keeper===k.id?' active':''),`data-id="${k.id}" aria-pressed="${state.keeper===k.id}"`)).join('')}</div><p class="fine-print">Облик виден в скриптории за столом; тексты игры от него не меняются.</p>`);}
 const REFERENCE=[['advice','Лист совета'],['stamps','Печати'],['potions','Снадобья'],['report','Отчёт'],['lab','Опыты'],['academy','Академия'],['ranks','Звания']];
@@ -542,12 +557,15 @@ document.addEventListener('click',e=>{
  // A tap on the strip of the laboratory: the cauldron and the potions open «Алхимия», the jars «Образцы».
  if(e.target.id==='lab-scene'){const tab=ScriptoriumScene.labTarget(...canvasPoint(e.target,e));if(tab&&tab!==labTab){labTab=tab;audio.play('step');render();}return;}
  const b=e.target.closest('[data-action]');if(e.target.closest('#toast'))nextToast();if(!b||b.disabled)return;const id=b.dataset.action,d=b.dataset;
+ if(['guest','open-sheet','potion','send','fact-info','how-counted','coach-next'].includes(id))lessonEvent=id;
  switch(id){
  case'close':close();break;
  case'welcome-sound':welcomeSound=d.sound==='1';for(const el of document.querySelectorAll('[data-action="welcome-sound"]')){el.classList.toggle('active',el===b);el.setAttribute('aria-pressed',el===b);}if(welcomeSound)audio.unlock();break;
  case'welcome-keeper':welcomeKeeper=d.id;for(const el of document.querySelectorAll('[data-action="welcome-keeper"]')){el.classList.toggle('active',el===b);el.setAttribute('aria-pressed',el===b);}break;
  case'welcome-start':startGame();close();if(state.sound)audio.unlock().then(()=>audio.play('magic'));break;
  case'hint-ok':break;
+ case'coach-next':break;
+ case'coach-skip':case'skip-lesson':P.skipTutorial(state);scheduleSave();if(id==='skip-lesson')close();toast('Обучение пропущено. Справочник — в меню.');render();break;
  case'navigate':if(view===d.view&&view==='bestiary')page=null;view=d.view;leaveSheet();render();$('#panel').scrollTop=0;break;
  case'go':goTo(d);break;
  case'reception-tab':receptionTab=d.tab;render();break;
@@ -627,6 +645,7 @@ document.addEventListener('click',e=>{
  case'reset-recovery':modal('Новое сохранение',`<p>Сначала скачай повреждённый исходный файл через меню. Новый бестиарий заменит его на этом устройстве.</p>${btn('confirm-reset','Начать заново','primary danger')}`);break;
  case'confirm-reset':close();putAside().then(()=>{replaceGame(P.newGame(Date.now()>>>0),false);queueModal(welcome,'welcome');});break;
  }
+ if(lessonEvent)coach();
 });
 document.addEventListener('input',e=>{if(e.target.id==='volume'){state.volume=Number(e.target.value);audio.setOptions(state);scheduleSave();}});
 $('#import-file').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;try{if(file.size>4000000)throw new P.BestiaryError('Файл слишком большой для сохранения бестиария.');pendingImport=P.load(await file.text());

@@ -113,3 +113,44 @@ test('the wound under a report follows the doctor: what is left of it, back tomo
  assert.equal(P.heal(s,r.hunter).ok,true);assert.equal(G.woundLine(r.injury,x.out),`Лечится ещё ${L.days(r.injury-1)}`,'one day less after the doctor');
  const app=readFileSync(new URL('../src/app.js',import.meta.url),'utf8');assert.match(app,/G\.woundLine\(r\.injury,x\.out\)/,'the report window writes it from the hunter');
 });
+
+// ---- the lesson of day 1 and the tips of Даро (GDD 9.1, 9.2)
+const stepOf=s=>G.lessonStep(s)?.id??null;
+test('the lesson walks the werewolf of Гордей step by step, each step passed by its own tap or screen',()=>{
+ const s=game(5),c={view:'reception',sheet:null,facts:[],potions:[]};assert.equal(stepOf(s),'greet');
+ assert.deepEqual(G.lessonAdvance(s,c),[],'nothing done yet');assert.equal(G.lessonStep(s).ring,'.guest-chip');
+ assert.deepEqual(G.lessonAdvance(s,{...c,event:'guest'}),['greet'],'the tap on the guest passes one step only');
+ assert.deepEqual(G.lessonAdvance(s,{...c,sheet:G.LESSON_CASE}),['book']);
+ let t=G.lessonStep(s,{...c,sheet:'c-1'});assert.equal(t.ring,'.slip[data-fact="werewolf.silver"]');
+ t=G.lessonStep(s,{...c,sheet:'c-1',facts:['werewolf.silver']});assert.equal(t.ring,'.slip[data-fact="werewolf.aconite"]');
+ t=G.lessonStep(s,{...c,sheet:'c-1',facts:['werewolf.silver','werewolf.aconite']});assert.equal(t.ring,'');assert.match(t.text,/Третье — твоя ставка/);
+ assert.deepEqual(t.marks,['werewolf.dawn','werewolf.garlic','werewolf.crossroads'],'Даро points at the rumours and the refuted without picking them');
+ const facts=['werewolf.silver','werewolf.aconite','werewolf.dawn'];assert.deepEqual(G.lessonAdvance(s,{...c,sheet:'c-1',facts}),['pick']);
+ assert.ok(G.lessonStep(s).next,'the stamp only shows something: «Понятно» passes it');
+ assert.deepEqual(G.lessonAdvance(s,{...c,sheet:'c-1',facts,event:'coach-next'}),['stamp']);
+ assert.deepEqual(G.lessonAdvance(s,{...c,sheet:'c-1',facts,event:'potion'}),['potion']);
+ assert.equal(stepOf(s),'send');P.advise(s,'c-1',facts,[]);assert.deepEqual(G.lessonAdvance(s,c),['send']);
+ assert.equal(G.lessonStep(s).ring,'#end-day');P.endDay(s);assert.deepEqual(G.lessonAdvance(s,c),['night']);
+ const r=s.reports.find(r=>r.contract.id==='c-1');assert.ok(r.win,'two confirmed win even with «На восходе» (u = 0.40)');
+ assert.equal(s.know['werewolf.dawn'].st,'dangerous','the harmful rumour is stamped on day 1');assert.equal(r.items.find(x=>x.f==='werewolf.dawn').o,'worse');
+ assert.equal(stepOf(s),'report');P.readReport(s,r.id);assert.deepEqual(G.lessonAdvance(s,c),['report']);
+ assert.deepEqual(G.lessonAdvance(s,{...c,view:'bestiary'}),['ledger']);assert.equal(s.tutorial.finished,true);assert.equal(G.lessonStep(s),null,'shown once');
+});
+test('the lesson never holds the game: skipped, or with the case of Гордей declined, it steps aside',()=>{
+ const a=game(6);P.skipTutorial(a);assert.equal(G.lessonStep(a),null);
+ const b=game(6);P.decline(b,'c-1');assert.deepEqual(G.lessonAdvance(b,{}),['greet','book','pick','stamp','potion','send']);assert.equal(stepOf(b),'night');
+ P.endDay(b);assert.deepEqual(G.lessonAdvance(b,{}),['night','report']);assert.equal(stepOf(b),'ledger');
+});
+test('the tips of Даро come once each, at their own moment',()=>{
+ const s=game(8);assert.equal(G.tipDue(s,{view:'reception'}),null,'the rumours of the notebook of Даро are not a first rumour');
+ assert.equal(G.tipDue(s,{view:'lab'}),'first_lab');assert.ok(P.seeHint(s,'first_lab'));assert.equal(G.tipDue(s,{view:'lab'}),null,'once');assert.equal(P.seeHint(s,'first_lab'),false);
+ assert.equal(G.tipDue(s,{view:'shop',tab:'academy'}),null,'the Academy is not in town yet');
+ P.advise(s,'c-1',['werewolf.silver','werewolf.aconite','werewolf.dawn'],['aconite_oil']);assert.equal(G.tipDue(s,{}),'first_potion');P.seeHint(s,'first_potion');
+ P.endDay(s);assert.equal(G.tipDue(s,{}),'first_harmful','«На восходе» turned dangerous');P.seeHint(s,'first_harmful');
+ assert.equal(G.tipDue(s,{}),null,'a win with a harmful advice is not a full win, and no failure yet');
+ const f=game(9);P.advise(f,'c-1',['werewolf.silver','werewolf.garlic','werewolf.dawn'],[]);P.endDay(f);const r=f.reports[0];assert.equal(r.win,false,'the owner\'s example: silver, garlic, dawn — Гордей comes back ragged');
+ assert.match(P.reportText(f,r.id).items?.map?.(x=>x.line||x.text).join(' ')??JSON.stringify(P.reportText(f,r.id)),/ещё сильнее/);
+ assert.notEqual(G.tipDue(f,{}),'first_failure','the failure tip waits until the report is read');P.readReport(f,r.id);
+ const due=[];for(let id;(id=G.tipDue(f,{}));)P.seeHint(f,id),due.push(id);assert.ok(due.includes('first_failure')&&due.includes('first_harmful'));
+ assert.equal(G.tipText('first_full'),L.VISITOR.get('daro').lines.tips.first_full);
+});

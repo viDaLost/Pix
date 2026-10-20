@@ -83,3 +83,44 @@ export function morningReport(s,res={}){const m=res.morning||P.morning(s),rows=[
  if(m.academy)row('scale','Магистр Брандт в Велене: Академия покупает листы',{view:'shop',tab:'academy'});
  row('door',m.guests?`Сегодня ${m.guests===1?'ждёт':'ждут'} ${m.guests} ${plural(m.guests,'гость','гостя','гостей')}`:'Сегодня никого не ждём',{view:'reception',tab:'queue'});
  return {title:`Утро, день ${s.day}`,sky:townMorningWords({season:m.season,weather:m.weather}),line:m.line,hold:m.hold,thaw:m.thaw,rows};}
+// ---- the lesson of day 1 on the werewolf of Гордей (GDD 9.1). Each step of `LINES.tutorial` knows when it is done
+// from the state and from what the interface reports in `c` ({view, sheet, facts, potions, event}), and which element
+// the ring of the coach points at. A lesson case declined, deferred or lost on the way never holds the lesson up.
+export const LESSON_CASE='c-1';
+const SURE=['werewolf.silver','werewolf.aconite'],BAIT=['werewolf.dawn','werewolf.garlic','werewolf.crossroads'];
+const sent=s=>s.day>1||s.hunts.some(h=>h.contract.id===LESSON_CASE);
+const gone=s=>sent(s)||!s.contracts.some(c=>c.id===LESSON_CASE);
+const heard=s=>s.day>2||s.reports.some(r=>r.contract.id===LESSON_CASE&&r.read)||s.day>1&&!s.reports.some(r=>r.contract.id===LESSON_CASE);
+const inSheet=c=>c.sheet===LESSON_CASE,ev=(c,...list)=>list.includes(c.event);
+const STEP={
+ greet:{ring:'.guest-chip',done:(s,c)=>gone(s)||inSheet(c)||ev(c,'guest','open-sheet')},
+ book:{ring:`[data-action="open-sheet"][data-contract="${LESSON_CASE}"]`,done:(s,c)=>gone(s)||inSheet(c)},
+ pick:{ring:(s,c)=>{const next=SURE.find(id=>!(c.facts||[]).includes(id));return next?`.slip[data-fact="${next}"]`:'';},done:(s,c)=>gone(s)||inSheet(c)&&(c.facts||[]).length>=3},
+ stamp:{ring:`.slip[data-fact="${SURE[0]}"] .stamp`,next:true,done:(s,c)=>gone(s)||ev(c,'coach-next','potion','send','fact-info','how-counted')},
+ potion:{ring:'.potion-chip[data-potion="aconite_oil"]',next:true,done:(s,c)=>gone(s)||ev(c,'coach-next','potion','send')},
+ send:{ring:`[data-action="send"][data-contract="${LESSON_CASE}"]`,done:s=>gone(s)},
+ night:{ring:'#end-day',done:s=>s.day>1},
+ report:{ring:'[data-action="open-report"]',done:s=>heard(s)},
+ ledger:{ring:'[data-action="navigate"][data-view="bestiary"]',next:true,done:(s,c)=>s.day>2||c.view==='bestiary'||ev(c,'coach-next')}};
+const lessonOpen=s=>!!s.tutorial&&!s.tutorial.finished&&!s.tutorial.skipped;
+// The step the coach shows now, or null: {id, text, ring (a selector or ''), next (a «Понятно» button), marks (slips
+// to underline without picking them)}. For the third slip Даро says the fourth line of his intro.
+export function lessonStep(s,c={}){if(!lessonOpen(s))return null;const t=L.LINES.tutorial.find(x=>!s.tutorial.done.includes(x.id));if(!t)return null;const x=STEP[t.id];
+ const ring=typeof x.ring==='function'?x.ring(s,c):x.ring,third=t.id==='pick'&&!ring;
+ return {id:t.id,text:third?L.VISITOR.get('daro').lines.intro[3]:t.text,ring,next:!!x.next,marks:third?BAIT.filter(id=>s.know[id]&&!(c.facts||[]).includes(id)):[]};}
+// Marks every step that is done now, in order, and returns their ids; the event of `c` counts for one step only.
+export function lessonAdvance(s,c={}){const out=[];let ctx=c;for(let t=lessonStep(s,ctx);t&&STEP[t.id].done(s,ctx);t=lessonStep(s,ctx)){P.tutor(s,t.id);out.push(t.id);ctx={...ctx,event:null};}return out;}
+// ---- Даро's one-off tips (GDD 9.2): each once, at its moment. The interface passes what is on screen in `c`
+// ({view, tab}); the first tip due that was not seen is returned, or null, one at a time.
+const kn=s=>Object.values(s.know);
+const TIP={
+ first_rumour:s=>kn(s).some(k=>k.st==='rumour'&&k.src!=='start'),
+ first_failure:s=>s.reports.some(r=>!r.win&&r.read),
+ first_harmful:s=>kn(s).some(k=>k.st==='dangerous'),
+ first_condition:s=>kn(s).some(k=>k.rev),
+ first_potion:s=>s.hunts.some(h=>h.potions?.length)||s.reports.some(r=>r.potions?.length),
+ first_lab:(s,c)=>c.view==='lab',
+ first_sale:(s,c)=>c.view==='shop'&&c.tab==='academy'&&P.academyOpen(s),
+ first_full:s=>s.reports.some(r=>r.win&&r.read&&r.items.length===3&&r.items.every(x=>x.o==='ok'))};
+export function tipDue(s,c={}){const seen=s.hintsSeen||[];for(const id of Object.keys(TIP))if(!seen.includes(id)&&TIP[id](s,c))return id;return null;}
+export const tipText=id=>L.VISITOR.get('daro').lines.tips[id]||'';
