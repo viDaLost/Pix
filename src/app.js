@@ -9,6 +9,7 @@ import {openStore,readLegacy,StaleTabError} from './store.js';
 import {icon,EMBLEM_ICON} from './icons.js';
 import {ToastQueue,ModalQueue,toastSpec,toastDuration} from './notices.js';
 import * as A from './ambience.js';
+import {plateCanvas,renderPlate,revealStep,thumbURL,stageOf,anchorsOf,STAGES} from './engraving.js';
 const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const btn=(action,text,cls='',attrs='')=>`<button type="button" data-action="${action}" class="${cls}" ${attrs}>${text}</button>`;
 const SAVE=P.SAVE_KEY,SAVED_AT=SAVE+':at',TAB=Math.random().toString(36).slice(2),portraits=new Map(),scene=new ScriptoriumScene(),audio=new GameAudio(),store=openStore('pix-bestiary');
@@ -136,6 +137,7 @@ function render(){
  // A page looked at loses its fresh ink (the dot of «Бестиарий» goes out with the last one).
  if(view==='bestiary'&&page&&state.monsters[page]&&P.seePage(state,page)){scheduleSave();$('#navigation').innerHTML=navHTML();}
  for(const a of panel.querySelectorAll('.rail .active'))a.parentElement.scrollLeft=a.offsetLeft-a.parentElement.offsetLeft-8;
+ if(view==='bestiary')mountPlates(panel);
  notice();paint(performance.now(),0,true);}
 function hudHTML(amb){const r=P.rankOf(state.rep),now=L.RANKS[r],next=L.RANKS[r+1],p=next?Math.round((state.rep-now.rep)/(next.rep-now.rep)*100):100,left=P.candlesLeft(state),max=P.candleMax(state),sky=A.skyWords(amb);
  return `<span class="stat" title="Монеты" aria-label="Монеты: ${state.gold}">${icon('coin')}<b id="hud-gold">${state.gold}</b></span><span class="stat candles${left?'':' out'}${performance.now()-spendAt<400&&!still()?' spend':''}" title="Свечи дня" aria-label="Свечей осталось ${left} из ${max}">${icon('candle')}<b>${left}</b><small>/${max}</small></span>${btn('rank-path',`${icon(EMBLEM_ICON[now.emblem]||'crest')}<b>${r+1}</b><i class="xp" style="--p:${p}%"></i>`,'stat rank',`title="${now.name} · репутация ${state.rep}" aria-label="Звание «${now.name}», ступень ${r+1} из ${L.RANKS.length}${next?`, до следующего ещё ${next.rep-state.rep} репутации`:''}. Путь"`)}${btn('sky',`${icon(A.WEATHER_ICON[amb.weather])}<span><span class="long">День </span><b>${state.day}</b></span>`,'stat day',`title="${sky}" aria-label="День ${state.day}, ${sky}. Небо дня"`)}`;}
@@ -304,22 +306,41 @@ function claim(b){const r=state.reports.find(r=>r.id===b.dataset.id),choice=b.da
 // ---- Бестиарий (GDD 10.5): contents and pages of text; the engravings come with Г4, a frame stands in their place.
 function bestiaryHTML(){if(page&&!mon(page))page=null;return page?pageHTML(page):tocHTML();}
 function tocHTML(){const n=P.treatises(state),open=P.openList(state).length;
- return `<div class="section-line"><h1>Бестиарий</h1><small>${open} из ${L.MONSTERS.length} страниц</small></div><div class="toc">${L.MONSTERS.map(m=>{const x=state.monsters[m.id];if(!x)return btn('page',`<span class="plate-thumb silhouette" aria-hidden="true"><b>?</b></span><b>Не заведено</b><small>табл. ${m.plate.table}</small>`,'toc-tile locked',`data-monster="${m.id}" aria-label="Таблица ${m.plate.table}: не заведено"`);
+ return `<div class="section-line"><h1>Бестиарий</h1><small>${open} из ${L.MONSTERS.length} страниц</small></div><div class="toc">${L.MONSTERS.map(m=>{const x=state.monsters[m.id];if(!x)return btn('page',`<span class="plate-thumb silhouette" aria-hidden="true"><img src="${thumbURL(m.id,null)}" alt=""><b>?</b></span><b>Не заведено</b><small>табл. ${m.plate.table}</small>`,'toc-tile locked',`data-monster="${m.id}" aria-label="Таблица ${m.plate.table}: не заведено"`);
   const st=P.pageStats(state,m.id),p=Math.round(st.resolved/st.total*100),fresh=P.freshInk(state,m.id).length;
-  return btn('page',`<span class="plate-thumb" aria-hidden="true"><b>${m.plate.table}</b>${fresh?'<i class="dot"></i>':''}${x.treatise?icon('book','treatise'):''}</span><b>${esc(m.name)}</b><i class="ring" style="--p:${p}%" aria-hidden="true"></i>`,'toc-tile'+(st.done?' done':''),`data-monster="${m.id}" aria-label="${esc(m.name)}: разрешено ${st.resolved} из ${st.total}${fresh?', свежие чернила':''}${x.treatise?', трактат написан':''}"`);}).join('')}
+  return btn('page',`<span class="plate-thumb engraved" aria-hidden="true"><img src="${thumbURL(m.id,plateStage(m.id))}" alt="">${fresh?'<i class="dot"></i>':''}${x.treatise?icon('book','treatise'):''}</span><b>${esc(m.name)}</b><i class="ring" style="--p:${p}%" aria-hidden="true"></i>`,'toc-tile'+(st.done?' done':''),`data-monster="${m.id}" aria-label="${esc(m.name)}: разрешено ${st.resolved} из ${st.total}${fresh?', свежие чернила':''}${x.treatise?', трактат написан':''}"`);}).join('')}
  <div class="toc-tile great">${icon('crown')}<b>Великий бестиарий</b><small>трактаты ${n}&nbsp;/&nbsp;${L.MONSTERS.length}</small></div></div>`;}
 const margin=G.marginNote;
 function factCard(f,fresh){const k=state.know[f.id],last=k.last?`последний раз: ${VARIANT[k.last.v]}, ${A.WEATHER[k.last.w]}, ${A.SEASONS[k.last.k]}`:'';
  return `<div class="fact ${k.rev?'cond':k.st}${fresh?' fresh':''}"><div class="fact-head">${icon(CAT.get(f.cat).icon)}<b>${esc(f.title)}</b>${stamp(knowKey(k),k.st==='rumour'?source(k):k.rev?f.condTag:'')}</div><p>${esc(f.advice)}</p><p class="hand">${esc(margin(k,f))}</p>${k.ok+k.none+k.worse||last?`<small class="counts">${icon('check')}${k.ok} ${icon('ring')}${k.none} ${icon('up')}${k.worse}${last?' · '+esc(last):''}</small>`:''}</div>`;}
-function pageHTML(id){const m=mon(id),x=state.monsters[id],i=L.MONSTERS.indexOf(m),nav=`<div class="page-nav">${btn('toc',`${icon('grid')}<span>Оглавление</span>`,'chip')}<span class="page-turn">${btn('page-turn',icon('left'),'icon-button ghost',`data-monster="${L.MONSTERS[(i+13)%14].id}" aria-label="Предыдущая страница"`)}<b>${m.plate.table} / XIV</b>${btn('page-turn',icon('right'),'icon-button ghost',`data-monster="${L.MONSTERS[(i+1)%14].id}" aria-label="Следующая страница"`)}</span></div>`;
- if(!x)return nav+`<article class="folio sheet locked"><div class="plate-frame silhouette" role="img" aria-label="Силуэт неизвестного чудовища"><b>?</b></div><h2>Не заведено</h2><p>Откроется по письму Академии.</p><p class="plate-title">ТАБЛ. ${m.plate.table}</p></article>`;
- const st=P.pageStats(state,id),fresh=new Set(P.freshInk(state,id)),unknown=m.facts.filter(f=>!state.know[f.id]).length;
+// The plate of a page and its markers (art.md 5.4): a category with no records has none, rumours only a pencil «?», a
+// settled record an ink ring, a dangerous one a cinnabar rim; the first settled record of it writes a note in the margin.
+const plateStage=id=>{const x=state.monsters[id];return x?stageOf(P.pageStats(state,id),x.treatise):null;};
+function plateMark(m,c){const list=m.facts.filter(f=>f.cat===c.id&&state.know[f.id]);if(!list.length)return null;const ks=list.map(f=>state.know[f.id]),rum=ks.filter(k=>k.st==='rumour').length,done=ks.length-rum,kind=ks.some(k=>k.st==='dangerous')?'danger':done?'ink':'rumour';
+ const first=list.find(f=>state.know[f.id].st!=='rumour'),parts=[done&&`разрешено ${done}`,rum&&`${rum} ${plural(rum,'слух','слуха','слухов')}`].filter(Boolean).join(', ');
+ return [c,kind,`${c.name}: ${parts}`,first?`${c.name} — ${margin(state.know[first.id],first)}`:''];}
+// The page turns round its spine (art.md 6.1): the new leaf comes in from 25°, the plate is already drawn.
+let turning=0;
+function turnPage(dir){const i=L.MONSTERS.findIndex(m=>m.id===page);if(i<0)return;page=L.MONSTERS[(i+(dir>0?1:13))%14].id;turning=dir>0?1:-1;audio.play('page');render();$('#panel').scrollTop=0;}
+// Puts the engravings into a page just rendered: from the cache, the neighbours drawn ahead in idle time. A plate that
+// has risen a stage since it was last seen draws its new strokes over the old one, 1/12 a frame (0.6 s).
+function mountPlates(root){const dpr=Math.min(2,devicePixelRatio||1);
+ for(const el of root.querySelectorAll('canvas.plate')){const id=el.dataset.plate,stage=el.dataset.stage==='-'?null:+el.dataset.stage,w=Math.round(el.parentElement.clientWidth)||300,seen=ui.plates?.[id];
+  let cv;if(stage!=null&&seen!=null&&seen<stage&&!still()){cv=renderPlate(id,seen,w,dpr);let i=0;const step=()=>{if(!cv.isConnected)return;if(revealStep(cv,id,seen,stage,i++))setTimeout(()=>requestAnimationFrame(step),50);};requestAnimationFrame(step);}
+  else cv=plateCanvas(id,stage,w,dpr);
+  cv.className='plate';el.replaceWith(cv);if(stage!=null&&seen!==stage){(ui.plates||={})[id]=stage;keepUI();}
+  if(page===id){const i=L.MONSTERS.findIndex(m=>m.id===id),idle=window.requestIdleCallback||(f=>setTimeout(f,120));for(const j of[i+1,i+13]){const n=L.MONSTERS[j%14].id;idle(()=>plateCanvas(n,plateStage(n),w,dpr));}}}
+ const folio=root.querySelector('article.folio');if(folio&&turning&&!still())folio.classList.add(turning>0?'turn-next':'turn-prev');turning=0;}
+function pageHTML(id){const m=mon(id),x=state.monsters[id],i=L.MONSTERS.indexOf(m),nav=`<div class="page-nav">${btn('toc',`${icon('grid')}<span>Оглавление</span>`,'chip')}<span class="page-turn">${btn('page-turn',icon('left'),'icon-button ghost',`data-dir="-1" data-monster="${L.MONSTERS[(i+13)%14].id}" aria-label="Предыдущая страница"`)}<b>${m.plate.table} / XIV</b>${btn('page-turn',icon('right'),'icon-button ghost',`data-dir="1" data-monster="${L.MONSTERS[(i+1)%14].id}" aria-label="Следующая страница"`)}</span></div>`;
+ if(!x)return nav+`<article class="folio sheet locked"><div class="plate-frame silhouette" role="img" aria-label="Силуэт неизвестного чудовища"><canvas class="plate" data-plate="${m.id}" data-stage="-"></canvas><b>?</b></div><h2>Не заведено</h2><p>Откроется по письму Академии.</p><p class="plate-title">ТАБЛ. ${m.plate.table}</p></article>`;
+ const st=P.pageStats(state,id),fresh=new Set(P.freshInk(state,id)),unknown=m.facts.filter(f=>!state.know[f.id]).length,stage=stageOf(st,x.treatise),anchors=anchorsOf(id)||{},marks=L.CATEGORIES.map(c=>plateMark(m,c)).filter(Boolean);
  const sections=L.CATEGORIES.map(cat=>{const list=m.facts.filter(f=>f.cat===cat.id&&state.know[f.id]).sort((a,b)=>byState(state.know[a.id])-byState(state.know[b.id]));const n=m.facts.filter(f=>f.cat===cat.id&&!state.know[f.id]).length;if(!list.length&&!n)return '';
   return `<section class="cat-section" id="cat-${cat.id}"><h3 class="cat-head">${icon(cat.icon)}<span>${cat.name} · ${cat.slot.toLowerCase()}</span></h3>${list.map(f=>factCard(f,fresh.has(f.id))).join('')}${n?`<p class="unknown-line"><span aria-hidden="true">▒▒▒</span> ещё ${n} ${plural(n,'неизвестное','неизвестных','неизвестных')}</p>`:''}</section>`;}).join('');
  const troph=m.variants.map(v=>`<i class="${x.troph.includes(v.id)?'on':''}" title="${esc(v.name)}"></i>`).join('');
  // Two leaves: on a phone they follow each other, on a landscape phone they lie open as a spread (art.md 2.2).
  return nav+`<article class="folio sheet"><div class="leaf left"><header class="folio-head"><div><h2>${esc(m.name)}</h2><small>${esc(m.alt)} · ${m.tags.filter(t=>['beast','undead','spirit','serpent','water','cursed'].includes(t)).map(t=>L.TAGS[t]).join(' · ')}</small></div>${claws(m.danger)}</header>
- <div class="plate-frame" role="img" aria-label="Гравюра: ${esc(m.name)}, рамка для таблицы"><b>${m.plate.table}</b><div class="markers">${L.CATEGORIES.filter(c=>m.facts.some(f=>f.cat===c.id)).map(c=>btn('marker',icon(c.icon),'marker',`data-cat="${c.id}" aria-label="К разделу «${c.name}»"`)).join('')}</div></div>
+ <div class="plate-frame engraved" role="img" aria-label="Гравюра: ${esc(m.name)}, ${STAGES[stage]}"><canvas class="plate" data-plate="${m.id}" data-stage="${stage}"></canvas><div class="markers">${marks.map(([c,k,label])=>btn('marker',k==='rumour'?'?':icon(c.icon),'marker '+k,`data-cat="${c.id}" style="left:${anchors[c.id][0]/2.4}%;top:${anchors[c.id][1]/1.6}%" aria-label="${label}"`)).join('')}</div></div>
+ ${marks.some(x=>x[3])?`<ul class="plate-notes">${marks.filter(x=>x[3]).map(([c,k,,note])=>`<li class="${k}">${icon(c.icon)}<span class="hand">${esc(note)}</span></li>`).join('')}</ul>`:''}
  <p class="plate-title">ТАБЛ. ${m.plate.table} · ${esc(m.plate.title)}</p>
  <p class="fullness"><span>Разрешено ${st.resolved} из ${st.total}</span><i class="bar" style="--p:${Math.round(st.resolved/st.total*100)}%"></i><span class="troph" aria-label="Трофеи: ${st.troph} из ${m.variants.length}">трофеи ${troph}</span><span>${x.treatise?'трактат написан':'трактата нет'}</span></p></div>
  <div class="leaf right">${sections}${unknown?btn('how-learn',`${icon('help')}<span>Ещё ${unknown} ${plural(unknown,'неизвестное','неизвестных','неизвестных')} · Как узнать?</span>`,'unknown',`data-monster="${m.id}"`):''}
@@ -499,7 +520,7 @@ function goTo(d){if(dialog.open)close();if(d.report){showReport(d.report);return
 document.addEventListener('pointerdown',e=>{audio.unlock();swipe=view==='bestiary'&&page&&e.target.closest('.folio')?{x:e.clientX,y:e.clientY}:null;},{passive:true});
 let swipe=null;
 document.addEventListener('pointerup',e=>{const s=swipe;swipe=null;if(!s||view!=='bestiary'||!page||dialog.open)return;const dx=e.clientX-s.x,dy=e.clientY-s.y;if(Math.abs(dx)<60||Math.abs(dy)>Math.abs(dx)*.6)return;
- const i=L.MONSTERS.findIndex(m=>m.id===page);page=L.MONSTERS[(i+(dx<0?1:13))%14].id;audio.play('page');render();$('#panel').scrollTop=0;},{passive:true});
+ turnPage(dx<0?1:-1);},{passive:true});
 document.addEventListener('click',e=>{
  // A tap on the strip of the laboratory: the cauldron and the potions open «Алхимия», the jars «Образцы».
  if(e.target.id==='lab-scene'){const tab=ScriptoriumScene.labTarget(...canvasPoint(e.target,e));if(tab&&tab!==labTab){labTab=tab;audio.play('step');render();}return;}
@@ -535,7 +556,7 @@ document.addEventListener('click',e=>{
  case'ask-again':{const who=state.reports.find(r=>r.id===d.id)?.hunter,name=who?hunterOf(who).short:'',said=gendered(who,'вспомнил','вспомнила');if(act(()=>P.askAgain(state,d.id),r=>r.changed.length?`${name} ${said} ${r.changed.length===1?'ещё одно':'ещё '+r.changed.length}: печати поменялись.`:`${name} больше ничего не ${said}.`))showReport(d.id);break;}
  case'report-done':P.readReport(state,d.id);scheduleSave();delete dialog.dataset.report;close();render();break;
  case'page':page=d.monster;render();$('#panel').scrollTop=0;break;
- case'page-turn':page=d.monster;audio.play('page');render();$('#panel').scrollTop=0;break;
+ case'page-turn':turnPage(+d.dir);break;
  case'toc':page=null;render();$('#panel').scrollTop=0;break;
  case'marker':document.getElementById('cat-'+d.cat)?.scrollIntoView({block:'start',behavior:still()?'auto':'smooth'});break;
  case'lab-tab':labTab=d.tab;render();break;
@@ -596,7 +617,7 @@ $('#import-file').addEventListener('change',async e=>{const file=e.target.files[
 $('#menu-button').addEventListener('click',menu);
 $('#end-day').addEventListener('click',()=>endDay());
 dialog.addEventListener('cancel',e=>{if(conflict||!modalClosable)e.preventDefault();});
-document.addEventListener('keydown',e=>{if(dialog.open||e.target.matches('input,select,textarea'))return;if(view==='bestiary'&&page&&(e.key==='ArrowLeft'||e.key==='ArrowRight')){const i=L.MONSTERS.findIndex(m=>m.id===page);page=L.MONSTERS[(i+(e.key==='ArrowRight'?1:13))%14].id;audio.play('page');render();}});
+document.addEventListener('keydown',e=>{if(dialog.open||e.target.matches('input,select,textarea'))return;if(view==='bestiary'&&page&&(e.key==='ArrowLeft'||e.key==='ArrowRight'))turnPage(e.key==='ArrowRight'?1:-1);});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){flushSave(true);audio.pause();}else{lastFrame=performance.now();audio.resume();otherWrite(readStamp());}});
 window.addEventListener('pagehide',()=>{flushSave(true);audio.pause();});
 window.addEventListener('pageshow',e=>{if(e.persisted)otherWrite(readStamp());});
