@@ -9,6 +9,7 @@ import {openStore,readLegacy,StaleTabError} from './store.js';
 import {icon,EMBLEM_ICON} from './icons.js';
 import {ToastQueue,ModalQueue,toastSpec,toastDuration} from './notices.js';
 import * as A from './ambience.js';
+import {reportPlan,playReport} from './report-reveal.js';
 import {plateCanvas,renderPlate,revealStep,thumbURL,stageOf,anchorsOf,STAGES} from './engraving.js';
 const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const btn=(action,text,cls='',attrs='')=>`<button type="button" data-action="${action}" class="${cls}" ${attrs}>${text}</button>`;
@@ -102,7 +103,8 @@ function act(fn,message,sound='good'){let r;try{r=fn();}catch(e){audio.play('err
 // One dialog at a time. modal() shows at once, replacing what is open; queueModal() waits until the open one closes,
 // and dialogs that wait together open in a fixed order. close() is immediate.
 const modals=new ModalQueue();let modalClosable=true,ignorePop=false;
-function modal(title,body,closable=true,cls=''){delete dialog.dataset.report;$('#dialog-body').innerHTML=`<div class="modal-title"><h2 id="dialog-title">${title}</h2>${closable?btn('close',icon('close'),'icon-button ghost','aria-label="Закрыть"'):''}</div><div class="modal-body">${body}</div>`;dialog.className=cls;modalClosable=closable;
+let stopReveal=null;
+function modal(title,body,closable=true,cls=''){stopReveal?.();stopReveal=null;delete dialog.dataset.report;$('#dialog-body').innerHTML=`<div class="modal-title"><h2 id="dialog-title">${title}</h2>${closable?btn('close',icon('close'),'icon-button ghost','aria-label="Закрыть"'):''}</div><div class="modal-body">${body}</div>`;dialog.className=cls;modalClosable=closable;
 // The dialog itself takes the focus, so a long one opens at its title rather than scrolled to its first button.
  if(!dialog.open){holdHints();dialog.showModal();dialog.focus({preventScroll:true});if(!ignorePop&&!history.state?.modal)history.pushState({modal:1},'');}dialog.scrollTop=0;raiseToast();}
 function queueModal(fn,kind){modals.add(fn,kind);if(!dialog.open&&!night)modals.next()();}
@@ -282,13 +284,14 @@ function howCounted(){const c=contractOf(sheet);if(!c)return;const d=draft(c.id)
 // motion. A report already written into the bestiary (read) opens quietly, from the chronicle too. A sound still to
 // come is dropped once its window is closed or shows something else.
 const heardReports=new Set();
+const skippedReports=new Set();
 function hearReport(r){if(r.read||heardReports.has(r.id))return;heardReports.add(r.id);
- for(const x of reportSounds(r,{short:state.stats.hunts>=10,reduced:still()}))setTimeout(()=>{if(!dialog.open||dialog.dataset.report!==r.id)return;if(x.kind)audio.play(x.kind,{step:x.step||0});if(x.buzz)buzz(x.buzz);},x.t);}
+ for(const x of reportSounds(r,{short:state.stats.hunts>=10,reduced:still()}))setTimeout(()=>{if(!dialog.open||dialog.dataset.report!==r.id||skippedReports.has(r.id)&&x.t>0)return;if(x.kind)audio.play(x.kind,{step:x.step||0});if(x.buzz)buzz(x.buzz);},x.t);}
 function showReport(rid){const r=state.reports.find(r=>r.id===rid);if(!r)return modals.next()?.();const t=P.reportText(state,rid),m=mon(r.contract.monster),h=r.hunter&&hunterOf(r.hunter),x=h&&state.hunters[h.id];
  // The hunter stands in the doorway as he came back: in the rag of this report, with the bag and the trophy of a win.
  const person={...(h?hunterPerson(h.id):guestPerson({kind:'town',who:r.town})),rag:r.rag||0,...(r.win?{carry:true,trophy:r.trophy?m.trophy.look?.c:null}:{})};
  const items=t.items.map((it,i)=>{const change=it.from!==it.to?`<em class="change">${it.from?STATE_WORD[it.from]:'новое'} → ${STATE_WORD[it.to]}</em>`:'';
-  return `<li class="${it.seen?it.o:'unseen'}"><div class="item-head"><b>${'①②③'[i]} ${esc(it.title)}</b>${stamp(it.seen?it.o:'unseen')}</div><p class="quote">«${esc(it.text)}»</p>${change}${it.contradiction?`<p class="contradiction">${icon('approx')}<span>${esc(it.contradiction)}</span></p>`:''}</li>`;}).join('');
+  return `<li class="${it.seen?it.o:'unseen'}" data-rv="stamp-${i}"><div class="item-head"><b>${'①②③'[i]} ${esc(it.title)}</b>${stamp(it.seen?it.o:'unseen')}</div><p class="quote">«${esc(it.text)}»</p>${change}${it.contradiction?`<p class="contradiction">${icon('approx')}<span>${esc(it.contradiction)}</span></p>`:''}</li>`;}).join('');
  let end='';
  if(!r.win&&h){const wound=r.injury?`${icon('bandage')}<span>${G.woundLine(r.injury,x.out)}</span>`:'',tr=`<span class="trust-change">${trust(x.trust)}${r.trust?`<small>(${r.trust>0?'+':'−'}${Math.abs(r.trust)})</small>`:''}</span>`;
   end=`<p class="wound">${wound}${tr}</p>${r.sulk?`<p class="fine-print">${esc(h.short)} ${gendered(h.id,'обиделся','обиделась')} и не придёт ${L.days(x.sulk)}.</p>`:''}<div class="row fill">${x.out>0?btn('heal',`${icon('bandage')}<span>Лекарь · ${P.PRICE.doctor} мон.</span>`,'',`data-id="${h.id}" ${state.gold<P.PRICE.doctor?'disabled':''}`):''}${r.items.some(i=>!i.seen)&&!r.asked?btn('ask-again',`${icon('candle')}<span>Расспросить · 1</span>`,'',`data-id="${r.id}" ${P.candlesLeft(state)<1?'disabled':''}`):''}</div>`;}
@@ -296,10 +299,12 @@ function showReport(rid){const r=state.reports.find(r=>r.id===rid);if(!r)return 
   if(r.gift)end+=`<p class="gift">${icon('heart')}<span>Подарок за доверие: ${r.gift.id==='notes'?`полевые записи ${L.genOf(m)}`:esc(L.partName(r.gift.id).toLowerCase())}</span></p>`;
   if(r.trophy){const mx=state.monsters[m.id],rep=2+(state.upgrades.includes('hall')?1:0)+(mx?.troph[0]===r.trophy?5:0);end+=`<p class="gift">${pixelImg(trophyURL(m.id,m.trophy.look),24)}<span>На стену: ${esc(m.trophy.name)} (${VARIANT[r.trophy]}) · +${rep} репутации</span></p>`;}
   if(h&&r.items.some(i=>!i.seen)&&!r.asked)end+=`<div class="row fill">${btn('ask-again',`${icon('candle')}<span>Расспросить · 1</span>`,'',`data-id="${r.id}" ${P.candlesLeft(state)<1?'disabled':''}`)}</div>`;}
- modal(esc(t.title),`<div class="threshold ${r.win?'won':'lost'}"><canvas class="doorway" width="${THRESHOLD.w}" height="${THRESHOLD.h}" aria-hidden="true"></canvas><div class="verdict">${stamp(r.win?'ok':'worse','',r.win?'Добыто':'Ушёл')}<small>по листу: надёжно ${r.shown.mid}%</small></div></div>
-  <p class="quote greet">«${esc(t.greet)}»${t.first?` «${esc(t.first)}»`:''}</p><ol class="report-items">${items}</ol>${t.after.map(a=>`<p class="quote after">«${esc(a)}»</p>`).join('')}${end}
-  <div class="sticky-actions">${btn('report-done',`${icon('quill')}<span>Вписать в бестиарий</span>`,'primary',`data-id="${r.id}"`)}</div>`,true,'report-dialog sheet-dialog');
- dialog.dataset.report=r.id;const door=dialog.querySelector('canvas.doorway'),amb=A.ambience(state);if(door)scene.paintThreshold(door.getContext('2d'),person,{weather:amb.weather,season:amb.season,hold:!!state.story.hold});hearReport(r);}
+ modal(esc(t.title),`<div class="threshold ${r.win?'won':'lost'}"><canvas class="doorway" data-rv="door" width="${THRESHOLD.w}" height="${THRESHOLD.h}" aria-hidden="true"></canvas><div class="verdict"><span class="medal ${r.win?'won':'lost'}" data-rv="roll" aria-hidden="true"><b>Жребий</b><i>${r.win?'✓':'✕'}</i></span><span class="verdict-stamp" data-rv="reveal">${stamp(r.win?'ok':'worse','',r.win?'Добыто':'Ушёл')}</span><small data-rv="reveal">по листу: надёжно ${r.shown.mid}%</small></div></div>
+  <p class="quote greet" data-rv="line">«${esc(t.greet)}»${t.first?` «${esc(t.first)}»`:''}</p><ol class="report-items">${items}</ol><div data-rv="end">${t.after.map(a=>`<p class="quote after">«${esc(a)}»</p>`).join('')}${end}</div>
+  <div class="sticky-actions" data-rv="final">${btn('report-done',`${icon('quill')}<span>Вписать в бестиарий</span>`,'primary',`data-id="${r.id}"`)}</div>`,true,'report-dialog sheet-dialog');
+ dialog.dataset.report=r.id;const door=dialog.querySelector('canvas.doorway'),amb=A.ambience(state);if(door)scene.paintThreshold(door.getContext('2d'),person,{weather:amb.weather,season:amb.season,hold:!!state.story.hold});
+ // The first showing of a report plays its beats (GDD 11.6); a tap skips them, and the sounds still to come with them.
+ const first=!r.read&&!heardReports.has(r.id);hearReport(r);if(first){const plan=reportPlan(r,{short:state.stats.hunts>=10,reduced:still()});if(plan.length>1)stopReveal=playReport($('#dialog-body'),plan,{onDone:skipped=>{if(skipped)skippedReports.add(r.id);}});}}
 function claim(b){const r=state.reports.find(r=>r.id===b.dataset.id),choice=b.dataset.choice,from=b.getBoundingClientRect();
  const res=act(()=>P.claim(state,b.dataset.id,choice),x=>choice==='coins'?`Монеты: +${r.offer.coins}`:choice==='loot'?`Добыча в запасе: ${r.offer.loot.map(l=>L.partName(l.id).toLowerCase()).join(', ')}`:x.fact?`В бестиарий: «${fact(x.fact.f).title}» — ${STATE_WORD[x.fact.to]} · полевые записи +1`:'Полевые записи +1',choice==='coins'?'coin':choice==='know'?'learn':'good');
  if(res){if(choice==='coins')coinBurst(from);showReport(r.id);}}
