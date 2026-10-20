@@ -755,6 +755,9 @@ button.keeper-pick{flex-direction:column;gap:6px;min-height:96px;padding:8px}
 /* The coach of the lesson (GDD 9.1): Даро's bar over the panel, a brass ring round the next tap, a dotted line under the
    slips he points at without picking them. Nothing here takes a tap away from the game. */
 .coach{padding:6px 16px 0;flex:none}
+/* On a short phone the bar floats over the top of the scene in the reception, so the case and «Открыть лист» stay in view. */
+main{position:relative}
+@media(max-height:640px){.coach.float{position:absolute;top:0;left:0;right:0;z-index:4}}
 .coach-bar{display:flex;align-items:center;gap:8px;background:linear-gradient(180deg,#3a2c1c,#2b2016);border:1px solid var(--line-3);border-radius:var(--r-md);padding:4px 4px 4px 6px;box-shadow:0 6px 14px -10px rgba(0,0,0,.8)}
 .coach-bar p{flex:1;min-width:0;margin:0;display:flex;flex-direction:column;line-height:1.2}
 .coach-bar p small{font-size:11px;color:var(--brass);letter-spacing:.04em}
@@ -763,7 +766,9 @@ button.keeper-pick{flex-direction:column;gap:6px;min-height:96px;padding:8px}
 .coach-ring{outline:2px solid var(--brass-hi)!important;outline-offset:2px;animation:coach-ring 1.6s var(--ease) infinite}
 @keyframes coach-ring{0%,100%{box-shadow:0 0 0 0 rgba(242,214,154,.55)}60%{box-shadow:0 0 0 7px rgba(242,214,154,0)}}
 .lesson-mark{text-decoration:underline dotted var(--brass);text-underline-offset:3px;outline:1px dashed var(--brass-lo);outline-offset:1px}
-@media(max-width:359px),(orientation:landscape) and (max-height:500px){.coach{padding:4px 12px 0}.coach-bar .face{display:none}.coach-bar p small{display:none}}
+@media(max-width:359px),(orientation:landscape) and (max-height:500px){.coach{padding:2px 12px 0}.coach-bar{padding:0 0 0 8px}.coach-bar .face{display:none}.coach-bar p small{display:none}}
+/* A turned phone has no height to spare: while Даро speaks, the sheet drops its line of circumstances (the case card has them). */
+@media(orientation:landscape) and (max-height:500px){#coach:not([hidden])~.sheet-panel .circ{display:none}}
 /* The player's own choices from the menu, on top of the system settings. */
 :root.large-text{--fs:1.12}
 /* Five tabs share a narrow phone: their labels stay at the smallest size so they never run into each other. */

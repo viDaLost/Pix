@@ -149,7 +149,7 @@ let lessonEvent=null;
 const lessonCtx=()=>{const d=sheet&&contractOf(sheet)?draft(sheet):{facts:[],potions:[]};return {view,sheet:view==='reception'?sheet:null,facts:d.facts,potions:d.potions,event:lessonEvent};};
 function coach(){const el=$('#coach');if(loadError){el.hidden=true;return;}if(G.lessonAdvance(state,lessonCtx()).length)scheduleSave();lessonEvent=null;
  for(const x of document.querySelectorAll('.coach-ring,.lesson-mark'))x.classList.remove('coach-ring','lesson-mark');
- const t=G.lessonStep(state,lessonCtx());el.hidden=!t;
+ const t=G.lessonStep(state,lessonCtx());el.hidden=!t;el.classList.toggle('float',view==='reception'&&!sheet);
  if(t){const key=t.id+'|'+t.text;if(el.dataset.key!==key){el.dataset.key=key;el.innerHTML=`<div class="coach-bar" role="status">${face(visitorPerson('daro'),0,'portrait small')}<p><small>Даро</small><span>${esc(t.text)}</span></p>${t.next?btn('coach-next','Понятно','chip'):''}${btn('coach-skip',icon('close'),'icon-button ghost small','aria-label="Пропустить обучение"')}</div>`;}
   const ring=t.ring&&document.querySelector(t.ring);if(ring){ring.classList.add('coach-ring');if(ring.closest('.slips'))ring.scrollIntoView({block:'center',behavior:'auto'});}
   for(const id of t.marks)document.querySelector(`.slip[data-fact="${id}"]`)?.classList.add('lesson-mark');}
@@ -285,7 +285,7 @@ function tapSlip(id){const c=contractOf(sheet);if(!c)return;const d=draft(c.id),
  if(r.refused){toast('В листе уже три указания: убери одно касанием.',{kind:'hint'});return;}
  // An offer to bring back a replaced slip is stale once the sheet changes again.
  const before=[...d.facts];if(swap){swap=null;withdrawToast('undo-swap');}d.facts=r.facts;
- if(r.replaced){swap={cid:c.id,facts:before};toast(`${fact(r.replaced).title} → ${fact(id).title}`,{action:{action:'undo-swap',label:'Вернуть',icon:'undo'}});}
+ if(r.replaced){swap={cid:c.id,facts:before};holdHints();toast(`${fact(r.replaced).title} → ${fact(id).title}`,{action:{action:'undo-swap',label:'Вернуть',icon:'undo'}});releaseHints();}
  const from=document.querySelector(`[data-action="slip"][data-fact="${id}"]`)?.getBoundingClientRect(),wasFull=P.preview(state,c.id,before,d.potions).k===3;
  audio.play(r.removed?'step':'quill');render();if(!r.removed&&!still())slipMotion(id,from,c.id,wasFull);}
 // The motion of the sheet (art.md 6.1): the slip flies into its slot and shrinks (FLIP, 220 ms), the entry is written in
